@@ -1,0 +1,19 @@
+{
+  "name": "dalizi-files-dev",
+  "version": "0.4.0",
+  "private": true,
+  "description": "Development checks for Dalizi Files; the application frontend has no build step",
+  "license": "MIT",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "test": "node --test tests/*.test.cjs",
+    "check": "node tools/check_repo.cjs",
+    "test:ui": "node tools/ui_smoke.cjs",
+    "test:workbench": "node tools/ui_smoke.cjs --workbench",
+    "test:preview": "node tools/preview_smoke.cjs",
+    "test:ssh": "node tools/ssh_managed_smoke.cjs"
+  },
+  "devDependencies": {
+    "playwright": "1.62.1"
+  }
+}

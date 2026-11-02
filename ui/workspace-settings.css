@@ -1,0 +1,24 @@
+.workspace-settings { width: min(620px, calc(100vw - 40px)); }
+.workspace-settings-section + .workspace-settings-section { margin-top: 23px; padding-top: 21px; border-top: 1px solid var(--border); }
+.workspace-settings-section h3 { font-size: 12px; color: var(--txt); margin-bottom: 9px; }
+.workspace-settings-section > p { font-size: 10px; color: var(--txt3); line-height: 1.7; margin-bottom: 10px; }
+.settings-preference { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 13px 0; }
+.settings-preference strong, .settings-tool strong { display: block; font-size: 12px; font-weight: 550; color: var(--txt); }
+.settings-preference small, .settings-tool small { display: block; margin-top: 4px; font-size: 10px; color: var(--txt3); line-height: 1.7; }
+.settings-preference select { padding: 7px 12px; border: 1px solid var(--border); border-radius: 7px; background: var(--bg2); color: var(--txt); }
+.settings-preference input { accent-color: var(--accent); width: 18px; height: 18px; flex: none; }
+.settings-tool { display: flex; width: 100%; align-items: center; gap: 12px; padding: 13px 9px; margin: 2px -9px; text-align: left; border-radius: 9px; }
+.settings-tool:hover { background: var(--hover); }
+.settings-tool > span:nth-child(2) { min-width: 0; flex: 1; }
+.settings-tool-icon { display: grid; place-items: center; width: 31px; height: 31px; flex: none; border: 1px solid var(--border); border-radius: 8px; background: var(--bg2); color: var(--txt2); }
+.settings-tool-icon svg { width: 16px; height: 16px; }
+.settings-arrow { color: var(--txt3); font-size: 20px; }
+.settings-status { color: var(--txt3); font-size: 10px; }
+.sidebar-bottom #btnSettings { min-height: 34px; }
+#bar1 #searchWrap { flex: 0 1 300px; width: 300px; min-width: 180px; margin-left: 5px; }
+#searchMode { width: 88px; min-width: 88px; font: inherit; font-size: 10px; padding: 5px 2px 5px 4px; border: 0; border-right: 1px solid var(--border); background: transparent; color: var(--txt2); outline-offset: -2px; }
+#searchMode option { background: var(--bg); color: var(--txt); }
+#searchIcon { margin-left: 7px; }
+#searchIcon svg { width: 12px; height: 12px; }
+#search { font-size: 11px; padding-left: 7px; }
+@media (max-width: 1120px) { body.agent-docked #sidebarShell #settingsLabel { display: none; } }

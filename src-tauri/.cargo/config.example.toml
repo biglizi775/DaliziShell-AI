@@ -1,0 +1,10 @@
+# Optional local mirror. Copy to config.toml only if needed.
+# config.toml is ignored; CI and a fresh checkout use crates.io by default.
+[source.crates-io]
+replace-with = "rsproxy-sparse"
+
+[source.rsproxy-sparse]
+registry = "sparse+https://rsproxy.cn/index/"
+
+[net]
+git-fetch-with-cli = true

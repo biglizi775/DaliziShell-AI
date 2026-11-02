@@ -1,0 +1,25 @@
+#navigationShell { min-width: 0; display: flex; flex-direction: column; }
+#navigationShell #bar1 { flex: 1; min-height: 0; }
+body.favorites-hidden { --favorites-height: 0px; }
+#favoritesBar { height: 36px; flex: 0 0 36px; display: flex; align-items: center; gap: 5px; padding: 0 18px 4px; border-bottom: 1px solid var(--border); }
+#favoritesBar.hidden { display: none; }
+#favoritesBar button { border: 0; border-radius: 5px; padding: 4px 7px; background: transparent; color: var(--txt2); cursor: pointer; white-space: nowrap; }
+#favoritesBar button:hover { background: var(--hover); color: var(--accent); }
+#favoritesBar button:disabled { opacity: .45; cursor: default; }
+#favoritesBar .place-add { font-size: 20px; line-height: 22px; padding: 0 5px; }
+#favoritesBar .place-add.is-saved { color: var(--accent); opacity: 1; }
+.favorite-items { display: flex; gap: 3px; flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: thin; }
+.favorite-items button { display: flex; align-items: center; gap: 6px; max-width: 190px; font-size: 11px; }
+.favorite-items button span:last-child { overflow: hidden; text-overflow: ellipsis; }
+.favorite-items svg { width: 14px; height: 14px; display: block; }
+.favorites-empty { color: var(--txt3); font-size: 11px; padding: 5px; }
+.places-dialog { width: min(700px, calc(100vw - 40px)); }
+.places-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+.places-actions button, .favorite-row > button { border: 1px solid var(--border); border-radius: 6px; padding: 7px 10px; color: var(--txt2); background: var(--bg2); cursor: pointer; }
+.favorite-form label { display: grid; gap: 6px; margin: 12px 0; font-size: 12px; }
+.favorite-form input, #favoriteFilter { width: 100%; box-sizing: border-box; padding: 9px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--txt); }
+.favorite-row { display: flex; align-items: center; gap: 6px; padding: 7px 0; border-bottom: 1px solid var(--border); }
+.favorite-row > button:first-child { min-width: 0; flex: 1; border: 0; background: transparent; text-align: left; }
+.favorite-row strong, .favorite-row small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.favorite-row small { color: var(--txt3); margin-top: 4px; font-size: 11px; }
+#placesStatus { flex: 1; font-size: 12px; color: var(--txt2); overflow-wrap: anywhere; }

@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>呆梨文件 Dalizi Files</title>
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="columns.css">
+<link rel="stylesheet" href="quick-search.css">
+<link rel="stylesheet" href="ai.css">
+<link rel="stylesheet" href="document-preview.css">
+<link rel="stylesheet" href="agent-profile.css">
+<link rel="stylesheet" href="workspace-settings.css">
+<link rel="stylesheet" href="browser-settings.css">
+<link rel="stylesheet" href="workspace.css">
+<link rel="stylesheet" href="places.css">
+<link rel="stylesheet" href="ssh.css">
+<link rel="stylesheet" href="vendor/xterm.css">
+</head>
+<body>
+<div id="app">
+  <aside id="sidebarShell">
+    <a class="brand" href="#" id="brandHome"><span class="brand-mark">d<span>·</span></span><span>Dalizi <strong>Files</strong><small id="brandCaption">你的文件，自在有序</small></span></a>
+    <nav id="side" aria-label="文件导航"></nav>
+    <div class="sidebar-bottom"><button id="btnSettings" class="command-trigger" aria-label="设置"><span aria-hidden="true">⚙</span><span id="settingsLabel">设置</span></button></div>
+  </aside>
+  <section id="workspace">
+  <div id="tabbar"></div>
+  <div id="navigationShell"><header id="bar1">
+    <div class="navbtns">
+      <button id="btnBack" class="ibtn"></button>
+      <button id="btnFwd" class="ibtn"></button>
+      <button id="btnUp" class="ibtn"></button>
+      <button id="btnRefresh" class="ibtn"></button>
+    </div>
+    <div id="crumbs"></div>
+    <div id="searchWrap">
+      <span id="searchIcon"></span>
+      <select id="searchMode" aria-label="搜索范围"><option value="local">当前目录</option><option value="tree">含子目录</option><option value="global">全部位置</option></select>
+      <input id="search" type="text" spellcheck="false">
+      <button id="searchClear" class="ibtn xbtn"></button>
+    </div>
+    <button id="btnLang" class="ibtn langbtn"></button>
+  </header><nav id="favoritesBar" aria-label="收藏夹 / Favorites"></nav></div>
+
+  <section id="pageHeader">
+    <div class="page-heading"><h1 id="pageTitle"></h1><p id="pageSubtitle"></p></div>
+    <div class="page-actions"><button id="btnAiAssistant" class="tbtn">AI 助手</button><div class="terminal-actions" role="group" aria-label="新建终端"><button id="btnTerminal" class="tbtn"></button><button id="btnSsh" class="tbtn">SSH</button></div><button id="btnPreview" class="ibtn"></button><button id="btnTheme" class="ibtn"></button></div>
+  </section>
+
+  <div id="bar2">
+    <button id="btnNew" class="tbtn"></button>
+    <div class="vsep"></div>
+    <button id="btnCut" class="tbtn"></button>
+    <button id="btnCopy" class="tbtn"></button>
+    <button id="btnPaste" class="tbtn"></button>
+    <button id="btnRename" class="tbtn"></button>
+    <button id="btnDelete" class="tbtn"></button>
+    <div class="vsep"></div>
+    <div id="typeFilters"></div>
+    <div class="spacer"></div>
+    <button id="btnSort" class="tbtn"></button>
+    <button id="btnView" class="tbtn"></button>
+    <button id="btnMore" class="tbtn"></button>
+  </div>
+
+  <div id="browserToolbar" class="browser-toolbar hidden" aria-label="浏览器工具栏">
+    <button id="browserBack" class="ibtn" aria-label="后退"></button>
+    <button id="browserForward" class="ibtn" aria-label="前进"></button>
+    <button id="browserReload" class="ibtn" aria-label="刷新"></button>
+    <button id="browserHome" class="ibtn" aria-label="主页"></button>
+    <form id="browserAddressForm" class="browser-address"><input id="browserAddress" type="text" spellcheck="false" autocomplete="off" aria-label="地址栏"><button type="submit" class="ibtn" aria-label="打开">↵</button></form>
+    <button id="browserHistory" class="ibtn" aria-label="浏览历史">◷</button>
+    <button id="browserDownloads" class="ibtn" aria-label="下载管理" title="下载管理"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m-5-5 5 5 5-5M4 16v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4"/></svg></button>
+    <button id="browserExtensions" class="ibtn" aria-label="扩展管理" title="扩展管理"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M9 3H5a2 2 0 0 0-2 2v4h2a3 3 0 0 1 0 6H3v4a2 2 0 0 0 2 2h4v-2a3 3 0 0 1 6 0v2h4a2 2 0 0 0 2-2v-4h-2a3 3 0 0 1 0-6h2V5a2 2 0 0 0-2-2h-4v2a3 3 0 0 1-6 0Z"/></svg></button>
+  </div>
+
+  <div id="bodyRow">
+    <main id="content">
+      <div id="dhead" class="dhead"></div>
+      <div id="scroller" tabindex="0" role="listbox" aria-multiselectable="true" aria-label="文件列表">
+        <div id="sizer"></div>
+        <div id="rows"></div>
+      </div>
+      <div id="rootPage" class="hidden"></div>
+      <div id="statePage" class="hidden"></div>
+      <div id="termHost" class="hidden"></div>
+      <div id="browserHost" class="hidden" aria-label="浏览器页面"></div>
+      <div id="loadBar" class="hidden"></div>
+    </main>
+    <aside id="previewPanel" class="hidden" aria-label="文件预览"></aside>
+  </div>
+
+  <footer id="status"></footer>
+  </section>
+  <aside id="agentDock" class="hidden" aria-label="Agent 对话区"></aside>
+</div>
+<dialog id="commandDialog" aria-label="快捷操作"><div class="command-search"><span>⌕</span><input id="commandInput" autocomplete="off" spellcheck="false"><kbd>Esc</kbd></div><div id="commandResults"></div><div class="command-footer" id="commandFooter"></div></dialog>
+<div id="menuLayer" class="hidden"></div>
+<div id="toasts"></div>
+<script src="vendor/xterm.min.js"></script>
+<script src="vendor/xterm-addon-fit.min.js"></script>
+<script src="app.js"></script>
+<script src="browser-settings.js"></script>
+<script src="browser-sessions.js"></script>
+<script src="browser.js"></script>
+<script src="places.js"></script>
+<script src="browser-extensions.js"></script>
+<script src="browser-downloads.js"></script>
+<script src="document-preview.js"></script>
+<script src="workspace-settings.js"></script>
+<script src="workspace.js"></script>
+<script src="columns.js"></script>
+<script src="quick-search.js"></script>
+<script src="agent-layout.js"></script>
+<script src="agent-profile.js"></script>
+<script src="ssh.js"></script>
+<script src="ssh-managed.js"></script>
+<script src="ai.js"></script>
+<script src="ai-memory.js"></script>
+</body>
+</html>

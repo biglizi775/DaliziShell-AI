@@ -1,0 +1,60 @@
+/* A shared grid and gutter keep headings and virtual rows aligned while scrolling. */
+#content.adjustable-columns > .dhead { display: block; overflow: hidden; padding: 0; }
+#content.adjustable-columns > .dhead.hidden { display: none; }
+.adjustable-columns .column-track { display: grid; grid-template-columns: var(--columns-template); width: var(--columns-width); height: 100%; margin-left: 16px; will-change: transform; }
+.adjustable-columns .column-track .h { min-width: 0; position: relative; display: flex; overflow: visible; user-select: none; cursor: grab; padding-right: 14px; }
+.column-label { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.adjustable-columns .column-track .h .arr { flex: none; }
+.column-track .column-resize { position: absolute; z-index: 2; top: 0; bottom: 0; right: -4px; width: 8px; cursor: col-resize; touch-action: none; }
+.column-resize::after { content: ''; position: absolute; left: 3px; top: 10px; bottom: 10px; width: 1px; background: var(--border); }
+.column-resize:hover::after, .column-resize:focus-visible::after { background: var(--accent); width: 2px; }
+.column-resize:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+.resizing-column, .resizing-column * { cursor: col-resize !important; user-select: none !important; }
+.column-track .h.column-dragging { opacity: .4; }
+.column-track .h.drop-before::before, .column-track .h.drop-after::before { content: ''; position: absolute; top: 5px; bottom: 5px; width: 3px; border-radius: 2px; background: var(--accent); }
+.column-track .h.drop-before::before { left: 0; }
+.column-track .h.drop-after::before { right: 0; }
+#content.adjustable-columns > #scroller { overflow-x: auto; }
+.adjustable-columns #sizer, .adjustable-columns #rows { width: calc(var(--columns-width) + 32px); right: auto; min-width: 100%; }
+.adjustable-columns .row { left: 16px; right: auto; width: var(--columns-width); grid-template-columns: var(--columns-template); padding-right: 0; }
+.adjustable-columns .row .cname { display: flex; }
+.adjustable-columns .row .cdate, .adjustable-columns .row .ctype, .adjustable-columns .row .csize { display: block; }
+.adjustable-columns .row .ccreated, .adjustable-columns .row .caccessed, .adjustable-columns .row .cextension,
+.adjustable-columns .row .cattributes, .adjustable-columns .row .cpath { color: var(--txt2); font-size: 11px; font-variant-numeric: tabular-nums; }
+.file-settings-dialog { width: min(620px, calc(100vw - 40px)); max-height: calc(100vh - 48px); margin: auto; padding: 0; border: 1px solid var(--border); border-radius: 16px; color: var(--txt); background: var(--menuBg); box-shadow: var(--shadow); overflow: hidden; }
+.file-settings-dialog[open] { display: flex; flex-direction: column; }
+.file-settings-dialog::backdrop { background: rgba(18, 27, 45, .32); backdrop-filter: blur(4px); }
+.file-settings-head { display: flex; align-items: center; justify-content: space-between; padding: 22px 24px 18px; border-bottom: 1px solid var(--border); flex: none; }
+.file-settings-eyebrow { display: block; margin-bottom: 7px; color: var(--accent); font-size: 10px; letter-spacing: .1em; font-weight: 650; }
+.file-settings-head h2 { font-size: 19px; font-weight: 650; }
+.file-settings-head > button { border: 0; width: 30px; height: 30px; border-radius: 8px; background: var(--hover); color: var(--txt2); font-size: 22px; cursor: pointer; }
+.file-settings-body { overflow: auto; min-height: 0; padding: 20px 24px; }
+.file-settings-intro { color: var(--txt2); font-size: 12px; line-height: 1.7; margin-bottom: 16px; }
+.column-options { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+.column-option { display: flex; align-items: flex-start; gap: 10px; padding: 12px; min-width: 0; background: var(--bg); border: 1px solid var(--border); border-radius: 9px; cursor: pointer; }
+.column-option:has(input:checked) { border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); background: var(--accentDim); }
+.column-option input { margin-top: 3px; width: 15px; height: 15px; accent-color: var(--accent); flex: none; }
+.column-option strong { display: block; font-size: 12px; font-weight: 600; }
+.column-option small { display: block; font-size: 10px; color: var(--txt3); line-height: 1.6; margin-top: 4px; }
+.column-option em { font-style: normal; font-size: 9px; color: var(--txt3); margin-left: 7px; font-weight: 400; }
+.file-settings-note { margin-top: 15px; font-size: 11px; color: var(--txt3); line-height: 1.6; }
+.file-settings-footer { display: flex; align-items: center; gap: 9px; padding: 16px 24px; border-top: 1px solid var(--border); background: var(--bg); flex: none; }
+.file-settings-spacer { flex: 1; }
+.file-settings-footer button { min-height: 34px; padding: 0 14px; border-radius: 7px; font: inherit; font-size: 12px; cursor: pointer; white-space: nowrap; }
+.file-settings-primary { background: var(--accent); border: 1px solid var(--accent); color: white; }
+.file-settings-secondary { background: var(--menuBg); border: 1px solid var(--border); color: var(--txt2); }
+.file-settings-footer button:hover { filter: brightness(.95); }
+.file-property-identity { display: flex; gap: 14px; align-items: center; margin-bottom: 18px; }
+.file-property-identity > svg { width: 38px; height: 38px; flex: none; }
+.file-property-identity > div { min-width: 0; }
+.file-property-identity strong { display: block; font-size: 15px; overflow-wrap: anywhere; }
+.file-property-identity span { display: block; margin-top: 5px; color: var(--txt3); font-size: 11px; }
+.file-property-list { border: 1px solid var(--border); border-radius: 9px; padding: 2px 14px; }
+.file-property-list > div { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 14px; padding: 11px 0; font-size: 12px; border-bottom: 1px solid var(--border); }
+.file-property-list > div:last-child { border: 0; }
+.file-property-list dt { color: var(--txt3); }
+.file-property-list dd { color: var(--txt); user-select: text; overflow-wrap: anywhere; }
+@media (max-width: 520px) {
+  .column-options { grid-template-columns: 1fr; }
+  .file-settings-head, .file-settings-body, .file-settings-footer { padding-left: 16px; padding-right: 16px; }
+}

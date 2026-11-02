@@ -1,0 +1,32 @@
+.browser-settings-dialog { width: min(890px, calc(100vw - 40px)); }
+.browser-settings-dialog > form { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+.browser-settings-layout { display: grid; grid-template-columns: 158px minmax(0, 1fr); min-height: 0; overflow: hidden; }
+.browser-settings-layout > nav { padding: 20px 12px; border-right: 1px solid var(--border); background: var(--bg2); }
+.browser-settings-layout > nav button { display: block; width: 100%; text-align: left; padding: 12px; margin-bottom: 3px; color: var(--txt2); border-radius: 8px; font-size: 12px; }
+.browser-settings-layout > nav button:hover, .browser-settings-layout > nav button:focus-visible { background: var(--hover); color: var(--accent); }
+.browser-settings-layout section { scroll-margin-top: 16px; }
+.browser-settings-layout .file-settings-body { scroll-behavior: auto; }
+.browser-settings-input { display: grid; gap: 8px; padding: 12px 0; }
+.browser-settings-input strong { font-size: 12px; font-weight: 550; }
+.browser-settings-input input { width: 100%; min-width: 0; box-sizing: border-box; border: 1px solid var(--border); border-radius: 8px; padding: 11px 12px; background: var(--bg2); color: var(--txt); font: inherit; font-size: 12px; }
+.browser-settings-input small, .browser-settings-status, .browser-clear-dialog p { color: var(--txt3); font-size: 11px; line-height: 1.7; }
+.browser-settings-actions { display: flex; flex-wrap: wrap; gap: 10px; padding: 10px 0 2px; }
+.browser-settings-actions button { padding: 9px 13px; border: 1px solid var(--border); border-radius: 7px; background: var(--bg2); font-size: 12px; }
+.browser-settings-actions button:hover { background: var(--hover); }
+.browser-settings-dialog .settings-preference > span { min-width: 0; }
+.browser-settings-dialog .settings-preference select { max-width: 180px; flex: none; }
+.browser-settings-status { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.browser-settings-status small { display: block; font-size: 10px; }
+.browser-settings-dialog button:disabled, .browser-clear-dialog button:disabled { opacity: .5; cursor: wait; }
+.browser-clear-dialog form { overflow: auto; }
+.browser-session-state { height: 100%; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 32px; }
+.browser-session-state strong { color: var(--txt); font-size: 16px; }
+.browser-session-state small { max-width: 640px; overflow-wrap: anywhere; color: var(--txt3); font-size: 12px; }
+.browser-session-state button { padding: 9px 22px; border-radius: 8px; color: var(--bg); background: var(--accent); font-size: 12px; }
+@media (max-width: 720px) {
+  .browser-settings-layout { display: flex; flex-direction: column; }
+  .browser-settings-layout > nav { display: flex; overflow-x: auto; padding: 8px; border-right: 0; border-bottom: 1px solid var(--border); flex: none; }
+  .browser-settings-layout > nav button { width: auto; white-space: nowrap; padding: 9px; margin: 0; }
+  .browser-settings-dialog .file-settings-footer { flex-wrap: wrap; }
+  .browser-settings-status { flex-basis: 100%; }
+}
