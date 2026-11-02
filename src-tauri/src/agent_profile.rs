@@ -1408,7 +1408,8 @@ mod tests {
         fn folder(&self, name: &str) -> String {
             let path = self.0.join(name);
             fs::create_dir_all(&path).unwrap();
-            conventional_path(&path)
+            // TEMP may use an 8.3 alias on CI; public commands also resolve roots first.
+            conventional_path(&fs::canonicalize(&path).unwrap())
         }
     }
     impl Drop for Fixture {
