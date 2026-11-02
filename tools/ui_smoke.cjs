@@ -53,7 +53,8 @@ const server = http.createServer((req, res) => {
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   fs.mkdirSync(output, { recursive: true });
   const browser = await chromium.launch({ headless: true, args: ['--no-proxy-server'], ...(process.env.DALIZI_BROWSER ? { executablePath: process.env.DALIZI_BROWSER } : {}) });
-  const page = await browser.newPage({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1 });
+  // Chinese text assertions must not depend on the Windows runner's default language.
+  const page = await browser.newPage({ locale: 'zh-CN', viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1 });
   const errors = [];
   page.on('pageerror', (error) => errors.push(error.stack || error.message));
   try {
