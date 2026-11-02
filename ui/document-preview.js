@@ -81,7 +81,8 @@ async function renderDocumentPreview(result, container, name, current) {
   container.innerHTML = `<div class="document-label"><span>${esc(documentText('pdf'))}</span><button class="document-wide" type="button" aria-pressed="false">${esc(documentText('wide'))}</button></div><div class="pdf-toolbar"><button type="button" data-pdf-prev disabled aria-label="${esc(documentText('previous'))}">‹</button><label><input data-pdf-page type="number" min="1" value="1" aria-label="${esc(documentText('page'))}" disabled><span data-pdf-total>/ —</span></label><button type="button" data-pdf-next disabled aria-label="${esc(documentText('next'))}">›</button><select data-pdf-zoom aria-label="${esc(documentText('zoom'))}" disabled><option value="fit">${esc(documentText('fit'))}</option><option value="0.75">75%</option><option value="1">100%</option><option value="1.5">150%</option><option value="2">200%</option></select></div><p class="preview-note pdf-status" role="status">${esc(documentText('loading'))}</p><div class="pdf-page-viewport" tabindex="0" aria-label="${esc(name)}"><canvas class="pdf-page" role="img" aria-label="${esc(name)}"></canvas></div>`;
   const previous = container.querySelector('[data-pdf-prev]'), next = container.querySelector('[data-pdf-next]');
   const pageInput = container.querySelector('[data-pdf-page]'), zoom = container.querySelector('[data-pdf-zoom]');
-  const status = container.querySelector('.pdf-status'), viewport = container.querySelector('.pdf-page-viewport'), canvas = container.querySelector('canvas');
+  const status = container.querySelector('.pdf-status'), viewport = container.querySelector('.pdf-page-viewport');
+  let canvas = container.querySelector('canvas');
   const wide = container.querySelector('.document-wide');
   wide.onclick = () => {
     const expanded = $('previewPanel').classList.toggle('preview-wide');
@@ -126,20 +127,31 @@ async function renderDocumentPreview(result, container, name, current) {
       previous.disabled = session.page <= 1; next.disabled = session.page >= pdf.numPages;
       pageInput.value = String(session.page);
       status.textContent = documentText('rendering');
+      let nextCanvas;
       try {
         const page = await pdf.getPage(session.page);
         if (!alive() || revision !== session.revision) { page.cleanup(); return; }
         session.pageObject = page;
         const initial = page.getViewport({ scale: 1 });
         const geometry = pdfCanvasGeometry(initial.width, initial.height, viewport.clientWidth - 20, session.zoom, window.devicePixelRatio);
-        canvas.width = geometry.width; canvas.height = geometry.height;
-        canvas.style.width = `${geometry.cssWidth}px`; canvas.style.height = `${geometry.cssHeight}px`;
-        canvas.setAttribute('aria-label', `${name} · ${session.page} / ${pdf.numPages}`);
-        session.renderTask = page.render({ canvasContext: canvas.getContext('2d'), viewport: page.getViewport({ scale: geometry.scale }), transform: [geometry.density, 0, 0, geometry.density, 0, 0], annotationMode: library.AnnotationMode.DISABLE });
+        // Paint offscreen. Resizing a visible canvas clears it immediately and
+        // otherwise flashes white on every fit-width/zoom/page update.
+        nextCanvas = document.createElement('canvas');
+        nextCanvas.className = 'pdf-page'; nextCanvas.setAttribute('role', 'img');
+        nextCanvas.width = geometry.width; nextCanvas.height = geometry.height;
+        nextCanvas.style.width = `${geometry.cssWidth}px`; nextCanvas.style.height = `${geometry.cssHeight}px`;
+        nextCanvas.setAttribute('aria-label', `${name} · ${session.page} / ${pdf.numPages}`);
+        session.renderTask = page.render({ canvasContext: nextCanvas.getContext('2d'), viewport: page.getViewport({ scale: geometry.scale }), transform: [geometry.density, 0, 0, geometry.density, 0, 0], annotationMode: library.AnnotationMode.DISABLE });
         await session.renderTask.promise;
-        if (alive() && revision === session.revision) { status.textContent = `${session.page} / ${pdf.numPages}`; canvas.dataset.page = String(session.page); }
+        if (alive() && revision === session.revision) {
+          nextCanvas.dataset.page = String(session.page);
+          canvas.replaceWith(nextCanvas); canvas.width = canvas.height = 0; canvas = nextCanvas;
+          status.textContent = `${session.page} / ${pdf.numPages}`;
+        }
       } catch (error) {
         if (alive() && revision === session.revision && error.name !== 'RenderingCancelledException') status.textContent = documentText('invalid');
+      } finally {
+        if (nextCanvas && nextCanvas !== canvas) nextCanvas.width = nextCanvas.height = 0;
       }
     };
     const changePage = (number) => {

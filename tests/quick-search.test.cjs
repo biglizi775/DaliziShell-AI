@@ -37,6 +37,41 @@ test('search sends bounded scoped request and paints returned results', async ()
   assert.equal(h.run('quickState.items[0].name'), 'notes.md');
   assert.equal(h.run('quickState.pending'), false);
 });
+
+test('index refresh preserves visible results, selection by path and coalesces pending updates', async () => {
+  const reply = deferred();
+  const h = harness(() => reply.promise);
+  h.run("quickState.items = [{name:'first',path:'A'}, {name:'chosen',path:'B'}]; quickState.selected = 1; quickState.resultKey = quickRequestKey();");
+  h.run('scheduleQuickSearch(60000, true)');
+  assert.equal(h.run('quickState.items.length'), 2, 'rows stay visible during debounce');
+  assert.equal(h.run('quickState.selected'), 1);
+  h.run('clearTimeout(quickState.timer); quickState.timer = null');
+  const pending = h.run('runQuickSearch(quickState.token)');
+  h.run('requestQuickRefresh(); requestQuickRefresh(); requestQuickRefresh()');
+  assert.equal(h.run('quickState.timer'), null, 'index events cannot abort or restart an in-flight query');
+  reply.resolve({ items: [{ name: 'chosen', path: 'B' }, { name: 'first', path: 'A' }], total: 2 });
+  await pending;
+  assert.equal(h.run('quickState.selected'), 0, 'selection follows the same path after reordering');
+  assert.equal(h.run('quickState.items[quickState.selected].path'), 'B');
+  assert.equal(h.run('quickState.refreshQueued'), false);
+  assert.notEqual(h.run('quickState.timer'), null, 'one follow-up refresh is queued');
+  h.run('closeQuickSearch()');
+});
+
+test('reveal opens an in-app tab during background refresh; stale user-query results cannot activate', async () => {
+  const opened = [], invoked = [];
+  const h = harness(async (...args) => invoked.push(args));
+  h.ctx.openContainingFolder = async (path) => opened.push(path);
+  h.run("quickState.items = [{name:'chosen',path:'C:\\\\work\\\\chosen'}]; quickState.resultKey = quickRequestKey(); quickState.pending = true;");
+  h.nodes.search.value = 'changed query';
+  await h.run("activateQuickResult(0, 'reveal')");
+  assert.equal(opened.length, 0);
+  h.nodes.search.value = 'project';
+  await h.run("activateQuickResult(0, 'reveal')");
+  assert.deepEqual(opened, ['C:\\work\\chosen']);
+  assert.deepEqual(invoked, [], 'no Windows Explorer command is sent');
+  assert.equal(h.run('quickState.open'), false);
+});
 test('old search completion cannot overwrite a newer query', async () => {
   const first = deferred(), second = deferred(); let n = 0;
   const h = harness(() => (++n === 1 ? first.promise : second.promise));

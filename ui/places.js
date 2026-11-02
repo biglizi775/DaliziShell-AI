@@ -163,6 +163,7 @@ function clearWorkspaceSessions() {
   previousWorkspaceSession = null; renderFavoritesBar();
 }
 function syncWorkspaceSessionPrivacy() {
+  if (!browserSettings().recordHistory && typeof clearClosedBrowserTabs === 'function') clearClosedBrowserTabs();
   // Applying URL-history privacy must also remove URLs from the previous run.
   for (const key of ['workspaceSession', 'workspacePreviousSession']) {
     const normalized = normalizeWorkspaceSession(store.get(key, null));
@@ -174,6 +175,7 @@ function syncWorkspaceSessionPrivacy() {
   persistWorkspaceSession(); renderFavoritesBar();
 }
 function clearWorkspaceBrowserSessions() {
+  if (typeof clearClosedBrowserTabs === 'function') clearClosedBrowserTabs();
   const withoutPages = (raw) => {
     const value = normalizeWorkspaceSession(raw); if (!value) return null;
     const active = value.tabs[value.active];

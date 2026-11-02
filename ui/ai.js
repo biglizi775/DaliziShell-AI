@@ -147,7 +147,7 @@ function aiSessionFor(root) {
   while (aiSessions.size > 24) {
     const victim = [...aiSessions.values()].find((s) => s !== session && !s.running && !s.requestId);
     if (!victim) break;
-    discardSessionPlans(victim); aiSessions.delete(victim.key);
+    discardSessionPlans(victim); if (typeof retireAiArchive === 'function') retireAiArchive(victim); aiSessions.delete(victim.key);
   }
   return session;
 }
@@ -156,6 +156,7 @@ function disposeAiTab(tab) {
     if (session.tab !== tab) continue;
     session.closed = true; session.activation++;
     cancelAiRequest(session, false); discardSessionPlans(session);
+    if (typeof retireAiArchive === 'function') retireAiArchive(session);
     if (!session.running) aiSessions.delete(session.key);
   }
 }
@@ -173,6 +174,7 @@ function addAiMessage(session, role, text, extra = {}) {
   if (session.messages.length > 60) session.messages.splice(0, session.messages.length - 60);
   if (session.summarizedIds) { const ids = new Set(session.messages.map((item) => item.id)); session.summarizedIds = new Set([...session.summarizedIds].filter((id) => ids.has(id))); }
   session.revision++;
+  if (typeof scheduleAiArchive === 'function') scheduleAiArchive(session);
   return message;
 }
 function discardSessionPlans(session, status = 'superseded') {
@@ -182,6 +184,7 @@ function discardSessionPlans(session, status = 'superseded') {
       message.planState = status; session.revision++;
     }
   }
+  if (typeof scheduleAiArchive === 'function') scheduleAiArchive(session);
 }
 function aiHistory(session) {
   if (typeof aiMemoryHistory === 'function') return aiMemoryHistory(session);
@@ -237,6 +240,7 @@ function initAiAssistant() {
     <div id="aiMessages" class="ai-messages" role="log" aria-live="polite" aria-relevant="additions text"></div>
     <footer class="ai-composer"><div id="aiContextMeter" class="ai-context-meter"></div><div id="aiSelectionContext" class="ai-selection-context"></div><textarea id="aiPrompt" maxlength="4000" rows="2"></textarea><div class="ai-permissions"><label for="aiPermissionMode" data-ai-text="permissions"></label><select id="aiPermissionMode" aria-describedby="aiPermissionHint"><option value="read-only" data-ai-text="readOnly"></option><option value="confirm" data-ai-text="confirmMode"></option><option value="auto" data-ai-text="autoMode"></option></select><small id="aiPermissionHint"></small></div><div class="ai-composer-toolbar"><span id="aiModelLabel"></span><button class="ai-secondary hidden" data-ai-action="cancel" data-ai-text="cancel"></button><button class="ai-primary" data-ai-action="send" data-ai-text="send"></button></div><small class="ai-composer-note" id="aiComposerNote"></small></footer>`;
   $('agentDock').appendChild(aiPanel);
+  if (typeof initAiArchives === 'function') initAiArchives();
   const runtimeControls = document.createElement('div'); runtimeControls.className = 'ai-runtime-controls';
   runtimeControls.innerHTML = '<select id="aiModelPreset"></select><select id="aiQuickEffort"></select>';
   aiPanel.querySelector('.ai-composer-toolbar').before(runtimeControls);
@@ -471,7 +475,9 @@ async function testAiConnection() {
 function newAiConversation() {
   const session = aiCurrentSession();
   if (!session || session.running) return;
+  if (typeof aiArchiveNeedsFlush === 'function' && aiArchiveNeedsFlush(session)) return saveAiArchive(session).then((ok) => { if (ok && aiCurrentSession() === session) newAiConversation(); });
   cancelAiRequest(session, false); discardSessionPlans(session);
+  if (typeof retireAiArchive === 'function') retireAiArchive(session);
   aiSessions.delete(session.key); aiSessionFor(session.root).permissionMode = session.permissionMode;
   $('aiPrompt').value = ''; aiPaintIdentity = ''; renderAiConversation(); updateAiComposer();
 }
@@ -494,7 +500,8 @@ function updateAiComposer() {
   preset.innerHTML = `<option value="current">${esc(aiSettings.model || aiText('noModel'))}</option>` + aiModelPresets.map((p, index) => p.endpoint === aiSettings.endpoint && aiFormatOf(p) === aiFormatOf(aiSettings) && p.model !== aiSettings.model ? `<option value="${index}">${esc(p.model)}</option>` : '').join('') + `<option value="settings">${esc(aiText('modelSettings'))}</option>`;
   preset.value = 'current'; preset.disabled = aiAnyExecution(); preset.setAttribute('aria-label', aiText('preset'));
   if (typeof renderAiContextMeter === 'function') renderAiContextMeter();
-  $('aiComposerNote').textContent = aiText('hint') + ' · ' + aiText('memory');
+  $('aiComposerNote').textContent = aiText('hint') + ' · ' + (typeof chatText === 'function' ? chatText('对话可在当前目录保存与恢复', 'Save and restore conversations in this folder') : aiText('memory'));
+  if (typeof renderAiArchiveStatus === 'function') renderAiArchiveStatus();
   $('aiPermissionMode').value = session?.permissionMode || 'confirm';
   $('aiPermissionMode').disabled = !session || session.running;
   $('aiPermissionHint').textContent = aiText(session?.permissionMode === 'auto' ? 'autoHint' : session?.permissionMode === 'read-only' ? 'readOnlyHint' : 'confirmHint');
@@ -603,6 +610,7 @@ async function executeAiPlan(messageId, automatic = false) {
     message.planState = 'discarded'; addAiMessage(session, 'notice', String(error), { error: true, omitHistory: true });
   } finally {
     session.running = false; session.revision++;
+    if (typeof scheduleAiArchive === 'function') scheduleAiArchive(session);
     if (session.closed) aiSessions.delete(session.key);
     renderAiConversation(); updateAiComposer();
   }

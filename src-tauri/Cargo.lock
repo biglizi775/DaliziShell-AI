@@ -546,6 +546,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a6ef517f0926dd24a1582492c791b6a4818a4d94e789a334894aa15b0d12f55c"
 
 [[package]]
+name = "constant_time_eq"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9eb6feb175df65d0a3ccd3e73484e940d0ac664e8034f0519fd49a93db3071d9"
+dependencies = [
+ "rustversion",
+]
+
+[[package]]
 name = "cookie"
 version = "0.18.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -796,20 +805,23 @@ dependencies = [
 
 [[package]]
 name = "dalizi-files"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "calamine",
+ "chrono",
  "csv",
  "encoding_rs",
  "flate2",
  "notify",
  "portable-pty",
  "quick-xml 0.42.0",
+ "regex",
  "rfd",
  "russh",
  "russh-sftp",
  "serde",
  "serde_json",
+ "sevenz-rust2",
  "sha2 0.10.9",
  "tauri",
  "tauri-build",
@@ -1005,6 +1017,7 @@ dependencies = [
  "const-oid",
  "crypto-common 0.2.2",
  "ctutils",
+ "zeroize",
 ]
 
 [[package]]
@@ -2495,6 +2508,12 @@ name = "log"
 version = "0.4.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f9f8bd3e56ce4dfc153cf470fffbfa98c7620958b312ca5c3a4b8d5181fd13c6"
+
+[[package]]
+name = "lzma-rust2"
+version = "0.23.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f1c46f3fcd2e888afdb01a07efc071cb21300e07c68d32c3e8b01b5c8cb1fcaa"
 
 [[package]]
 name = "markup5ever"
@@ -4118,6 +4137,22 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "170fb83ab34de17dc69aa7c67482b22218ddb85da56546f9bd6b929e32a05930"
 dependencies = [
  "stable_deref_trait",
+]
+
+[[package]]
+name = "sevenz-rust2"
+version = "0.24.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "30146010a60b5773ef63f7b0033576c7a0487ecc87a30d97b787ca8e27c85140"
+dependencies = [
+ "aes",
+ "cbc",
+ "crc32fast",
+ "getrandom 0.4.3",
+ "js-sys",
+ "lzma-rust2",
+ "sha2 0.11.1",
+ "wasm-bindgen",
 ]
 
 [[package]]
@@ -6101,14 +6136,20 @@ version = "9.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2886b00003a72c4ccee3f42cfc34908d33b2508a74d827dc2a4244706475c704"
 dependencies = [
+ "aes",
+ "constant_time_eq",
  "crc32fast",
  "flate2",
  "getrandom 0.4.3",
+ "hmac",
  "indexmap 2.14.2",
  "memchr",
  "nix 0.31.3",
+ "pbkdf2",
+ "sha1",
  "typed-path 0.13.0",
  "windows-sys 0.61.2",
+ "zeroize",
 ]
 
 [[package]]

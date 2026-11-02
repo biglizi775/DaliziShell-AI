@@ -133,6 +133,7 @@ function renderManagedSshInfo(tb) {
   if (typeof fitTerm === 'function') fitTerm(tb);
 }
 function resetSshFiles(tb) {
+  if (typeof disconnectSshQueue === 'function') disconnectSshQueue(tb);
   if (tb.sshFiles) tb.sshFiles.generation++;
   tb.sshFilesPanel?.remove(); tb.sshFilesPanel = null; tb.sshFiles = null; tb.sshTransfer = null;
   tb.sshStatsBusy = false; tb.el?.classList.remove('ssh-files-open');
@@ -149,18 +150,31 @@ function toggleSshFiles(tb) {
   panel.querySelector('[data-refresh]').onclick = () => loadSshFiles(tb, tb.sshFiles.path);
   panel.querySelector('[data-up]').onclick = () => loadSshFiles(tb, tb.sshFiles.path.replace(/\/?[^/]+\/?$/, '') || '/');
   panel.querySelector('[data-close]').onclick = () => toggleSshFiles(tb);
-  panel.querySelector('[data-upload]').onclick = () => startSshFileTransfer(tb, 'upload');
-  panel.querySelector('[data-download]').onclick = () => startSshFileTransfer(tb, 'download');
+  panel.querySelector('[data-upload]').onclick = () => typeof beginSshBatch === 'function' ? beginSshBatch(tb, 'upload') : startSshFileTransfer(tb, 'upload');
+  const uploadFolder = document.createElement('button'); uploadFolder.textContent = ms('上传文件夹', 'Upload folder'); uploadFolder.dataset.uploadFolder = ''; panel.querySelector('[data-upload]').after(uploadFolder); uploadFolder.onclick = () => beginSshBatch(tb, 'upload', true);
+  panel.querySelector('[data-download]').onclick = () => typeof beginSshBatch === 'function' ? beginSshBatch(tb, 'download') : startSshFileTransfer(tb, 'download');
+  tb.sshFiles.selection = new Set(); tb.sshFiles.anchor = -1;
+  const list = panel.querySelector('.ssh-files-list'); list.setAttribute('aria-multiselectable', 'true'); list.tabIndex = 0;
+  const selectAll = document.createElement('button'); selectAll.type = 'button'; selectAll.dataset.selectFiles = ''; selectAll.textContent = ms('全选文件', 'Select files');
+  panel.querySelector('[data-upload]').before(selectAll);
+  selectAll.onclick = () => {
+    const view = tb.sshFiles; if (!view || view.busy) return;
+    view.selection = new Set(view.entries.map((entry, index) => !entry.isDir && !entry.isLink ? index : -1).filter((i) => i >= 0).slice(0, 200));
+    paintSshFileSelection(tb); if (view.entries.filter((e) => !e.isDir && !e.isLink).length > 200) toast(ms('已选择前 200 个文件。', 'Selected the first 200 files.'));
+  };
+  list.addEventListener('keydown', (event) => { if (event.ctrlKey && event.key.toLowerCase() === 'a') { event.preventDefault(); selectAll.click(); } });
   void loadSshFiles(tb, '.'); fitTerm(tb);
 }
-async function loadSshFiles(tb, path) {
+async function loadSshFiles(tb, path, { preserveSelection = false } = {}) {
   const view = tb.sshFiles; if (!view || !path || tb.exited) return;
+  const selectedNames = preserveSelection && path === view.path ? new Set(view.entries.filter((_, index) => view.selection?.has(index)).map((entry) => entry.name)) : new Set();
   const generation = ++view.generation, key = tb.key, id = tb.termId;
   view.busy = true; renderSshFiles(tb, ms('正在读取远程目录…', 'Loading remote directory…'));
   try {
     const result = await invoke('ssh_files_list', { id, path });
     if (tb.disposed || tb.key !== key || tb.sshFiles !== view || view.generation !== generation) return;
     view.path = result.path; view.entries = Array.isArray(result.entries) ? result.entries : []; view.selected = -1; view.busy = false;
+    view.selection = new Set(view.entries.map((entry, index) => selectedNames.has(entry.name) ? index : -1).filter((i) => i >= 0)); view.anchor = -1;
     renderSshFiles(tb, result.truncated ? ms('目录过大，仅显示前 5000 项或已达到文本上限。', 'Large directory: limited to 5000 entries or the text budget.') : `${view.entries.length} ${ms('项', 'items')}`);
   } catch (error) { if (tb.key === key && tb.sshFiles === view && view.generation === generation) { view.busy = false; renderSshFiles(tb, String(error), true); } }
 }
@@ -170,21 +184,38 @@ function renderSshFiles(tb, status, error = false) {
   const note = panel.querySelector('.ssh-files-status'); note.textContent = status; note.classList.toggle('is-error', error);
   const list = panel.querySelector('.ssh-files-list'); list.replaceChildren();
   view.entries.forEach((entry, index) => {
-    const row = document.createElement('button'); row.type = 'button'; row.className = 'ssh-file-row'; row.setAttribute('role', 'option'); row.setAttribute('aria-selected', String(index === view.selected));
+    const row = document.createElement('button'); row.type = 'button'; row.className = 'ssh-file-row'; row.dataset.index = index; row.setAttribute('role', 'option'); row.setAttribute('aria-selected', String(view.selection?.has(index) || false));
     row.innerHTML = `<span>${esc(entry.isDir ? '📁' : entry.isLink ? '↗' : '▤')}</span><span title="${esc(entry.name)}">${esc(entry.name)}</span><small>${esc(entry.isDir ? '—' : sshSize(entry.size))}</small><small>${esc(entry.modified ? new Date(entry.modified * 1000).toLocaleString() : '—')}</small>`;
-    row.onclick = () => { view.selected = index; for (const item of list.children) item.setAttribute('aria-selected', String(item === row)); updateSshTransferControls(tb); };
-    row.ondblclick = () => { if (view.busy) return; view.selected = index; if (entry.isDir || entry.isLink) loadSshFiles(tb, remoteChild(view.path, entry.name)); else startSshFileTransfer(tb, 'download'); };
+    row.onclick = (event) => {
+      if (view.busy) return;
+      const selection = view.selection ||= new Set();
+      if (event.shiftKey && view.anchor >= 0) { if (!event.ctrlKey) selection.clear(); for (let i = Math.min(index, view.anchor); i <= Math.max(index, view.anchor); i++) selection.add(i); }
+      else if (event.ctrlKey) { if (selection.has(index)) selection.delete(index); else selection.add(index); view.anchor = index; }
+      else { selection.clear(); selection.add(index); view.anchor = index; }
+      view.selected = index; paintSshFileSelection(tb);
+    };
+    row.ondblclick = () => { if (view.busy) return; view.selected = index; if (entry.isDir || entry.isLink) loadSshFiles(tb, remoteChild(view.path, entry.name)); else { view.selection = new Set([index]); paintSshFileSelection(tb); if (typeof beginSshBatch === 'function') void beginSshBatch(tb, 'download'); else startSshFileTransfer(tb, 'download'); } };
     list.append(row);
   });
+  updateSshTransferControls(tb);
+}
+function paintSshFileSelection(tb) {
+  const view = tb.sshFiles; if (!view || !tb.sshFilesPanel) return;
+  for (const row of tb.sshFilesPanel.querySelectorAll('.ssh-file-row')) row.setAttribute('aria-selected', String(view.selection.has(Number(row.dataset.index))));
   updateSshTransferControls(tb);
 }
 function remoteChild(parent, name) { return parent.replace(/\/+$/, '') + '/' + name; }
 function transferActive(tb) { return ['starting', 'running', 'finalizing'].includes(tb.sshTransfer?.status); }
 function updateSshTransferControls(tb) {
   const panel = tb.sshFilesPanel, view = tb.sshFiles; if (!panel || !view) return;
-  const busy = view.busy || transferActive(tb) || tb.exited || tb.sshDisconnectRequested;
+  const queue = typeof beginSshBatch === 'function';
+  const busy = view.busy || (queue ? tb.sshBatchPicking : transferActive(tb)) || tb.exited || tb.sshDisconnectRequested;
   panel.querySelector('[data-upload]').disabled = busy;
-  const selected = view.entries[view.selected]; panel.querySelector('[data-download]').disabled = busy || !selected || selected.isDir || selected.isLink;
+  const folderButton = panel.querySelector('[data-upload-folder]'); if (folderButton) folderButton.disabled = busy;
+  const selected = view.entries[view.selected];
+  const count = queue ? selectedSshFiles(view).length : selected && !selected.isDir && !selected.isLink ? 1 : 0;
+  panel.querySelector('[data-download]').disabled = busy || !count;
+  panel.querySelector('[data-download]').textContent = ms('下载', 'Download') + (count ? ` (${count})` : '');
 }
 async function startSshFileTransfer(tb, direction) {
   const view = tb.sshFiles; if (!view || view.busy || transferActive(tb) || tb.exited) return;
@@ -200,6 +231,7 @@ async function startSshFileTransfer(tb, direction) {
   } catch (error) { if (tb.key === key && !tb.disposed) { tb.sshTransfer = { ...tb.sshTransfer, status: 'failed', error: String(error) }; renderSshTransfer(tb); } }
 }
 function onSshTransfer(event) {
+  if (typeof receiveSshQueuedTransfer === 'function' && receiveSshQueuedTransfer(event?.payload)) return;
   const payload = event?.payload, tb = managedEventTab(payload);
   if (!tb || typeof payload.transferId !== 'string' || !['running', 'finalizing', 'complete', 'cancelled', 'failed'].includes(payload.status)) return;
   if (tb.sshTransfer?.transferId && tb.sshTransfer.transferId !== payload.transferId) return;
@@ -208,6 +240,7 @@ function onSshTransfer(event) {
   if (payload.status === 'complete' && payload.direction === 'upload' && tb.sshFiles) void loadSshFiles(tb, tb.sshFiles.path);
 }
 function renderSshTransfer(tb) {
+  if (typeof renderSshQueueSummary === 'function' && renderSshQueueSummary(tb)) return;
   const panel = tb.sshFilesPanel; if (!panel) return;
   const host = panel.querySelector('.ssh-transfer-status'), transfer = tb.sshTransfer; host.replaceChildren();
   if (transfer) {

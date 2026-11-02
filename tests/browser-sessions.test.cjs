@@ -225,10 +225,25 @@ test('stale native visibility loops stop before hiding tabs after a newer synchr
   h.context.document.querySelector = () => ({ open: true });
   const old = h.run('syncBrowserBounds()'); await tick();
   h.context.document.querySelector = () => null;
-  await h.run('syncBrowserBounds()');
-  gate.resolve(); await old;
+  const latest = h.run('syncBrowserBounds()');
+  gate.resolve(); await Promise.all([old, latest]);
   const second = h.calls.filter((call) => call.command === 'browser_set_active' && call.args.key === 'second');
   assert.equal(second.length, 1); assert.equal(second[0].args.active, true);
+});
+
+test('unchanged browser surfaces cause no repeated resize/show IPC', async () => {
+  const h = harness({ saved: null });
+  h.state.tabs.push({ kind: 'browser', key: 'first', browserReady: true }, { kind: 'browser', key: 'second', browserReady: true });
+  h.state.tab = 1;
+  await h.run('syncBrowserBounds()');
+  const before = h.calls.length;
+  await h.run('Promise.all([syncBrowserBounds(), syncBrowserBounds(), syncBrowserBounds()])');
+  assert.equal(h.calls.length, before);
+  h.state.tab = 2;
+  await h.run('syncBrowserBounds()');
+  const changed = h.calls.slice(before);
+  assert.deepEqual(changed.map((call) => [call.args.key, call.args.active]), [['first', false], ['second', true]]);
+  assert.ok(changed.every((call) => call.command === 'browser_set_active'));
 });
 
 test('exit during a queued native navigation preserves the user address despite old page completion', async () => {

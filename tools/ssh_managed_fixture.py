@@ -45,6 +45,11 @@ def local_path(remote):
     return candidate
 
 class Handle(paramiko.SFTPHandle):
+    def write(self, offset, data):
+        if self.filename.endswith('.part') and len(data) >= 16384:
+            time.sleep(0.015)
+        return super().write(offset, data)
+
     def read(self, offset, length):
         if self.filename.endswith('slow.bin'):
             time.sleep(0.035)
@@ -72,7 +77,13 @@ class Files(paramiko.SFTPServerInterface):
         try: return paramiko.SFTPAttributes.from_stat(local_path(path).stat())
         except OSError as e: return paramiko.SFTPServer.convert_errno(e.errno or 13)
 
-    lstat = stat
+    def lstat(self, path):
+        try: return paramiko.SFTPAttributes.from_stat(local_path(path).lstat())
+        except OSError as e: return paramiko.SFTPServer.convert_errno(e.errno or 13)
+
+    def mkdir(self, path, attr):
+        try: local_path(path).mkdir(); return paramiko.SFTP_OK
+        except OSError as e: return paramiko.SFTPServer.convert_errno(e.errno or 13)
 
     def open(self, path, flags, attr):
         try:

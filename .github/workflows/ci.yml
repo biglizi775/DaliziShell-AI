@@ -40,6 +40,14 @@ jobs:
         run: npm run test:ui
       - name: Workbench feature UI checks
         run: npm run test:workbench
+      - name: Conversation and tab UI checks
+        run: npm run test:productivity
+      - name: Dual pane UI checks
+        run: npm run test:panes
+      - name: SFTP queue UI checks
+        run: npm run test:transfers
+      - name: Rendering stability UI checks
+        run: node tools/ui_smoke.cjs --render-stability
       - name: Select stable Rust
         run: rustup update stable --no-self-update
       - name: Rust tests

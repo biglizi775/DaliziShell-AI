@@ -105,7 +105,7 @@ const L = {
 
 const store = {
   get(k, d) { try { const v = localStorage.getItem('df.' + k); return v === null ? d : JSON.parse(v); } catch { return d; } },
-  set(k, v) { try { localStorage.setItem('df.' + k, JSON.stringify(v)); } catch {} },
+  set(k, v) { try { localStorage.setItem('df.' + k, JSON.stringify(v)); if (typeof portableSettingsChanged === 'function') portableSettingsChanged(k); } catch {} },
 };
 
 let locale = store.get('locale', (navigator.language || 'en').toLowerCase().startsWith('zh') ? 'zh' : 'en');
@@ -312,6 +312,7 @@ async function navigate(path, opts = {}) {
   state.anchorIdx = -1;
   state.anchorName = null;
   state.focusName = null;
+  state.revealName = null;
   state.renaming = null;
   state.loading = true;
   renderAll();
@@ -370,13 +371,11 @@ function normalizeNavigationPath(path) {
 }
 
 async function refresh(keep = true, hard = false) {
-  if (state.loading || isTermTab(curTab())) return;
+  if (state.loading || isTermTab(curTab()) || curTab()?.kind === 'browser') return;
   const token = ++state.navToken;
   const owner = curTab();
   const path = state.path;
   const current = () => state.navToken === token && curTab() === owner;
-  const sel = keep ? new Set(state.selection) : new Set();
-  const st = els.scroller.scrollTop;
   if (state.path === null) {
     try {
       const roots = await invoke('roots');
@@ -394,17 +393,52 @@ async function refresh(keep = true, hard = false) {
   try {
     const raw = await invoke('list_dir', { path });
     if (!current()) return;
-    state.entries = prepareEntries(raw, path);
+    if (state.renaming) {
+      fsRefreshPending = { owner, path };
+      scheduleFilesystemRefresh();
+      return;
+    }
+    const before = state.entries;
+    const entries = prepareEntries(raw, path);
     const names = new Set(raw.map((e) => e.name));
-    state.selection = new Set([...sel].filter((n) => names.has(n)));
+    // The user may select, scroll or start editing while enumeration is pending.
+    // Reconcile the current state, never restore an IPC-start snapshot.
+    const selection = new Set([...(keep ? state.selection : [])].filter((n) => names.has(n)));
+    const changed = state.error || !sameDirectoryEntries(before, entries) || selection.size !== state.selection.size;
+    state.selection = selection;
+    state.entries = entries;
     state.error = null;
-    renderAll();
-    els.scroller.scrollTop = st;
+    if (changed) renderDirectoryRefresh();
+    else {
+      // Keep visible rows attached to the objects that receive size events.
+      const byName = new Map(entries.map((entry) => [entry.name, entry]));
+      state.view = (state.view || []).map((entry) => byName.get(entry.name));
+    }
     requestDirSizes(hard);
   } catch (e) {
     if (!current()) return;
     toast(String(e), true);
   }
+}
+
+function sameDirectoryEntries(before, after) {
+  if (!before || before.length !== after.length) return false;
+  const previous = new Map(before.map((entry) => [entry.name, entry]));
+  const fields = ['name', 'isDir', 'size', 'mtime', 'ctime', 'atime', 'attributes', 'readOnly', 'hidden', 'ext', 'dirSize', 'isReparse', 'dirSizeUnavailable'];
+  return after.every((entry) => {
+    const old = previous.get(entry.name);
+    return old && fields.every((field) => old[field] === entry[field]);
+  });
+}
+
+function renderDirectoryRefresh() {
+  rebuildView();
+  renderBar2();
+  renderContent();
+  renderStatus();
+  renderPreview();
+  $('pageSubtitle').textContent = `${u('filesCount').replace('{n}', state.view.length.toLocaleString())}  ·  ${u('selectHint')}`;
+  if (typeof renderAiSelection === 'function') renderAiSelection();
 }
 
 function sizePathKey(path) { return path.replace(/\//g, '\\').replace(/\\+$/, '').toLowerCase(); }
@@ -564,13 +598,29 @@ function newTab(path) {
   state.tabs.push({ path: null, history: [], hIdx: -1 });
   state.tab = state.tabs.length - 1;
   renderTabs();
-  navigate(path !== undefined ? path : state.path, { push: true });
+  return navigate(path !== undefined ? path : state.path, { push: true });
+}
+async function openContainingFolder(path) {
+  const folder = parentOf(path) || path, name = basename(path);
+  const loading = newTab(folder), owner = curTab();
+  await loading;
+  if (curTab() !== owner || state.path !== folder || state.error) return;
+  const entry = (state.entries || []).find((item) => item.name.toLowerCase() === name.toLowerCase());
+  if (!entry) { toast(locale === 'zh' ? '文件可能已移动或删除，已打开所在文件夹。' : 'The item may have moved; its containing folder is open.', true); return; }
+  if (!matchesFileType(entry, state.typeFilter || 'all')) state.typeFilter = 'all';
+  state.revealName = entry.name; state.selection = new Set([entry.name]); state.focusName = entry.name; state.anchorName = entry.name;
+  renderAll();
+  const index = state.view.findIndex((item) => item.name === entry.name);
+  els.scroller.scrollTop = Math.max(0, (state.viewMode === 'grid' ? Math.floor(index / state.gridCols) : index) * ROWH[state.viewMode] - els.scroller.clientHeight / 2);
+  renderRows();
 }
 function closeTab(i) {
   if (state.tabs.length <= 1 || i < 0 || i >= state.tabs.length) return;
   const active = curTab();
   const killed = state.tabs[i];
+  if (typeof aiTabArchiveNeedsFlush === 'function' && aiTabArchiveNeedsFlush(killed)) return flushAiTabArchives(killed).then((ok) => { if (ok) { const index = state.tabs.indexOf(killed); if (index >= 0) return closeTab(index); } });
   if (killed?.connection === 'ssh' && typeof disconnectSshTab === 'function' && (!killed.exited || killed.startPromise)) return closeSshTabSafely(killed);
+  if (typeof rememberClosedTab === 'function') rememberClosedTab(killed);
   if (typeof disposeAiTab === 'function') disposeAiTab(killed);
   if (isTermTab(killed)) killTerm(killed);
   if (killed?.kind === 'browser' && typeof closeBrowserTab === 'function') closeBrowserTab(killed);
@@ -587,7 +637,7 @@ function closeOtherTabs(i) {
   const keep = state.tabs[i];
   if (!keep) return;
   const others = state.tabs.filter((tb) => tb !== keep);
-  if (others.some((tb) => tb.connection === 'ssh' && typeof disconnectSshTab === 'function' && (!tb.exited || tb.startPromise))) {
+  if (others.some((tb) => (tb.connection === 'ssh' && typeof disconnectSshTab === 'function' && (!tb.exited || tb.startPromise)) || (typeof aiTabArchiveNeedsFlush === 'function' && aiTabArchiveNeedsFlush(tb)))) {
     switchTab(i);
     return (async () => {
       for (const tb of others) {
@@ -599,6 +649,7 @@ function closeOtherTabs(i) {
   }
   state.navToken++;
   for (const tb of state.tabs) if (tb !== state.tabs[i]) {
+    if (typeof rememberClosedTab === 'function') rememberClosedTab(tb);
     if (typeof disposeAiTab === 'function') disposeAiTab(tb);
     if (isTermTab(tb)) killTerm(tb);
     if (tb?.kind === 'browser' && typeof closeBrowserTab === 'function') closeBrowserTab(tb);
@@ -851,6 +902,7 @@ function killTerm(tb) {
 }
 
 function disposeTerm(tb) {
+  if (typeof disconnectSshQueue === 'function' && tb.connection === 'ssh') disconnectSshQueue(tb);
   tb.disposed = true;
   tb.input = '';
   if (tb.resetTermReady) { tb.resetTermReady(); tb.resetTermReady = null; }
@@ -873,7 +925,7 @@ function renderTabs() {
           : tb.path === null ? t('thisPC') : basename(tb.path) || tb.path;
         const icon = browser ? IC.globe : term ? IC.tconsole : tb.path === null ? IC.monitor : IC.folderS;
         const tip = browser ? tb.url : remote ? `SSH · ${tb.sshConfig?.user || ''}@${tb.sshConfig?.host || ''}:${tb.sshConfig?.port || 22}` : term ? `${t('terminal')} · ${tb.cwd || ''}` : tb.path || t('thisPC');
-        return `<div class="tab${i === state.tab ? ' on' : ''}${term || browser ? ' isterm' : ''}" data-t="${i}" title="${esc(tip || '')}">
+        return `<div class="tab${i === state.tab ? ' on' : ''}${term || browser ? ' isterm' : ''}" data-t="${i}" tabindex="0" title="${esc(tip || '')}">
           <span class="tic">${icon}</span><span class="tnm">${esc(name)}</span>
           <button class="tclose" data-tc="${i}" ${state.tabs.length <= 1 ? 'disabled' : ''}>${IC.x}</button>
         </div>`;
@@ -884,6 +936,10 @@ function renderTabs() {
     `<button id="tabNewSsh" class="tabnew" title="${locale === 'zh' ? '新建 SSH 连接' : 'New SSH connection'}" aria-label="${locale === 'zh' ? '新建 SSH 连接' : 'New SSH connection'}">${IC.ssh || IC.tconsole}<small>SSH</small></button>` +
     `<button id="tabNewBrowser" class="tabnew" title="${locale === 'zh' ? '新建浏览器标签页' : 'New browser tab'}" aria-label="${locale === 'zh' ? '新建浏览器标签页' : 'New browser tab'}">${IC.globe}<small>Web</small></button>`;
   if (typeof persistBrowserSession === 'function') persistBrowserSession();
+  if (typeof updateReopenTabButton === 'function') {
+    els.tabbar.insertAdjacentHTML('beforeend', `<button id="tabReopen" class="tabnew" title="${locale === 'zh' ? '恢复刚关闭的标签' : 'Reopen closed tab'}" aria-label="${locale === 'zh' ? '恢复刚关闭的标签' : 'Reopen closed tab'}">↶</button>`);
+    updateReopenTabButton();
+  }
 }
 
 /* ============================== view building ============================== */
@@ -893,10 +949,10 @@ function rebuildView() {
   collator = collator && collLocale === locale ? collator : new Intl.Collator(locale === 'zh' ? 'zh-CN' : 'en', { numeric: true, sensitivity: 'base' });
   collLocale = locale;
   let arr = state.entries;
-  if (!state.showHidden) arr = arr.filter((e) => !e.hidden);
+  if (!state.showHidden) arr = arr.filter((e) => !e.hidden || e.name === state.revealName);
   if (state.filter) {
-    const q = state.filter.toLowerCase();
-    arr = arr.filter((e) => e.nameLower.includes(q));
+    if (typeof matchLocalSearch === 'function') arr = arr.filter((e) => matchLocalSearch(e));
+    else { const q = state.filter.toLowerCase(); arr = arr.filter((e) => e.nameLower.includes(q)); }
   }
   if (state.typeFilter && state.typeFilter !== 'all') arr = arr.filter((e) => matchesFileType(e, state.typeFilter));
   const K = state.sortKey, D = state.sortDir, cl = collator;
@@ -1048,6 +1104,7 @@ function enterPathEdit() {
 }
 
 function renderBar2() {
+  if (typeof syncDualPane === 'function') syncDualPane();
   if (isBrowserTab(curTab())) return;
   els.btnNew.innerHTML = `<span class="icw">${IC.folderS}</span><span class="lbl">${esc(t('newFolder'))}</span>`;
   els.btnNew.title = t('newFolderHere');
@@ -1133,11 +1190,12 @@ function renderList() {
       ['name', t('colName')], ['date', t('colDate')], ['type', t('colType')], ['size', t('colSize')],
     ];
     if (typeof columnInteractionActive !== 'function' || !columnInteractionActive()) {
-      els.dhead.innerHTML = typeof renderColumnHeaders === 'function' ? renderColumnHeaders(cols) : cols.map(([k, label]) => {
+      const header = typeof renderColumnHeaders === 'function' ? renderColumnHeaders(cols) : cols.map(([k, label]) => {
       const on = state.sortKey === k;
       const arr = on ? `<span class="arr">${state.sortDir === 1 ? '▲' : '▼'}</span>` : '';
       return `<div class="h ${k}${on ? ' on' : ''}" data-k="${k}">${esc(label)}${arr}</div>`;
       }).join('');
+      if (els.dhead.renderedHtml !== header) { els.dhead.innerHTML = header; els.dhead.renderedHtml = header; }
     }
     if (typeof syncColumnScroll === 'function') syncColumnScroll();
   }
@@ -1156,40 +1214,43 @@ function renderRows() {
   const st = els.scroller.scrollTop;
   const vh = els.scroller.clientHeight || 600;
   const cut = cutNames();
-  let html = '';
-
-  if (mode === 'details') {
-    const first = Math.max(0, Math.floor(st / H) - 4);
-    const last = Math.min(n - 1, Math.ceil((st + vh) / H) + 4);
-    for (let i = first; i <= last; i++) {
-      const e = state.view[i];
-      const sel = state.selection.has(e.name);
-      html += `<div class="row${sel ? ' sel' : ''}${cut.has(e.name) ? ' cut' : ''}" role="option" aria-selected="${sel}" data-i="${i}" style="top:${i * H}px">
-        ${typeof renderColumnCells === 'function' ? renderColumnCells(e) : `
+  const cols = mode === 'details' ? 1 : state.gridCols;
+  const overscan = mode === 'details' ? 4 : 2;
+  const first = Math.max(0, Math.floor(st / H) - overscan) * cols;
+  const last = Math.min(n - 1, (Math.ceil((st + vh) / H) + overscan + 1) * cols - 1);
+  const indices = new Set();
+  for (let i = first; i <= last; i++) indices.add(i);
+  // Pin the editor even when scrolling moves its row outside the virtual range.
+  const editing = state.renaming ? state.view.findIndex((e) => e.name === state.renaming) : -1;
+  if (editing >= 0) indices.add(editing);
+  const oldRows = new Map([...els.rows.children].map((row) => [row.entryKey, row]));
+  const retained = new Set();
+  let cursor = els.rows.firstElementChild;
+  for (const i of [...indices].sort((a, b) => a - b)) {
+    const e = state.view[i], key = JSON.stringify([state.path, mode, e.name]);
+    let row = oldRows.get(key);
+    if (!row) { row = document.createElement('div'); row.entryKey = key; row.setAttribute('role', 'option'); }
+    retained.add(row);
+    const className = `${mode === 'details' ? 'row' : 'gcell'}${state.selection.has(e.name) ? ' sel' : ''}${cut.has(e.name) ? ' cut' : ''}`;
+    if (row.className !== className) row.className = className;
+    row.setAttribute('aria-selected', String(state.selection.has(e.name)));
+    row.dataset.i = String(i);
+    row.style.top = `${Math.floor(i / cols) * H + (mode === 'grid' ? 4 : 0)}px`;
+    row.style.left = mode === 'grid' ? `${i % cols * 132 + 8}px` : '';
+    const html = mode === 'details' ? (typeof renderColumnCells === 'function' ? renderColumnCells(e) : `
         <div class="c cname">${fileIcon(e)}<span class="nm" title="${esc(e.name)}">${esc(e.name)}</span></div>
         <div class="c cdate">${e.mtime ? esc(fmtDate(e.mtime)) : ''}</div>
         <div class="c ctype">${esc(typeLabel(e))}</div>
         <div class="c csize">${e.isDir ? esc(folderSizeLabel(e)) : esc(fmtSize(e.size))}</div>
-        `}
-      </div>`;
+        `) : `<div class="gicon">${fileIcon(e, true)}</div><div class="glabel" title="${esc(e.name)}">${esc(e.name)}</div>`;
+    const input = row.querySelector('input.rn');
+    if (!(input && i === editing) && (row.contentHtml !== html || input)) {
+      row.innerHTML = html; row.contentHtml = html;
     }
-  } else {
-    const cols = state.gridCols;
-    const firstRow = Math.max(0, Math.floor(st / H) - 2);
-    const lastRow = Math.min(Math.ceil(n / cols) - 1, Math.ceil((st + vh) / H) + 2);
-    for (let r2 = firstRow; r2 <= lastRow; r2++) {
-      for (let c = 0; c < cols; c++) {
-        const i = r2 * cols + c;
-        if (i >= n) break;
-        const e = state.view[i];
-        const sel = state.selection.has(e.name);
-        html += `<div class="gcell${sel ? ' sel' : ''}${cut.has(e.name) ? ' cut' : ''}" role="option" aria-selected="${sel}" data-i="${i}" style="left:${c * 132 + 8}px;top:${r2 * H + 4}px">
-          <div class="gicon">${fileIcon(e, true)}</div><div class="glabel" title="${esc(e.name)}">${esc(e.name)}</div>
-        </div>`;
-      }
-    }
+    if (row !== cursor) els.rows.insertBefore(row, cursor);
+    cursor = row.nextElementSibling;
   }
-  els.rows.innerHTML = html;
+  for (const row of oldRows.values()) if (!retained.has(row)) row.remove();
   if (state.renaming) mountRename();
 }
 
@@ -1225,6 +1286,7 @@ function renderStatus() {
   }
   els.status.innerHTML =
     `<span>${esc(txt)}</span><span class="spacer"></span>` +
+    (state.filterError ? `<span class="search-error">${esc(state.filterError)}</span>` : '') +
     (indexBusy ? `<span class="idxbusy">${esc(t('indexing'))}</span>` : '');
 }
 
@@ -1359,11 +1421,13 @@ function startRename(name) {
 }
 function mountRename() {
   const name = state.renaming;
+  const owner = curTab(), path = state.path;
   const i = state.view.findIndex((e) => e.name === name);
   if (i < 0) { state.renaming = null; return; }
   const mode = state.viewMode;
   const rowEl = els.rows.querySelector(`[data-i="${i}"]`);
   if (!rowEl) return;
+  if (rowEl.querySelector('input.rn')) return;
   const holder = rowEl.querySelector(mode === 'details' ? '.nm' : '.glabel');
   if (!holder) return;
   const inp = document.createElement('input');
@@ -1377,12 +1441,15 @@ function mountRename() {
   const commit = (ok) => {
     if (done) return;
     done = true;
+    // Navigation may remove this input and fire blur. Never apply its draft to
+    // a different folder/tab, or let a delayed completion replace that tab.
+    if (state.renaming !== name || curTab() !== owner || state.path !== path) return;
     const nv = inp.value.trim();
     state.renaming = null;
     if (!ok || !nv || nv === name) { renderRows(); return; }
-    invoke('rename_path', { old: join(state.path, name), new: join(state.path, nv) })
-      .then(() => { state.selection = new Set([nv]); return refresh(true); })
-      .catch((e) => { toast(String(e), true); renderRows(); });
+    invoke('rename_path', { old: join(path, name), new: join(path, nv) })
+      .then(() => { if (curTab() === owner && state.path === path) { state.selection = new Set([nv]); return refresh(true); } })
+      .catch((e) => { toast(String(e), true); if (curTab() === owner && state.path === path) renderRows(); });
   };
   inp.addEventListener('keydown', (ev) => {
     ev.stopPropagation();
@@ -1468,6 +1535,7 @@ function itemMenu(i, x, y) {
     { id: 'cut', label: t('cut'), sc: 'Ctrl+X', ic: IC.cut, fn: cutSel },
     { id: 'copy', label: t('copy'), sc: 'Ctrl+C', ic: IC.copy, fn: copySel },
     { id: 'cp', label: t('copyPath'), sc: 'Ctrl+Shift+C', ic: IC.copy, fn: () => copyFullPaths([...state.selection].map(name => join(state.path, name))) },
+    { id: 'archive', label: locale === 'zh' ? '压缩…' : 'Compress…', ic: IC.folderS, dis: fileOpBusy, fn: () => { if (!fileOpBusy) openArchiveDialog(); } },
     { sep: true },
     { id: 'rn', label: t('rename'), sc: 'F2', ic: IC.pencil, dis: state.selection.size !== 1, fn: () => startRename([...state.selection][0]) },
     { id: 'del', label: t('del'), sc: 'Del', ic: IC.trash, fn: deleteSel },
@@ -1523,6 +1591,7 @@ function viewMenu() {
 }
 function moreMenu() {
   anchorMenu(els.btnMore, [
+    { id: 'archive', label: locale === 'zh' ? '压缩所选项目…' : 'Compress selected items…', dis: !state.path || !state.selection.size || fileOpBusy, fn: () => { if (!fileOpBusy) openArchiveDialog(); } },
     { id: 'cp', label: t('copyPath'), sc: 'Ctrl+Shift+C', ic: IC.copy, dis: state.path == null || !state.selection.size, fn: copySelectedPaths },
     { sep: true },
     { id: 'rf', label: t('refresh'), sc: 'F5', ic: IC.refresh, fn: () => refresh(true, true) },
@@ -1615,6 +1684,7 @@ els.btnBack.addEventListener('click', goBack);
 els.btnFwd.addEventListener('click', goFwd);
 
 els.tabbar.addEventListener('click', (ev) => {
+  if (ev.target.closest('#tabReopen')) { if (typeof reopenClosedTab === 'function') void reopenClosedTab(); return; }
   const closeBtn = ev.target.closest('.tclose');
   if (closeBtn) { closeTab(+closeBtn.dataset.tc); return; }
   if (ev.target.closest('#tabNew')) { newTab(); return; }
@@ -1632,7 +1702,7 @@ els.tabbar.addEventListener('auxclick', (ev) => {
 els.tabbar.addEventListener('contextmenu', (ev) => {
   ev.preventDefault();
   const tabEl = ev.target.closest('.tab');
-  if (!tabEl) return;
+  if (!tabEl) { if (typeof tabManagementMenu === 'function') showMenu(ev.clientX, ev.clientY, tabManagementMenu(null).slice(-1)); return; }
   const i = +tabEl.dataset.t;
   const tb = state.tabs[i];
   showMenu(ev.clientX, ev.clientY, [
@@ -1642,6 +1712,7 @@ els.tabbar.addEventListener('contextmenu', (ev) => {
     { sep: true },
     { id: 'clo', label: t('closeTab'), ic: IC.x, sc: 'Ctrl+W', dis: state.tabs.length <= 1, fn: () => closeTab(i) },
     { id: 'cloo', label: t('closeOtherTabs'), dis: state.tabs.length <= 1, fn: () => closeOtherTabs(i) },
+    ...(typeof tabManagementMenu === 'function' ? [{ sep: true }, ...tabManagementMenu(tb)] : []),
   ]);
 });
 els.btnUp.addEventListener('click', goUp);
@@ -1740,17 +1811,42 @@ els.termHost.addEventListener('mousedown', () => {
   if (isTermTab(tb) && tb.term) tb.term.focus();
 });
 
-window.addEventListener('resize', () => {
-  if (isTermTab(curTab())) { fitTerm(curTab()); return; }
-  if (!els.scroller.classList.contains('hidden')) { renderList(); }
-});
+let layoutFrame = null;
+function scheduleContentLayout() {
+  if (layoutFrame !== null) return;
+  layoutFrame = requestAnimationFrame(() => {
+    layoutFrame = null;
+    if (isTermTab(curTab())) fitTerm(curTab());
+    else if (isBrowserTab(curTab())) syncBrowserBounds();
+    else if (!els.scroller.classList.contains('hidden')) renderList();
+  });
+}
+window.addEventListener('resize', scheduleContentLayout);
 
+let fsRefreshPending = null, fsRefreshTimer = null, fsRefreshRunning = false;
+function scheduleFilesystemRefresh() {
+  if (fsRefreshTimer !== null || fsRefreshRunning || !fsRefreshPending) return;
+  fsRefreshTimer = setTimeout(async () => {
+    fsRefreshTimer = null;
+    const pending = fsRefreshPending;
+    if (!pending) return;
+    if (curTab() !== pending.owner || state.path !== pending.path || isTermTab(curTab()) || isBrowserTab(curTab())) {
+      fsRefreshPending = null; return;
+    }
+    // Retain the event while the user edits or uses a menu; do not lose updates.
+    if (state.loading || state.renaming || menuOpen || (typeof columnInteractionActive === 'function' && columnInteractionActive())) {
+      scheduleFilesystemRefresh(); return;
+    }
+    fsRefreshPending = null; fsRefreshRunning = true;
+    try { await refresh(true); }
+    finally { fsRefreshRunning = false; scheduleFilesystemRefresh(); }
+  }, 400);
+}
 listen('fs-changed', (ev) => {
-  if (isTermTab(curTab())) return;
-  if (ev.payload === state.path && state.entries && !state.loading && !state.renaming && !menuOpen) {
-    // Keep the last known size visible while the backend updates the index.
-    clearTimeout(window.__fsDeb);
-    window.__fsDeb = setTimeout(() => refresh(true), 400);
+  if (isTermTab(curTab()) || isBrowserTab(curTab())) return;
+  if (ev.payload === state.path) {
+    fsRefreshPending = { owner: curTab(), path: state.path };
+    scheduleFilesystemRefresh();
   }
 });
 
@@ -1787,6 +1883,7 @@ function onTermClosed(ev) {
     tb.starting = false;
     tb.exited = true;
     tb.exitCode = ev.payload?.exitCode ?? null;
+    if (typeof disconnectSshQueue === 'function' && tb.connection === 'ssh') disconnectSshQueue(tb);
     tb.termId = null; tb.interruptPending = false;
     tb.input = '';
     if (tb.term) tb.term.write('\r\n\x1b[90m' + t('procExited') + '\x1b[0m\r\n');
@@ -1802,7 +1899,9 @@ terminalEventsReady.catch(() => {});
 
 /* ============================== init ============================== */
 window.addEventListener('DOMContentLoaded', async function init() {
+  if (typeof initPortableSettings === 'function') await initPortableSettings();
   initWorkspace();
+  if (typeof initTabManagement === 'function') initTabManagement();
   if (typeof initColumns === 'function') initColumns();
   document.documentElement.lang = locale === 'zh' ? 'zh-CN' : 'en-US';
   state.tabs = [{ path: null, history: [], hIdx: -1 }];

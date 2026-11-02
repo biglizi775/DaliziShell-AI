@@ -40,7 +40,7 @@ function harness(handler = async () => undefined) {
     requestAnimationFrame: (fn) => { frames.push(fn); return frames.length; },
     setTimeout: () => 1, clearTimeout: noop,
   });
-  vm.runInContext(section, context);
+  vm.runInContext(section + '\nfunction renderDirectoryRefresh() { renderAll(); }', context);
   return {
     state, context, calls, frames, snapshots, cells,
     get rowVisits() { return rowVisits; },
@@ -84,7 +84,8 @@ test('hard refresh keeps old numbers visible and requests a forced background sc
   const h = harness(async (cmd) => cmd === 'list_dir' ? [folder('cached')] : undefined);
   h.prepare([folder('cached', 4096)]);
   await h.run('refresh(true, true)');
-  assert.equal(h.snapshots[0][0].dirSize, 4096);
+  assert.equal(h.state.entries[0].dirSize, 4096);
+  assert.equal(h.snapshots.length, 0, 'unchanged numbers need no redraw while the forced scan runs');
   const forced = h.calls.find((c) => c.cmd === 'dir_sizes' && c.args.force);
   assert.deepEqual([...forced.args.paths], ['C:\\work\\cached']);
 });

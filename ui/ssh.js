@@ -300,6 +300,7 @@ function disconnectSshTab(tb) {
       if (tb.disposed || tb.key !== key) return false;
       if (tb.termId != null && !tb.exited) await stopTermProcess(tb, key, tb.termId);
       tb.termId = null; tb.exited = true; tb.starting = false;
+      if (typeof disconnectSshQueue === 'function') disconnectSshQueue(tb);
       tb.sshActionMessage = sshText('disconnectedHint');
       return true;
     } catch (error) {

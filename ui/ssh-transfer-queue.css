@@ -1,0 +1,26 @@
+#btnTransfers { margin-bottom: 7px; }
+.ssh-batch-review { width: min(700px, calc(100vw - 28px)); }
+.ssh-batch-review .file-settings-body { max-height: 63vh; overflow: auto; }
+.ssh-batch-files { list-style: none; padding: 0; max-height: 230px; overflow: auto; border: 1px solid var(--border); border-radius: 9px; margin: 14px 0; }
+.ssh-batch-files li { padding: 9px 12px; border-bottom: 1px solid var(--border); }
+.ssh-batch-files strong, .ssh-batch-files small { display: block; overflow-wrap: anywhere; }
+.ssh-batch-files small { color: var(--txt3); margin-top: 4px; font-size: 11px; }
+.ssh-task-path { overflow-wrap: anywhere; font-size: 12px; line-height: 1.6; }
+.ssh-task-check { display: flex; align-items: flex-start; gap: 8px; margin: 12px 0; font-size: 12px; }
+.ssh-task-center { width: min(980px, calc(100vw - 28px)); }
+.ssh-task-layout { display: grid; grid-template-columns: 240px minmax(0, 1fr); height: min(550px, 64vh); min-height: 180px; }
+#sshBatchList { overflow: auto; border-right: 1px solid var(--border); padding: 10px; background: var(--bg2); }
+#sshBatchList button { display: grid; gap: 6px; width: 100%; padding: 12px; margin-bottom: 6px; border: 1px solid transparent; border-radius: 9px; text-align: left; color: var(--txt); }
+#sshBatchList button[aria-pressed=true] { background: var(--bg); border-color: var(--accent); }
+#sshBatchList strong { font-size: 12px; overflow-wrap: anywhere; } #sshBatchList span, #sshBatchList small { font-size: 11px; color: var(--txt3); }
+.ssh-task-detail { overflow: auto; padding: 18px; min-width: 0; }
+.ssh-task-detail h3 { margin-bottom: 8px; overflow-wrap: anywhere; }
+.ssh-task-actions { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0; }
+.ssh-task-actions button { padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg2); color: var(--txt); font-size: 11px; }
+.ssh-task-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 12px; padding: 12px 0; border-bottom: 1px solid var(--border); }
+.ssh-task-item strong { overflow-wrap: anywhere; font-size: 12px; } .ssh-task-item span, .ssh-task-item small { font-size: 11px; color: var(--txt3); }
+.ssh-task-item progress { width: 100%; height: 5px; accent-color: var(--accent); align-self: center; }
+.ssh-task-item p { grid-column: 1 / -1; font-size: 11px; color: var(--danger); overflow-wrap: anywhere; white-space: pre-wrap; }
+.ssh-task-item[data-status=complete] > span { color: #27956b; }
+.ssh-task-item[data-status=failed] > span, .ssh-task-item[data-status=interrupted] > span, #sshBatchError { color: var(--danger); }
+@media (max-width: 700px) { .ssh-task-layout { grid-template-columns: 175px minmax(0, 1fr); } .ssh-task-detail { padding: 10px; } }

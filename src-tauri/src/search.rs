@@ -1,5 +1,6 @@
 //! A file-name index fed by the folder-size scanner; searches never enumerate disk.
 use serde::{Deserialize, Serialize};
+use crate::search_query::{Query, Record};
 use std::collections::{BTreeMap, HashSet};
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
@@ -255,7 +256,7 @@ impl NameIndex {
                 response.items.clear();
                 return Ok(response);
             }
-            let dir_key = if scope.is_some() || !query.paths.is_empty() {
+            let dir_key = if scope.is_some() || query.needs_path {
                 super::path_key(&dir.path)
             } else {
                 String::new()
@@ -272,7 +273,9 @@ impl NameIndex {
                     response.items.clear();
                     return Ok(response);
                 }
-                if !query.matches(entry, &dir_key) {
+                let full = if query.needs_path { super::child_path(&dir_key, &entry.folded) } else { String::new() };
+                let size = if entry.is_dir { if query.needs_size { super::idx().get(&super::child_path(&dir.path, &entry.name)) } else { None } } else { Some(entry.size) };
+                if !query.matches(&Record { name: &entry.folded, path: &full, parent: &dir_key, is_dir: entry.is_dir, size, mtime: entry.mtime }) {
                     continue;
                 }
                 response.total += 1;
@@ -446,89 +449,6 @@ fn valid_directory(dir: &Directory) -> bool {
                 && ![".", ".."].contains(&entry.name.as_str())
                 && !entry.name.contains(['\\', '/', ':', '\0'])
         })
-}
-
-#[derive(Default)]
-struct Query {
-    terms: Vec<String>,
-    paths: Vec<String>,
-    extensions: Vec<String>,
-    kind: Option<bool>,
-}
-impl Query {
-    fn parse(input: &str) -> Result<Self, String> {
-        if input.len() > 1024 {
-            return Err("搜索内容最多 1024 字节 / Query is too long".into());
-        }
-        let mut query = Self::default();
-        // Quoted phrases are kept together. Unknown prefixes remain normal text.
-        let mut tokens = Vec::new();
-        let mut token = String::new();
-        let mut quoted = false;
-        for ch in input.chars() {
-            if ch == '"' {
-                quoted = !quoted;
-            } else if ch.is_whitespace() && !quoted {
-                if !token.is_empty() {
-                    tokens.push(std::mem::take(&mut token));
-                }
-            } else {
-                token.push(ch);
-            }
-        }
-        if !token.is_empty() {
-            tokens.push(token);
-        }
-        for token in tokens {
-            let token = token.to_lowercase();
-            if let Some(ext) = token.strip_prefix("ext:") {
-                query.extensions.extend(
-                    ext.split([';', ','])
-                        .map(|part| part.trim_start_matches('.').to_owned())
-                        .filter(|part| !part.is_empty()),
-                );
-            } else if let Some(path) = token.strip_prefix("path:") {
-                if !path.is_empty() {
-                    query.paths.push(path.replace('/', "\\"));
-                }
-            } else if matches!(token.as_str(), "type:dir" | "type:folder" | "folder:") {
-                query.kind = Some(true);
-            } else if matches!(token.as_str(), "type:file" | "file:") {
-                query.kind = Some(false);
-            } else if token != "*" {
-                query.terms.push(token);
-            }
-        }
-        Ok(query)
-    }
-    fn is_empty(&self) -> bool {
-        self.terms.is_empty()
-            && self.paths.is_empty()
-            && self.extensions.is_empty()
-            && self.kind.is_none()
-    }
-    fn matches(&self, entry: &Entry, parent: &str) -> bool {
-        if self.kind.is_some_and(|kind| entry.is_dir != kind) {
-            return false;
-        }
-        if !self.extensions.is_empty()
-            && (entry.is_dir
-                || !entry
-                    .folded
-                    .rsplit_once('.')
-                    .is_some_and(|(_, ext)| self.extensions.iter().any(|wanted| wanted == ext)))
-        {
-            return false;
-        }
-        if !self.terms.iter().all(|term| entry.folded.contains(term)) {
-            return false;
-        }
-        if self.paths.is_empty() {
-            return true;
-        }
-        let full = super::child_path(parent, &entry.folded);
-        self.paths.iter().all(|path| full.contains(path))
-    }
 }
 
 pub(super) fn query_generation() -> u64 {

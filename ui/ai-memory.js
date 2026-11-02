@@ -1,5 +1,5 @@
 'use strict';
-/* Conversation summaries are transient context, separate from approved memories. */
+/* Conversation summaries are context, separate from approved long-term memories. */
 const memoryText = (zh, en) => locale === 'zh' ? zh : en;
 function aiMemoryPreferences() {
   const raw = store.get('aiMemoryPreferences', {});
@@ -78,7 +78,7 @@ async function prepareAiMemory(session, requestId, messages = session.messages, 
       session.revision++;
       candidates = candidates.slice(batch.length);
     }
-  } finally { session.compacting = false; if (aiCurrentSession() === session) renderAiContextMeter(); }
+  } finally { session.compacting = false; if (typeof scheduleAiArchive === 'function') scheduleAiArchive(session); if (aiCurrentSession() === session) renderAiContextMeter(); }
 }
 async function compactAiConversation() {
   const session = aiCurrentSession();

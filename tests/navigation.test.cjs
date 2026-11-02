@@ -30,7 +30,7 @@ function harness(invoke) {
   vm.runInContext(
     section('async function navigate(', '// Update one row') +
     section('function copySel()', '/* ============================== rename') +
-    '\nfunction requestDirSizes() {}', context);
+    '\nfunction requestDirSizes() {}\nfunction renderDirectoryRefresh() { renderAll(); }', context);
   return { state, context, run: (s) => vm.runInContext(s, context) };
 }
 
@@ -127,6 +127,38 @@ test('refresh retains only selected entries still present', async () => {
   h.state.selection = new Set(['keep', 'removed']);
   await h.run('refresh()');
   assert.deepEqual([...h.state.selection], ['keep']);
+});
+
+test('a delayed refresh preserves newer user selection and scroll position', async () => {
+  const listing = deferred();
+  const h = harness(() => listing.promise);
+  h.state.selection = new Set(['old.txt']);
+  const pending = h.run('refresh()');
+  h.state.selection = new Set(['new.txt']);
+  h.context.els.scroller.scrollTop = 440;
+  listing.resolve([{ name: 'old.txt' }, { name: 'new.txt' }]);
+  await pending;
+  assert.deepEqual([...h.state.selection], ['new.txt']);
+  assert.equal(h.context.els.scroller.scrollTop, 440);
+});
+
+test('identical directory snapshots do not redraw and size events retain visible objects', async () => {
+  let draws = 0;
+  const h = harness(async () => [{ name: 'folder', isDir: true, size: 0, dirSize: 100 }]);
+  h.context.renderAll = () => { draws++; h.state.view = h.state.entries; };
+  await h.run('refresh()');
+  assert.equal(draws, 1);
+  await h.run('refresh()');
+  assert.equal(draws, 1);
+  assert.equal(h.state.view[0], h.state.sizeEntries.get('c:\\a\\folder'));
+});
+
+test('file refresh is a no-op in a browser tab', async () => {
+  let calls = 0;
+  const h = harness(async () => { calls++; return []; });
+  h.state.tabs[0].kind = 'browser';
+  await h.run('refresh()');
+  assert.equal(calls, 0);
 });
 
 test('cancelled move preserves clipboard; successful move clears it', async () => {

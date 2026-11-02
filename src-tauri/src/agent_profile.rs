@@ -13,6 +13,8 @@ use tauri::Manager;
 mod builtin;
 #[path = "agent_memory_maintenance.rs"]
 pub mod maintenance;
+#[path = "agent_conversations.rs"]
+pub mod conversations;
 
 const SKILL_FILE_LIMIT: usize = 64 * 1024;
 const STORE_LIMIT: usize = 4 * 1024 * 1024;

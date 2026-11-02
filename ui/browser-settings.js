@@ -154,7 +154,7 @@ function openBrowserClearData() {
     try {
       const kinds = selected.filter((kind) => kind === 'cache' || kind === 'cookies');
       if (kinds.length) await invoke('browser_clear_data', { key: target.key, kinds });
-      if (selected.includes('history')) { store.set('urlHistory', []); if (store.get('urlHistory', []).length) throw new Error(T('网页历史保存失败', 'Could not clear URL history')); }
+      if (selected.includes('history')) { store.set('urlHistory', []); if (store.get('urlHistory', []).length) throw new Error(T('网页历史保存失败', 'Could not clear URL history')); if (typeof clearClosedBrowserTabs === 'function') clearClosedBrowserTabs(); }
       if (selected.includes('session') && !clearBrowserSession()) throw new Error(T('网页会话快照清除失败', 'Could not clear the saved browser session'));
       status.textContent = T('所选数据已清除。已打开的网站仍可能生成新的数据。', 'Selected data cleared. Open websites may create new data.');
       form.querySelectorAll('input').forEach((node) => { node.checked = false; });

@@ -172,6 +172,94 @@ async fn tab(
     .await
 }
 
+async fn native_visible(view: tauri::Webview) -> Result<bool, String> {
+    let (sender, receiver) = tokio::sync::oneshot::channel();
+    view.with_webview(move |native| {
+        let mut visible = windows_core::BOOL(0);
+        let result = unsafe { native.controller().IsVisible(&mut visible) }
+            .map(|_| visible.0 != 0)
+            .map_err(|error| error.to_string());
+        let _ = sender.send(result);
+    })
+    .map_err(|error| error.to_string())?;
+    tokio::time::timeout(Duration::from_secs(10), receiver)
+        .await
+        .map_err(|_| "Visibility check timed out")?
+        .map_err(|_| "Visibility check interrupted")?
+}
+
+async fn layout_check(app: &tauri::AppHandle, server: &FixtureServer) -> Result<(), String> {
+    tab(app, "layout-one", &server.url, None).await?;
+    let one = browser_view(app, "layout-one");
+    if native_visible(one.clone()).await? {
+        return Err("Unactivated tab was visible".into());
+    }
+    let bounds = || browser::BrowserBounds {
+        x: 40.0,
+        y: 60.0,
+        width: 720.0,
+        height: 480.0,
+    };
+    browser::browser_set_active(app.state(), "layout-one".into(), true, bounds())?;
+    if !native_visible(one.clone()).await? {
+        return Err("Active tab was hidden".into());
+    }
+    let size = one.size().map_err(|error| error.to_string())?;
+    let position = one.position().map_err(|error| error.to_string())?;
+    let scale = app
+        .get_window("main")
+        .ok_or("Missing main window")?
+        .scale_factor()
+        .map_err(|error| error.to_string())?;
+    let logical = size.to_logical::<f64>(scale);
+    let origin = position.to_logical::<f64>(scale);
+    if (logical.width - 720.0).abs() > 1.0
+        || (logical.height - 480.0).abs() > 1.0
+        || (origin.x - 40.0).abs() > 1.0
+        || (origin.y - 60.0).abs() > 1.0
+    {
+        return Err(format!("Native bounds mismatch: {logical:?} {origin:?}"));
+    }
+    tab(app, "layout-two", &server.url, None).await?;
+    let two = browser_view(app, "layout-two");
+    if native_visible(two.clone()).await? || !native_visible(one.clone()).await? {
+        return Err("A newly created tab disturbed the active surface".into());
+    }
+    wait_script(&one, "document.readyState", serde_json::json!("complete")).await?;
+    script(one.clone(), "window.layoutMarker = 'retained'").await?;
+    browser::browser_set_active(
+        app.state(),
+        "layout-one".into(),
+        false,
+        browser::BrowserBounds {
+            x: 0.0,
+            y: 0.0,
+            width: 1.0,
+            height: 1.0,
+        },
+    )?;
+    if one.size().map_err(|error| error.to_string())? != size {
+        return Err("Hiding a tab changed its viewport".into());
+    }
+    for _ in 0..12 {
+        browser::browser_set_active(app.state(), "layout-two".into(), true, bounds())?;
+        browser::browser_set_active(app.state(), "layout-two".into(), false, bounds())?;
+        browser::browser_set_active(app.state(), "layout-one".into(), true, bounds())?;
+        browser::browser_set_active(app.state(), "layout-one".into(), false, bounds())?;
+    }
+    browser::browser_set_active(app.state(), "layout-one".into(), true, bounds())?;
+    if !native_visible(one.clone()).await? || native_visible(two.clone()).await? {
+        return Err("Final tab visibility mismatch".into());
+    }
+    if script(one, "window.layoutMarker").await? != serde_json::json!("retained") {
+        return Err("Visibility changes reloaded the page".into());
+    }
+    browser::browser_close(app.state(), "layout-one".into())?;
+    browser::browser_close(app.state(), "layout-two".into())?;
+    println!("Native browser layout passed: hidden creation, atomic geometry, inactive viewport preservation, 12 switch cycles, page identity retained.");
+    Ok(())
+}
+
 async fn settings_check(
     app: &tauri::AppHandle,
     fixture: &std::path::Path,
@@ -259,11 +347,19 @@ async fn settings_check(
         .map_err(|error| error.to_string())?;
     tokio::time::sleep(Duration::from_millis(150)).await;
     for key in ["settings-first", "settings-new"] {
-        let actual = browser::browser_settings_get(app.state(), key.into()).await?;
-        if actual != updated {
-            return Err(format!(
-                "Window theme replaced browser settings on {key}: {actual:?}"
-            ));
+        // Theme events restore several native environments asynchronously.
+        // Wait for convergence instead of assuming a 150 ms scheduler budget.
+        for attempt in 0..60 {
+            let actual = browser::browser_settings_get(app.state(), key.into()).await?;
+            if actual == updated {
+                break;
+            }
+            if attempt == 59 {
+                return Err(format!(
+                    "Window theme replaced browser settings on {key}: {actual:?}"
+                ));
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
         }
     }
     set_native_zoom(browser_view(app, "settings-first"), 1.6).await?;
@@ -462,6 +558,7 @@ async fn downloads_check(
 
 async fn check(app: &tauri::AppHandle, fixture: &std::path::Path) -> Result<(), String> {
     let server = FixtureServer::start();
+    layout_check(app, &server).await?;
     settings_check(app, fixture, &server).await?;
     downloads_check(app, fixture, &server).await?;
     tab(app, "first", "about:blank", None).await?;

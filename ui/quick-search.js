@@ -4,9 +4,19 @@ const QUICK_TEXT = {
   en: { title: 'Search results', local: 'This folder', tree: 'Subfolders', global: 'Everywhere', localHint: 'Filter names', placeholder: 'Name or ext:pdf…', all: 'All', file: 'Files', dir: 'Folders', rebuild: 'Revalidate index', close: 'Hide results', name: 'Name', location: 'Location', size: 'Size', actions: 'Actions', empty: 'Type in the search field above', hint: 'Space-separated words · ext:rs;js · ↑ ↓ Select · Enter Open', noResults: 'No matching items', searching: 'Searching…', indexed: 'Indexed', indexing: 'Indexing; results are partial', ready: 'Filename index ready', cached: 'Cache restored', recent: 'Recent cache is reused while offline changes await validation', matches: 'matches', limited: 'Showing the first 200; add keywords', reveal: 'Show in Explorer', copy: 'Copy path', copied: 'Path copied', error: 'Search failed', starting: 'Background index validation started', noScope: 'Open a local folder first', stale: 'The item may have moved or been deleted. Revalidate the index.', range: 'Search scope', terminal: 'Terminal starting folder and descendants' },
 };
 const qt = (key) => QUICK_TEXT[locale === 'zh' ? 'zh' : 'en'][key] || key;
+QUICK_TEXT.zh.reveal = '在新标签页打开所在文件夹'; QUICK_TEXT.en.reveal = 'Open containing folder in a new tab';
+QUICK_TEXT.zh.placeholder = '名称、*.pdf、size:>10mb…'; QUICK_TEXT.en.placeholder = 'Name, *.pdf, size:>10mb…';
+QUICK_TEXT.zh.localHint = '名称或搜索语法'; QUICK_TEXT.en.localHint = 'Name or search syntax';
+QUICK_TEXT.zh.hint = '空格 与 · | 或 · ! 排除 · * ? 通配符'; QUICK_TEXT.en.hint = 'Space AND · | OR · ! NOT · * ? wildcards';
 const quickState = { token: 0, timer: null, poll: null, mode: 'local', kind: 'all', scope: null, items: [], selected: -1, status: null, pending: false, open: false, owner: null, folder: null, locale: null };
 function quickQuery(query, kind) { const value = query.trim(); return value && kind !== 'all' ? `type:${kind} ${value}` : value; }
-function quickFolder() { const path = isTermTab(curTab()) ? curTab().cwd : state.path; return path && /^[a-z]:[\\/]/i.test(path) ? path : null; }
+function quickFolder() { const path = isTermTab(curTab()) ? curTab().cwd : state.path; return path && (/^[a-z]:[\\/]/i.test(path) || /^\\\\[^\\]+\\[^\\]+/.test(path)) ? path : null; }
+function quickRequestKey() { return JSON.stringify([quickQuery($('search').value, quickState.kind), quickMode() === 'tree' ? quickFolder() : null]); }
+function requestQuickRefresh() {
+  if (!quickState.open || !$('search').value.trim()) return;
+  if (quickState.pending || quickState.timer !== null) { quickState.refreshQueued = true; return; }
+  scheduleQuickSearch(500, true);
+}
 function quickMode() {
   if (quickState.mode === 'local' && (isTermTab(curTab()) || !state.path)) return 'global';
   if (quickState.mode === 'tree' && !quickFolder()) return 'global';
@@ -44,7 +54,7 @@ function initQuickSearch() {
   }, true);
   window.addEventListener('resize', positionQuickSearch);
   new ResizeObserver(positionQuickSearch).observe($('searchWrap'));
-  listen('index-updated', () => { if (quickState.open && quickState.timer === null && $('search').value.trim()) scheduleQuickSearch(500); }).catch(() => {});
+  listen('index-updated', requestQuickRefresh).catch(() => {});
   syncQuickSearchWorkspace();
 }
 function syncQuickSearchWorkspace() {
@@ -53,6 +63,7 @@ function syncQuickSearchWorkspace() {
   if (owner !== quickState.owner || folder !== quickState.folder) {
     closeQuickSearch(); quickState.owner = owner; quickState.folder = folder;
     $('search').value = ''; state.filter = ''; quickState.kind = 'all';
+    if (typeof resetLocalSearch === 'function') resetLocalSearch();
   }
   const mode = quickMode(), localAvailable = !isTermTab(owner) && state.path !== null;
   const selector = $('searchMode');
@@ -71,6 +82,8 @@ function setWorkspaceSearchMode(mode) {
 }
 function handleWorkspaceSearchInput() {
   const mode = quickMode();
+  if (mode === 'local' && typeof updateLocalSearch === 'function') { closeQuickSearch(); updateLocalSearch($('search').value); return true; }
+  if (typeof resetLocalSearch === 'function') resetLocalSearch();
   state.filter = mode === 'local' ? $('search').value : '';
   els.scroller.scrollTop = 0; renderAll();
   if (mode === 'local') closeQuickSearch();
@@ -88,6 +101,7 @@ function paintQuickFilters() { $('quickSearchPopover').querySelectorAll('[data-q
 function showQuickSearch() {
   if (quickMode() === 'local') return;
   const popup = $('quickSearchPopover'); if (!popup) return;
+  if (quickState.open) { positionQuickSearch(); return; }
   if (!quickState.open) {
     quickState.open = true; buildQuickPopover(); popup.classList.remove('hidden'); $('search').setAttribute('aria-expanded', 'true');
     updateQuickStatus(); quickState.poll = setInterval(updateQuickStatus, 2500);
@@ -97,6 +111,7 @@ function showQuickSearch() {
 function closeQuickSearch() {
   quickState.token++; clearTimeout(quickState.timer); clearInterval(quickState.poll);
   quickState.timer = null; quickState.poll = null; quickState.open = false; quickState.pending = false; quickState.items = []; quickState.selected = -1;
+  quickState.resultKey = null; quickState.result = null; quickState.refreshQueued = false;
   $('quickSearchPopover')?.classList.add('hidden'); $('search')?.setAttribute('aria-expanded', 'false');
 }
 function positionQuickSearch() {
@@ -120,37 +135,70 @@ async function runQuickSearch(token) {
   if (!quickState.open || token !== quickState.token) return;
   const query = quickQuery(e.input.value, quickState.kind), owner = curTab(), scope = quickMode() === 'tree' ? quickFolder() : null;
   if (!query) { quickState.pending = false; quickState.items = []; quickState.selected = -1; paintQuickResults(); return; }
-  quickState.pending = true; quickState.scope = scope; e.count.textContent = qt('searching');
+  const key = quickRequestKey();
+  quickState.pending = true; quickState.scope = scope;
+  if (quickState.resultKey !== key) e.count.textContent = qt('searching');
   try {
     const result = await invoke('search_files', { query, limit: 200, scope });
     if (token !== quickState.token || !quickState.open || owner !== curTab() || scope !== (quickMode() === 'tree' ? quickFolder() : null)) return;
     if (result.cancelled) { scheduleQuickSearch(250); return; }
-    quickState.status = result; quickState.items = result.items || []; quickState.selected = quickState.items.length ? 0 : -1; quickState.pending = false;
+    const selectedPath = quickState.items[quickState.selected]?.path, previousIndex = quickState.selected;
+    quickState.status = result; quickState.result = result; quickState.items = result.items || [];
+    const selected = quickState.items.findIndex((item) => item.path === selectedPath);
+    quickState.selected = selected >= 0 ? selected : quickState.items.length ? Math.max(0, Math.min(previousIndex, quickState.items.length - 1)) : -1;
+    quickState.pending = false; quickState.resultKey = key;
     paintQuickResults(result); paintQuickStatus();
+    if (quickState.refreshQueued) { quickState.refreshQueued = false; requestQuickRefresh(); }
   } catch (error) {
     if (token !== quickState.token || !quickState.open || owner !== curTab()) return;
     quickState.pending = false; quickState.items = []; quickState.selected = -1;
+    quickState.resultKey = null; quickState.refreshQueued = false;
     e.results.innerHTML = `<div class="quick-empty">${esc(qt('error'))}<small>${esc(String(error))}</small></div>`; e.count.textContent = '';
   }
 }
-function scheduleQuickSearch(delay = 150) {
+function scheduleQuickSearch(delay = 150, background = false) {
+  if (!quickState.open) return;
+  if (background && (quickState.pending || quickState.timer !== null)) { quickState.refreshQueued = true; return; }
   const token = ++quickState.token; clearTimeout(quickState.timer);
-  quickState.pending = true; quickState.items = []; quickState.selected = -1;
-  if (quickState.open) { paintQuickResults(); $('quickSearchCount').textContent = $('search').value.trim() ? qt('searching') : ''; }
+  quickState.pending = true;
+  if (!$('search').value.trim()) { quickState.items = []; quickState.selected = -1; quickState.resultKey = null; }
+  if (!quickState.items.length) paintQuickResults();
+  if (!background) $('quickSearchCount').textContent = $('search').value.trim() ? qt('searching') : '';
   quickState.timer = setTimeout(() => { quickState.timer = null; runQuickSearch(token); }, delay);
 }
 function paintQuickResults(result) {
   const e = quickElements(); if (!e.results) return;
   const query = e.input?.value.trim();
   e.count.textContent = result ? `${Number(result.total || 0).toLocaleString()} ${qt('matches')}${result.truncated ? ' · ' + qt('limited') : ''}` : '';
-  e.results.innerHTML = quickState.items.map((entry, index) => `<div class="quick-result${index === quickState.selected ? ' selected' : ''}" role="option" aria-selected="${index === quickState.selected}" tabindex="-1" data-quick-result="${index}"><div class="quick-file">${entry.isDir ? IC.folderS : IC.fileS}<span><strong title="${esc(entry.name)}">${esc(entry.name)}</strong><small>${esc(fmtDate(entry.mtime))}</small></span></div><div class="quick-path" title="${esc(entry.path)}">${esc(parentOf(entry.path) || entry.path)}</div><div class="quick-size">${entry.size == null ? '—' : esc(fmtSize(entry.size))}</div><div class="quick-actions"><button class="ibtn" data-quick-action="reveal" title="${esc(qt('reveal'))}" aria-label="${esc(qt('reveal'))}">${IC.folderS}</button><button class="ibtn" data-quick-action="copy" title="${esc(qt('copy'))}" aria-label="${esc(qt('copy'))}">${IC.copy}</button></div></div>`).join('') || `<div class="quick-empty">${IC.search}<strong>${esc(qt(query ? quickState.pending ? 'searching' : 'noResults' : 'empty'))}</strong><small>${esc(qt('hint'))}</small></div>`;
+  if (!quickState.items.length) {
+    const html = `<div class="quick-empty">${IC.search}<strong>${esc(qt(query ? quickState.pending ? 'searching' : 'noResults' : 'empty'))}</strong><small>${esc(qt('hint'))}</small></div>`;
+    if (e.results.innerHTML !== html) e.results.innerHTML = html;
+    return;
+  }
+  const scroll = e.results.scrollTop;
+  const existing = new Map([...e.results.querySelectorAll('[data-quick-result]')].map((row) => [row.dataset.path, row]));
+  e.results.querySelector('.quick-empty')?.remove();
+  for (const [index, entry] of quickState.items.entries()) {
+    const row = existing.get(entry.path) || document.createElement('div'); existing.delete(entry.path);
+    const identity = JSON.stringify([entry, locale]);
+    if (row.dataset.identity !== identity) {
+      row.innerHTML = `<div class="quick-file">${entry.isDir ? IC.folderS : IC.fileS}<span><strong title="${esc(entry.name)}">${esc(entry.name)}</strong><small>${esc(fmtDate(entry.mtime))}</small></span></div><div class="quick-path" title="${esc(entry.path)}">${esc(parentOf(entry.path) || entry.path)}</div><div class="quick-size">${entry.size == null ? '—' : esc(fmtSize(entry.size))}</div><div class="quick-actions"><button class="ibtn" data-quick-action="reveal" title="${esc(qt('reveal'))}" aria-label="${esc(qt('reveal'))}">${IC.folderS}</button><button class="ibtn" data-quick-action="copy" title="${esc(qt('copy'))}" aria-label="${esc(qt('copy'))}">${IC.copy}</button></div>`;
+      row.dataset.identity = identity;
+    }
+    row.className = 'quick-result' + (index === quickState.selected ? ' selected' : '');
+    row.dataset.quickResult = String(index); row.dataset.path = entry.path;
+    row.setAttribute('role', 'option'); row.setAttribute('aria-selected', String(index === quickState.selected)); row.tabIndex = -1;
+    if (e.results.children[index] !== row) e.results.insertBefore(row, e.results.children[index] || null);
+  }
+  for (const row of existing.values()) row.remove();
+  e.results.scrollTop = scroll;
 }
 function paintQuickSelection(scroll = false) { $('quickSearchResults').querySelectorAll('[data-quick-result]').forEach((row, index) => { row.classList.toggle('selected', index === quickState.selected); row.setAttribute('aria-selected', String(index === quickState.selected)); if (scroll && index === quickState.selected) row.scrollIntoView({ block: 'nearest' }); }); }
 async function activateQuickResult(index, action) {
-  const entry = quickState.items[index]; if (!entry || quickState.pending) return;
+  const entry = quickState.items[index]; if (!entry || quickState.resultKey !== quickRequestKey()) return;
   try {
     if (action === 'copy') { await navigator.clipboard.writeText(entry.path); toast(qt('copied')); }
-    else if (action === 'reveal') await invoke('reveal', { path: entry.path });
+    else if (action === 'reveal') { closeQuickSearch(); await openContainingFolder(entry.path); }
     else if (entry.isDir) { closeQuickSearch(); await navigate(entry.path); }
     else await invoke('open_path', { path: entry.path });
   } catch (error) { toast(`${qt('stale')} · ${String(error)}`, true); }

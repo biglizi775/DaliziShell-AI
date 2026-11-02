@@ -34,3 +34,17 @@
 .quick-status { min-height: 32px; flex: none; display: flex; align-items: center; padding: 8px 16px; background: var(--bg2); border-top: 1px solid var(--border); font-size: 10px; color: var(--txt2); }
 #btnAiAssistant { background: var(--accentDim); color: var(--accent); border-radius: 8px; }
 @media (max-width: 1000px) { .quick-result-info > span:last-child { display: none; } }
+.search-error { color: var(--txt2); max-width: 65%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#searchSyntaxHelp { flex: none; width: 23px; height: 26px; color: var(--txt3); border-radius: 5px; }
+#searchSyntaxHelp:hover { color: var(--accent); background: var(--hover); }
+#search[aria-invalid="true"] { color: #d65a5a; }
+.search-syntax-table { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 12px; }
+.search-syntax-table td { padding: 8px 4px; vertical-align: top; border-bottom: 1px solid var(--border); }
+.search-syntax-table td:first-child { width: 48%; overflow-wrap: anywhere; color: var(--accent); }
+#searchSyntaxDialog p { font-size: 12px; line-height: 1.7; color: var(--txt2); }
+.external-drop-target { outline: 2px solid var(--accent); outline-offset: -3px; background-color: var(--accentDim); }
+#externalDropHint { position: absolute; left: 18px; right: 18px; bottom: 22px; z-index: 8; padding: 13px 16px; border: 1px solid var(--accent); border-radius: 10px; background: var(--bg2); color: var(--txt); font-size: 12px; pointer-events: none; overflow-wrap: anywhere; box-shadow: var(--shadow); }
+.drop-destination { overflow-wrap: anywhere; color: var(--accent); font-family: ui-monospace, Consolas, monospace; }
+.drop-files { max-height: 210px; overflow: auto; padding: 10px 0 10px 20px; font-size: 12px; line-height: 1.8; overflow-wrap: anywhere; }
+#externalDropDialog p { font-size: 12px; line-height: 1.7; }
+#externalDropStatus { color: var(--txt2); overflow-wrap: anywhere; }

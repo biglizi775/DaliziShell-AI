@@ -1,0 +1,22 @@
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const vm = require('node:vm');
+const source = fs.readFileSync(path.join(__dirname, '../ui/external-drop.js'), 'utf8');
+test('native physical drop coordinates choose the folder row at Windows scaling', () => {
+  let point, modal = null, active = { kind: 'files' }, outside = false;
+  const row = { dataset: { i: '0' } }, content = {};
+  const state = { path: 'C:\\Work', view: [{ name: '目标', isDir: true }] };
+  const ctx = vm.createContext({ state, window: { devicePixelRatio: 1.5 }, fileOpBusy: false, curTab: () => active, isTermTab: (t) => t.kind === 'term', isBrowserTab: (t) => t.kind === 'browser', join: (p, n) => p + '\\' + n, els: { content }, document: { querySelector: () => modal, elementFromPoint: (x, y) => { point = [x, y]; return { closest: (s) => s === '#content' ? outside ? null : content : row }; } } });
+  vm.runInContext(source, ctx);
+  const run = () => vm.runInContext('externalDropDestination({x:150,y:300})', ctx);
+  assert.equal(run().path, 'C:\\Work\\目标'); assert.deepEqual(point, [100, 200]);
+  state.view[0].isDir = false; assert.equal(run().path, 'C:\\Work');
+  outside = true; assert.equal(run(), null); outside = false;
+  active = { kind: 'term' }; assert.equal(run(), null);
+  active = { kind: 'browser' }; assert.equal(run(), null);
+  active = { kind: 'files' }; state.loading = true; assert.equal(run(), null);
+  state.loading = false; modal = {}; assert.equal(run(), null);
+  modal = null; ctx.fileOpBusy = true; assert.equal(run(), null);
+});

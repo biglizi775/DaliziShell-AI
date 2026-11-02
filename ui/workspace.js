@@ -47,9 +47,13 @@ const SUN_ICON = S('<circle cx="10" cy="10" r="3"/><path d="M10 2v1M10 17v1M2 10
 function initWorkspace() {
   if (typeof initPlaces === 'function') initPlaces();
   if (typeof initQuickSearch === 'function') initQuickSearch();
+  if (typeof initSearchSyntax === 'function') initSearchSyntax();
+  if (typeof initExternalDrop === 'function') initExternalDrop();
   if (typeof initAiAssistant === 'function') initAiAssistant();
   if (typeof initWorkspaceSettings === 'function') initWorkspaceSettings();
-  document.documentElement.dataset.theme = store.get('theme', 'light') === 'dark' ? 'dark' : 'light';
+  if (typeof initSshTaskCenter === 'function') initSshTaskCenter();
+  if (typeof initDualPane === 'function') initDualPane();
+  void applyWorkspaceTheme(store.get('theme', 'light'));
   $('brandHome').addEventListener('click', (ev) => { ev.preventDefault(); navigate(null); });
   $('btnTerminal').addEventListener('click', () => newTermTab());
   $('btnSsh').addEventListener('click', () => openSshConnect());
@@ -81,16 +85,12 @@ function initWorkspace() {
       paintCommandSelection();
     } else if (ev.key === 'Enter') { ev.preventDefault(); runCommand(commandIndex); }
   });
-  new ResizeObserver(() => {
-    if (isTermTab(curTab())) fitTerm(curTab());
-    else if (typeof isBrowserTab === 'function' && isBrowserTab(curTab()) && typeof syncBrowserBounds === 'function') syncBrowserBounds();
-    else if (state.entries && !state.loading) renderList();
-  }).observe(els.content);
+  new ResizeObserver(scheduleContentLayout).observe(els.content);
 }
 
 function toggleTheme() {
   const theme = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
-  document.documentElement.dataset.theme = theme;
+  void applyWorkspaceTheme(theme);
   store.set('theme', theme);
   renderWorkspace();
 }
@@ -101,7 +101,9 @@ function setViewMode(mode) {
   renderAll();
 }
 function togglePreview() {
-  previewOpen = !previewOpen;
+  const companion = typeof companionFor === 'function' ? companionFor() : null;
+  if (companion?.open) { companion.open = false; previewOpen = true; }
+  else previewOpen = !previewOpen;
   store.set('previewOpen', previewOpen);
   previewIdentity = '';
   renderWorkspace();
@@ -109,6 +111,9 @@ function togglePreview() {
 }
 
 function renderWorkspace() {
+  if (typeof syncDualPane === 'function') syncDualPane();
+  if (typeof syncSshTaskButton === 'function') syncSshTaskButton();
+  if (typeof clearExternalDrop === 'function' && typeof externalDropTarget !== 'undefined' && externalDropTarget && (curTab() !== externalDropTarget.owner || state.path !== externalDropTarget.folder)) clearExternalDrop();
   const tb = curTab(), term = !!isTermTab(tb), browser = typeof isBrowserTab === 'function' && isBrowserTab(tb), ssh = typeof isSshTab === 'function' && isSshTab(tb);
   document.body.classList.toggle('home-mode', !term && !browser && state.path === null);
   $('pageTitle').textContent = browser ? (tb.title || '浏览器') : term ? ssh ? sshTabTitle(tb) : 'PowerShell' : state.path === null ? u('home') : basename(state.path);
@@ -130,8 +135,9 @@ function renderWorkspace() {
   $('bar2').classList.toggle('home-toolbar', state.path === null && !browser);
   $('pageHeader').classList.toggle('hidden', browser);
   $('browserToolbar').classList.toggle('hidden', !browser);
-  $('previewPanel').classList.toggle('hidden', !previewOpen || term || browser || state.path === null);
-  document.body.classList.toggle('preview-open', previewOpen && !term && !browser && state.path !== null);
+  const companionVisible = typeof companionFor === 'function' && companionFor()?.open && state.path !== null;
+  $('previewPanel').classList.toggle('hidden', !previewOpen || term || browser || state.path === null || !!companionVisible);
+  document.body.classList.toggle('preview-open', previewOpen && !term && !browser && state.path !== null && !companionVisible);
   renderPreview();
   if (typeof renderFavoritesBar === 'function') renderFavoritesBar();
   if (typeof syncQuickSearchWorkspace === 'function') syncQuickSearchWorkspace();
@@ -189,7 +195,7 @@ function previewMetadata(entry, path) {
 }
 function renderPreview() {
   const panel = $('previewPanel');
-  const active = previewOpen && !isTermTab(curTab()) && curTab()?.kind !== 'browser' && state.path !== null && !state.loading && !state.error;
+  const active = previewOpen && !(typeof companionFor === 'function' && companionFor()?.open) && !isTermTab(curTab()) && curTab()?.kind !== 'browser' && state.path !== null && !state.loading && !state.error;
   const selected = active ? (state.entries || []).filter((e) => state.selection.has(e.name)) : [];
   // Directory refreshes and access-time/size-cache updates must not restart the
   // reader. Only selection or the selected file's content identity owns it.
@@ -294,9 +300,12 @@ function renderCommands() {
     { title: t('newFolderHere'), sub: 'Files', icon: IC.folderS, run: newFolder },
     { title: u('showHidden'), sub: 'View', icon: IC.fileS, run: () => { state.showHidden = !state.showHidden; store.set('showHidden', state.showHidden); renderAll(); } },
   );
+  if (typeof reopenClosedTab === 'function' && recentlyClosedTabs.length) actions.push({ title: tabText('恢复刚关闭的标签', 'Reopen closed tab'), sub: 'Tabs', icon: IC.folderS, run: reopenClosedTab });
+  if (typeof openSshTaskCenter === 'function') actions.push({ title: locale === 'zh' ? '传输任务' : 'Transfers', sub: 'SFTP', icon: IC.globe, run: openSshTaskCenter });
   state.tabs.forEach((tb, i) => {
     const ssh = typeof isSshTab === 'function' && isSshTab(tb);
-    actions.push({ title: ssh ? sshTabTitle(tb) : isTermTab(tb) ? 'PowerShell' : basename(tb.path) || u('home'), sub: `${i + 1} · ${ssh ? 'SSH' : isTermTab(tb) ? tb.cwd || '' : tb.path || ''}`, icon: ssh ? IC.globe : isTermTab(tb) ? IC.tconsole : IC.folderS, run: () => switchTab(i) });
+    const web = typeof isBrowserTab === 'function' && isBrowserTab(tb);
+    actions.push({ title: web ? browserTitle(tb) : ssh ? sshTabTitle(tb) : isTermTab(tb) ? 'PowerShell' : basename(tb.path) || u('home'), sub: `${i + 1} · ${web ? tb.url : ssh ? 'SSH' : isTermTab(tb) ? tb.cwd || '' : tb.path || ''}`, icon: web || ssh ? IC.globe : isTermTab(tb) ? IC.tconsole : IC.folderS, run: () => switchTab(i) });
   });
   [...new Set([...state.pinned, ...state.recents, ...(state.roots?.quick || []).map((q) => q.path)])].forEach((p) => actions.push({ title: basename(p), sub: p, icon: IC.folderS, run: () => navigate(p) }));
   const q = $('commandInput').value.trim().toLowerCase();

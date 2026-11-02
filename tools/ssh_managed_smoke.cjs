@@ -9,7 +9,8 @@ const { chromium } = require('playwright');
 const root = path.resolve(__dirname, '..');
 const target = path.join(root, 'src-tauri/target');
 const output = fs.mkdtempSync(path.join(target, 'ssh-managed-smoke-'));
-const exe = process.env.DALIZI_EXE || path.join(target, 'debug/dalizi-files.exe');
+const exe = path.join(output, 'DaliziFiles.exe');
+fs.copyFileSync(process.env.DALIZI_EXE || path.join(target, 'debug/dalizi-files.exe'), exe);
 const fixture = spawn(process.env.DALIZI_PYTHON || 'python', ['-u', path.join(__dirname, 'ssh_managed_fixture.py'), output], { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
 let fixtureError = ''; fixture.stderr.on('data', data => { fixtureError += data.toString(); });
 const messages = [], waiting = [];
@@ -97,6 +98,8 @@ async function freePort() { const server = net.createServer(); await new Promise
     await invoke('ssh_transfer_cancel', { id, transferId: cancelled });
     assert.equal((await waitTransfer(cancelled)).status, 'cancelled'); assert.equal(fs.existsSync(path.join(output, 'cancelled.bin')), false);
     assert.equal(fs.readdirSync(output).some(name => name.endsWith('.part')), false);
+    await require('./ssh_transfer_queue_native.cjs')({ page, invoke, id, output, remoteRoot: data.root });
+    await require('./ssh_tree_resume_native.cjs')({ page, invoke, output, remoteRoot: data.root });
     // A fresh native login retrieves the protected credential without a password field.
     await page.evaluate(() => reconnectSshTab(curTab()));
     const newId = await page.evaluate(() => curTab().termId); assert.notEqual(newId, id);

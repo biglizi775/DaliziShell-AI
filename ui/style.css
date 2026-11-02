@@ -40,7 +40,7 @@
   --shadow: 0 16px 48px rgba(0, 0, 0, .35), 0 2px 6px rgba(0, 0, 0, .15);
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
-html, body { height: 100%; overflow: hidden; }
+html, body { height: 100%; overflow: hidden; background: var(--bg2); }
 body {
   background: var(--bg2); color: var(--txt);
   font: 13px/1.5 "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;

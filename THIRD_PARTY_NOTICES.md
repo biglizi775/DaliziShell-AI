@@ -15,3 +15,9 @@ Dalizi Files 自有代码采用 [MIT License](LICENSE)。下列离线前端资�
 Rust 依赖及其精确版本记录在 [Cargo.lock](src-tauri/Cargo.lock)，由 Cargo 获取，不将注册表源码复制到仓库。开发检查依赖记录在 [package-lock.json](package-lock.json) 和 [Python 工具依赖](tools/requirements-dev.txt)。开发依赖不等同于应用运行依赖；发布二进制时还应核对对应构建实际使用的传递依赖声明。
 
 内置 SSH 使用锁定的 russh、russh-sftp 及其加密依赖，密码保存调用 Windows Credential Manager；相关许可随二进制发布包收集。WebView2、PowerShell 和兼容模式的 OpenSSH 使用目标机器安装的运行时/程序，未将它们的安装包内嵌到本仓库。
+
+## 文件压缩
+
+7z 创建使用未修改的 [sevenz-rust2 0.24.2](https://github.com/hasenbanck/sevenz-rust2) 与 [lzma-rust2 0.23.0](https://github.com/hasenbanck/lzma-rust2)，均为 Apache-2.0。ZIP 创建使用 [zip 9.1.0](https://github.com/zip-rs/zip2)，采用 MIT 许可。AES、SHA、随机数等传递依赖按 Cargo.lock 和对应许可证分发；本项目的 MIT 许可不替代这些条款。
+
+应用没有捆绑或调用 7-Zip 的 exe/DLL；7-Zip 只作为可选的独立开发测试工具。其自身许可参阅[官方说明](https://www.7-zip.org/)。发布压缩功能二进制时，`licenses/rust/` 中须包含上述组件的许可证和来源信息，连同已有组件的声明一起保留。

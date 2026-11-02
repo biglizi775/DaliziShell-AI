@@ -1,0 +1,74 @@
+const assert = require('node:assert/strict');
+const path = require('node:path');
+module.exports = async function checkProductivity(page, { folder, output, native = false }) {
+  await page.waitForFunction(() => typeof workspaceSessionReady !== 'undefined' && workspaceSessionReady && !state.loading);
+  await page.evaluate(async (root) => { await navigate(root); openAiAssistant(); }, folder);
+  assert.equal(await page.evaluate((root) => invoke('agent_chat_list', { root }).then((a) => a.length), folder), 0);
+  await page.evaluate(() => {
+    window.originalChat = aiCurrentSession();
+    const user = addAiMessage(originalChat, 'user', '为这个目录整理一个归档方案 🌟');
+    addAiMessage(originalChat, 'assistant', '建议先核对项目分类，再建立归档目录。', { plan: { id: 'historical-fixture', actions: [{ kind: 'mkdir', target: originalChat.root + '\\不得自动创建' }] }, planState: 'pending' });
+    originalChat.conversationSummary = '用户希望归档，方案尚未执行。'; originalChat.summarizedIds = new Set([user.id]); originalChat.compactedMessages = 1;
+    aiSessionKey = 'fixture-key-never-archive'; originalChat.permissionMode = 'auto'; renderAiConversation(); updateAiComposer();
+  });
+  assert.equal(await page.evaluate((root) => invoke('agent_chat_list', { root }).then((a) => a.length), folder), 0, 'temporary chat does not write implicitly');
+  await page.locator('[data-chat-save]').click();
+  await page.waitForFunction(() => aiCurrentSession().archive?.revision === 1 && !aiCurrentSession().archive.saving);
+  await page.locator('[data-chat-open]').click();
+  await page.waitForSelector('[data-chat-item]');
+  await page.locator('#chatArchiveTitle').fill('项目归档 · 已保存'); await page.locator('#chatSave').click();
+  await page.waitForFunction(() => aiCurrentSession().archive.revision === 2);
+  await page.locator('[data-chat-item]').first().click(); await page.waitForSelector('#chatSavedPreview:not([hidden])');
+  assert.match(await page.locator('#chatPreviewText').textContent(), /Historical plan/);
+  if (!native) { await page.locator('#chatExportSaved').click(); await page.waitForFunction(() => document.getElementById('chatHistoryStatus').textContent.includes('fixture-export.md')); }
+  const count = await page.evaluate(() => state.tabs.length);
+  await page.locator('#chatContinue').click(); await page.waitForFunction(() => !document.getElementById('chatHistoryDialog'));
+  const restored = await page.evaluate(() => ({ count: state.tabs.length, permission: aiCurrentSession().permissionMode, actions: aiCurrentSession().messages.some((m) => m.plan), same: aiCurrentSession() === originalChat, summary: aiCurrentSession().conversationSummary, auto: aiCurrentSession().archive.auto }));
+  assert.deepEqual(restored, { count: count + 1, permission: 'confirm', actions: false, same: false, summary: '用户希望归档，方案尚未执行。', auto: false });
+  assert.equal(await page.locator('[data-ai-action="execute"]').count(), 0);
+  await page.locator('[data-chat-open]').click(); await page.locator('#chatArchiveTitle').fill('继续整理'); await page.locator('#chatAutoSave').check();
+  await page.waitForFunction(() => aiCurrentSession().archive.revision === 1 && !aiCurrentSession().archive.saving);
+  await page.locator('[data-chat-close]').last().click();
+  await page.evaluate(() => { addAiMessage(aiCurrentSession(), 'user', '请把下一步列出来'); renderAiConversation(); });
+  await page.waitForFunction(() => aiCurrentSession().archive.revision === 2 && !aiCurrentSession().archive.saving);
+  const chats = await page.evaluate((root) => invoke('agent_chat_list', { root }), folder);
+  assert.equal(chats.length, 2); assert.equal(chats.find((c) => c.title === '继续整理').messageCount, 3);
+  assert.equal(await page.evaluate((root) => invoke('agent_chat_read', { root, id: originalChat.archive.id }).then((chat) => JSON.stringify(chat).includes('fixture-key-never-archive')), folder), false);
+  await page.locator('[data-chat-open]').click(); await page.waitForSelector('[data-chat-item]');
+  await page.screenshot({ path: path.join(output, 'conversation-history.png') });
+  // Deletion is explicit, does not clear the live text and cannot resurrect a removed record.
+  await page.getByRole('button', { name: /继续整理.*条消息/ }).click();
+  await page.locator('#chatDelete').click(); await page.locator('#chatConfirmDelete').click();
+  await page.waitForFunction(() => document.getElementById('chatHistoryStatus').textContent === '已删除。');
+  assert.equal(await page.evaluate(() => aiCurrentSession().archive.auto), false);
+  await page.locator('#chatSaveCopy').click(); await page.waitForFunction(() => aiCurrentSession().archive.revision === 1 && !aiCurrentSession().archive.saving);
+  await page.locator('[data-chat-close]').last().click();
+  await page.evaluate(async (root) => { await newTab(root); window.tabToMove = curTab(); await switchTab(0); window.activeBeforeMove = curTab(); }, folder);
+  await page.waitForFunction(() => !state.loading && !document.querySelector('dialog[open]'));
+  const tabCount = await page.locator('#tabbar .tab').count();
+  await page.locator('#tabbar .tab').nth(tabCount - 1).waitFor({ state: 'visible' });
+  const source = await page.locator('#tabbar .tab').nth(tabCount - 1).boundingBox(), target = await page.locator('#tabbar .tab').first().boundingBox();
+  await page.mouse.move(source.x + 35, source.y + source.height / 2); await page.mouse.down();
+  await page.mouse.move(target.x + 8, target.y + target.height / 2, { steps: 12 }); await page.mouse.up();
+  assert.equal(await page.evaluate(() => state.tabs[0] === tabToMove && curTab() === activeBeforeMove), true, 'dragging preserves active identity');
+  const closeIndex = await page.evaluate(() => state.tabs.indexOf(tabToMove));
+  await page.locator(`[data-tc="${closeIndex}"]`).click(); await page.locator('#tabReopen').click();
+  await page.waitForFunction(() => !state.loading);
+  assert.equal(await page.evaluate(() => curTab().path), folder);
+  assert.equal(await page.evaluate(() => curTab() === tabToMove), false, 'reopen creates a fresh tab');
+  await page.locator('#tabbar .tab.on').focus(); await page.keyboard.press('Alt+Shift+ArrowLeft');
+  assert.equal(await page.evaluate(() => state.tab), tabCount - 2);
+  if (!native) {
+    await page.evaluate(async () => { await newBrowserTab('https://restore.example.test/'); closeTab(state.tab); });
+    await page.locator('#tabReopen').click(); await page.waitForFunction(() => curTab()?.url === 'https://restore.example.test/');
+    await page.evaluate(() => { closeTab(state.tab); store.set('browserSettings', { ...browserSettings(), recordHistory: false }); syncWorkspaceSessionPrivacy(); });
+    assert.equal(await page.evaluate(() => recentlyClosedTabs.some((t) => t.kind === 'browser')), false);
+    await page.setViewportSize({ width: 960, height: 560 });
+    await page.evaluate(() => { openAiAssistant(); applyWorkspaceTheme('dark'); });
+    await page.locator('[data-chat-open]').click();
+    assert.ok(await page.locator('#chatHistoryDialog').isVisible());
+    assert.equal(await page.evaluate(() => { const r = document.getElementById('chatHistoryDialog').getBoundingClientRect(); return r.x >= 0 && r.y >= 0 && r.right <= innerWidth && r.bottom <= innerHeight; }), true);
+    await page.screenshot({ path: path.join(output, 'conversation-compact-dark.png') }); await page.keyboard.press('Escape');
+  }
+  return { savedChats: 2, restoreRequiresConfirmation: true, preservesActiveTab: true, exportCheck: native ? 'system save dialog not automated' : 'mock export command verified', checks: 'explicit/auto saves, fork restore, summaries, delete/save-as-new, drag/reopen/keyboard ordering' };
+};

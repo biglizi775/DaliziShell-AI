@@ -12,6 +12,11 @@ const builtinSkillsOnly = process.argv.includes('--builtin-skills');
 const copyPathsOnly = process.argv.includes('--copy-paths');
 const aiApiOnly = process.argv.includes('--ai-api');
 const workbenchOnly = process.argv.includes('--workbench');
+const archiveOnly = process.argv.includes('--archive');
+const stabilityOnly = process.argv.includes('--render-stability');
+const productivityOnly = process.argv.includes('--productivity');
+const panesOnly = process.argv.includes('--panes');
+const transfersOnly = process.argv.includes('--transfers');
 function makeBuiltinSkills() {
   return [
     ['file-organize', '文件整理'], ['task-planning', '任务拆解'], ['product-design', '产品与交互设计'],
@@ -97,6 +102,31 @@ const server = http.createServer((req, res) => {
         event: { listen: async (name, fn) => { (window.mockListeners[name] ||= []).push(fn); return () => { window.mockListeners[name] = window.mockListeners[name].filter((item) => item !== fn); }; } },
         core: { invoke: async (cmd, args) => {
           window.mockCalls.push({ cmd, args });
+          if (cmd === 'ssh_pick_upload_files') return window.mockUploadFiles || ['C:\\Uploads\\one.txt', 'C:\\Uploads\\two.txt'];
+          if (cmd === 'ssh_pick_download_directory') return 'C:\\Downloads';
+          if (cmd === 'ssh_transfer_prepare') return args.paths.map((value) => ({ name: value.split('\\').at(-1), localPath: args.direction === 'upload' ? value : args.directory + '\\' + value, remote: args.direction === 'upload' ? args.remote : args.remote.replace(/\/$/, '') + '/' + value, size: 100 }));
+          if (cmd === 'ssh_files_list') return { path: args.path === '.' ? '/data' : args.path, truncated: false, entries: [{ name: '子目录', isDir: true, isLink: false }, ...['中文.txt', 'two.txt', 'three.txt'].map((name) => ({ name, isDir: false, isLink: false, size: 100, modified: 1792800000 }))] };
+          if (cmd === 'ssh_file_transfer') {
+            window.mockTransfers ||= {};
+            const progress = { id: args.id, key: window.mockTransferOwner?.key, transferId: args.requestId, direction: args.direction, name: args.localPath.split('\\').at(-1), bytes: 0, total: 100, status: 'running' };
+            mockTransfers[args.requestId] = progress;
+            window.emitMockEvent('ssh-transfer', structuredClone(progress)); return args.requestId;
+          }
+          if (cmd === 'ssh_transfer_status') return structuredClone(window.mockTransfers?.[args.transferId] || null);
+          if (cmd === 'ssh_transfer_cancel') {
+            const progress = window.mockTransfers?.[args.transferId];
+            if (progress) { progress.status = 'cancelled'; window.emitMockEvent('ssh-transfer', structuredClone(progress)); } return null;
+          }
+          if (cmd === 'archive_pick_directory') return 'D:\\Archives';
+          if (cmd === 'archive_start') { if (window.mockArchiveStartError) throw new Error('Archive start failed'); return 'archive-fixture'; }
+          if (cmd === 'archive_progress') return { id: 'archive-fixture', entries: 4, completedEntries: 1, bytes: 10, totalBytes: 100, current: '资料/内容.txt', phase: window.mockArchivePhase || 'compressing', output: 'C:\\Projects\\archive.7z', archiveBytes: 75, error: null };
+          if (cmd === 'archive_cancel') { if (window.mockArchiveCancelError) throw new Error('Cancel unavailable'); window.mockArchivePhase = 'cancelled'; return true; }
+          if (cmd === 'portable_settings_load') return JSON.parse(localStorage.getItem('mock.portableSettings') || 'null') || { path: 'C:\\Demo\\DaliziData\\preferences.json', enabled: false, updatedAt: 0, settings: null, error: null };
+          if (cmd === 'portable_settings_save') {
+            if (window.mockPortableFailure) throw new Error('Portable directory is read-only');
+            const saved = { path: 'C:\\Demo\\DaliziData\\preferences.json', enabled: args.enabled, updatedAt: Date.now(), settings: args.settings, error: null };
+            localStorage.setItem('mock.portableSettings', JSON.stringify(saved)); return { ...saved, settings: null };
+          }
           if (cmd === 'ai_test_connection') {
             if (window.mockApiTestDeferred) await new Promise(resolve => { window.resolveMockApiTest = resolve; });
             if (window.mockApiTestFailure) throw new Error('HTTP 401 · Invalid API key');
@@ -133,8 +163,30 @@ const server = http.createServer((req, res) => {
             if (window.mockRootsDeferred) await (window.mockRootsPromise ||= new Promise((resolve) => { window.resolveMockRoots = resolve; }));
             return { home: 'C:\\Users\\Demo', quick: [{ key: 'documents', path: 'C:\\Projects' }], drives: [{ path: 'C:\\', label: 'System', dtype: 'fixed', free: 170000000000, total: 512000000000 }] };
           }
-          if (cmd === 'list_dir') return entries;
+          if (cmd === 'list_dir') {
+            if (window.mockListDeferred) await new Promise((resolve) => { window.resolveMockList = resolve; });
+            return window.mockEntries || entries;
+          }
           if (cmd === 'agent_profile') return structuredClone(profileAt(args.root));
+          if (cmd.startsWith('agent_chat_')) {
+            const all = JSON.parse(localStorage.getItem('fixture.chatArchives') || '{}');
+            const chats = all[args.root] ||= [];
+            if (cmd === 'agent_chat_list') return chats.map((chat) => ({ ...chat, ...chat.snapshot, messageCount: chat.snapshot.messages.length }));
+            if (cmd === 'agent_chat_read') { const chat = chats.find((c) => c.snapshot.id === args.id); if (!chat) throw new Error('Conversation missing'); return structuredClone(chat); }
+            if (cmd === 'agent_chat_export') return 'C:\\fixture-export.md';
+            if (cmd === 'agent_chat_save') {
+              const index = chats.findIndex((c) => c.snapshot.id === args.snapshot.id), current = chats[index];
+              if ((current?.revision || 0) !== args.expectedRevision) throw new Error('Conversation changed');
+              const chat = { snapshot: structuredClone(args.snapshot), revision: args.expectedRevision + 1, createdAt: current?.createdAt || Date.now(), updatedAt: Date.now() };
+              if (index < 0) chats.push(chat); else chats[index] = chat;
+              localStorage.setItem('fixture.chatArchives', JSON.stringify(all)); return chat;
+            }
+            if (cmd === 'agent_chat_delete') {
+              const index = chats.findIndex((c) => c.snapshot.id === args.id && c.revision === args.expectedRevision);
+              if (index < 0) throw new Error('Conversation changed'); chats.splice(index, 1);
+              localStorage.setItem('fixture.chatArchives', JSON.stringify(all)); return null;
+            }
+          }
           if (cmd === 'agent_pick_skill') return 'C:\\Skills\\project-organizer\\SKILL.md';
           if (cmd === 'agent_skill_import') {
             const previous = profile.skills.find((skill) => skill.path === args.path);
@@ -183,7 +235,14 @@ const server = http.createServer((req, res) => {
             return { kind: 'text', content: '# Project notes\nLocal preview', truncated: false };
           }
           if (cmd === 'search_status') return status;
-          if (cmd === 'search_files') return { ...status, items: entries.filter((e) => !e.isDir).slice(0, 12).map((e) => ({ ...e, path: 'C:\\Projects\\' + e.name })), total: 12, truncated: false };
+          if (cmd === 'search_files') {
+            if (window.mockSearchDeferred) await new Promise((resolve) => { window.resolveMockSearch = resolve; });
+            return { ...status, items: entries.filter((e) => !e.isDir).slice(0, 12).map((e) => ({ ...e, path: 'C:\\Projects\\' + e.name })), total: 12, truncated: false };
+          }
+          if (cmd === 'external_drop_transfer') {
+            if (window.mockDropFailure) throw new Error('Destination unavailable');
+            return { completed: true, processed: args.sources.length, skipped: 0 };
+          }
           if (cmd === 'ai_compact') { if (window.mockCompactionFailure) throw new Error('Summary service unavailable'); return { summary: '用户希望按日期归档文件。之前的方案尚未执行，下一步需要核对。', beforeCharacters: JSON.stringify(args.request.history).length, afterCharacters: 34 }; }
           if (cmd === 'ai_plan') return { id: 'mock-plan', root: args.request.root, permissionMode: args.request.permissionMode, summary: args.request.prompt.includes('概括') || args.request.permissionMode === 'read-only' ? '这个文件夹包含设计资源、项目文档和 30 份 Markdown 笔记。可以按项目或用途整理。' : '创建“归档”文件夹，把选中的项目笔记移动到其中。执行前可以检查下面的路径。', contextCount: 35, contextTruncated: false, appliedSkills: mergedSkills().filter((skill) => args.request.skillIds?.includes(skill.id)).map(({ id, name }) => ({ id, name })), memoryCount: args.request.useMemory ? profileAt(args.request.root).memories.filter((memory) => memory.enabled).length : 0, memorySuggestions: args.request.learnMemory && args.request.prompt.includes('概括') ? ['归档目录使用日期命名。'] : [], actions: args.request.prompt.includes('概括') || args.request.permissionMode === 'read-only' ? [] : [{ kind: 'mkdir', target: 'C:\\Projects\\归档' }, { kind: 'move', source: 'C:\\Projects\\Project-notes-1.md', target: 'C:\\Projects\\归档\\Project-notes-1.md' }] };
           if (cmd === 'ai_execute') return { completed: true, results: [{ kind: 'mkdir', target: 'C:\\Projects\\归档', status: 'success', message: '' }] };
@@ -192,6 +251,98 @@ const server = http.createServer((req, res) => {
       };
     }, { pdf: makePreviewPdf(), startupOnly: browserStartupOnly, sshRecovery: sshRecoveryOnly, builtinMode: builtinSkillsOnly, builtinSkills: makeBuiltinSkills(), copyPaths: copyPathsOnly });
     await page.goto(`http://127.0.0.1:${server.address().port}`);
+    if (panesOnly) { await require('./dual_pane_checks.cjs')(page, output); assert.deepEqual(errors, []); console.log('Dual pane checks passed.'); return; }
+    if (transfersOnly) {
+      await require('./ssh_transfer_queue_checks.cjs')(page, output);
+      assert.deepEqual(errors, []); console.log('SFTP batch queue UI passed.'); return;
+    }
+    if (productivityOnly) {
+      await require('./productivity_checks.cjs')(page, { folder: 'C:\\Projects', output });
+      assert.deepEqual(errors, []);
+      console.log('Conversation archive and tab productivity UI checks passed.'); return;
+    }
+    if (stabilityOnly) {
+      await require('./render_stability_checks.cjs')(page, { folder: 'C:\\Projects', output, resize: (width, height) => page.setViewportSize({ width, height }) });
+      await page.evaluate(() => {
+        previewOpen = false; state.filter = ''; els.search.value = ''; renderAll();
+        window.mockListDeferred = true; window.pendingRefresh = refresh();
+      });
+      await page.waitForFunction(() => !!window.resolveMockList);
+      await page.evaluate(() => { state.selection = new Set(['Project-notes-2.md']); els.scroller.scrollTop = 300; window.resolveMockList(); });
+      await page.evaluate(() => window.pendingRefresh);
+      assert.deepEqual(await page.evaluate(() => [...state.selection]), ['Project-notes-2.md']);
+      assert.equal(await page.evaluate(() => els.scroller.scrollTop), 300);
+      await page.evaluate(() => {
+        window.mockListDeferred = false;
+        startRename('Project-notes-1.md');
+        window.mockEntries = [...state.entries, { name: 'arrived-while-editing.txt', ext: 'txt', size: 5, mtime: 1, isDir: false }];
+        window.emitMockEvent('fs-changed', state.path);
+      });
+      await page.waitForTimeout(500);
+      assert.equal(await page.locator('input.rn').count(), 1);
+      await page.keyboard.press('Escape');
+      await page.waitForFunction(() => state.entries.some((e) => e.name === 'arrived-while-editing.txt'));
+      await page.evaluate(() => { startRename('Project-notes-1.md'); document.querySelector('input.rn').value = 'must-not-rename.md'; window.renamesBefore = window.mockCalls.filter((c) => c.cmd === 'rename_path').length; void navigate('D:\\Other'); });
+      await page.waitForFunction(() => !state.loading && state.path === 'D:\\Other');
+      assert.equal(await page.evaluate(() => window.mockCalls.filter((c) => c.cmd === 'rename_path').length === window.renamesBefore), true);
+      await page.evaluate(async () => {
+        await newBrowserTab('https://one.example/'); await newBrowserTab('https://two.example/'); await syncBrowserBounds();
+        window.layoutsBefore = window.mockCalls.filter((c) => c.cmd === 'browser_set_active').length;
+        for (let i = 0; i < 30; i++) renderWorkspace(); await syncBrowserBounds();
+      });
+      assert.equal(await page.evaluate(() => window.mockCalls.filter((c) => c.cmd === 'browser_set_active').length), await page.evaluate(() => window.layoutsBefore));
+      assert.deepEqual(errors, []);
+      console.log('Render stability passed: unchanged DOM retained, virtual rows reused, rename draft/focus retained on resize, latest selection/scroll preserved, deferred filesystem events applied, scoped rename, double-buffered PDF, browser IPC deduplicated.');
+      return;
+    }
+    if (archiveOnly) {
+      await page.locator('.row').first().waitFor();
+      await page.locator('.row').filter({ hasText: 'Project-notes-1.md' }).first().click({ button: 'right' });
+      await page.locator('[data-mid="archive"]').click();
+      await page.locator('#archiveDialog[open]').waitFor();
+      assert.equal(await page.locator('#archiveName').inputValue(), 'Project-notes-1.7z');
+      await page.locator('#archiveBrowse').click();
+      await page.waitForFunction(() => document.getElementById('archiveDirectory').value === 'D:\\Archives');
+      await page.locator('#archiveEncrypt').check();
+      await page.locator('#archivePassword').fill('fixture-secret');
+      await page.locator('#archiveConfirm').fill('different');
+      await page.locator('#archiveStart').click();
+      assert.ok((await page.locator('#archiveStatus').textContent()).includes('不一致'));
+      assert.equal(await page.evaluate(() => mockCalls.some((c) => c.cmd === 'archive_start')), false);
+      await page.locator('#archiveFormat').selectOption('zip');
+      assert.equal(await page.locator('#archiveEncryptNames').isDisabled(), true);
+      assert.ok((await page.locator('#archiveEncryptionHint').textContent()).includes('文件名仍可见'));
+      assert.equal(await page.locator('#archiveName').inputValue(), 'Project-notes-1.zip');
+      await page.locator('#archiveFormat').selectOption('7z');
+      await page.locator('#archiveConfirm').fill('fixture-secret');
+      await page.screenshot({ path: path.join(output, 'archive-options.png') });
+      await page.setViewportSize({ width: 960, height: 560 });
+      await page.evaluate(() => toggleTheme());
+      await page.screenshot({ path: path.join(output, 'archive-options-small-dark.png') });
+      await page.locator('#archiveStart').click();
+      await page.waitForFunction(() => archiveDialogState?.id);
+      assert.equal(await page.locator('#archivePassword').inputValue(), '');
+      assert.equal(await page.evaluate(() => JSON.stringify(localStorage).includes('fixture-secret')), false);
+      await page.evaluate(() => { mockArchiveCancelError = true; });
+      await page.locator('#archiveDialog [data-archive-close]').last().click();
+      assert.equal(await page.evaluate(() => archiveDialogState.running && fileOpBusy), true, 'failed cancel cannot claim completion');
+      await page.evaluate(() => { mockArchiveCancelError = false; });
+      await page.keyboard.press('Escape');
+      await page.waitForFunction(() => !archiveDialogState.running);
+      assert.ok((await page.locator('#archiveStatus').textContent()).includes('已取消'));
+      assert.equal(await page.evaluate(() => fileOpBusy), false);
+      await page.locator('#archiveEncrypt').uncheck();
+      await page.evaluate(() => { mockArchivePhase = 'done'; });
+      await page.locator('#archiveStart').click();
+      await page.waitForFunction(() => archiveDialogState.output);
+      assert.equal(await page.locator('#archiveLocate').isVisible(), true);
+      assert.equal(await page.locator('#archiveProgress').getAttribute('value'), '100');
+      await page.locator('#archiveDialog [data-archive-close]').last().click();
+      assert.equal(await page.locator('#archiveDialog').count(), 0);
+      assert.deepEqual(errors, []);
+      console.log('Archive UI passed: context menu, name/format/destination, password mismatch, hidden-name rules, progress, cancel failure/retry/Escape, cleared credentials, completion and small dark layout.');
+      return;
+    }
     if (workbenchOnly) {
       await page.locator('.row').first().waitFor();
       await page.locator('[data-place-add]').click();
@@ -699,13 +850,57 @@ const server = http.createServer((req, res) => {
     await page.locator('#search').fill('notes ext:md');
     await page.locator('[data-quick-result]').first().waitFor();
     assert.equal(await page.locator('[data-quick-result]').count(), 12);
+    await page.locator('#search').press('ArrowDown');
+    await page.evaluate(() => {
+      window.savedSearchRow = document.querySelector('[data-quick-result="1"]');
+      window.savedSearchScroll = document.querySelector('#quickSearchResults').scrollTop = 40;
+      window.mockSearchDeferred = true;
+      for (let i = 0; i < 10; i++) window.mockListeners['index-updated'].forEach((fn) => fn({ payload: {} }));
+    });
+    await page.waitForFunction(() => typeof window.resolveMockSearch === 'function');
+    assert.equal(await page.locator('[data-quick-result]').count(), 12, 'index refresh keeps old rows visible');
+    assert.equal(await page.evaluate(() => savedSearchRow === document.querySelector('[data-quick-result="1"]')), true);
+    await page.evaluate(() => { window.mockSearchDeferred = false; window.resolveMockSearch(); });
+    await page.waitForFunction(() => !quickState.pending && quickState.timer === null);
+    assert.equal(await page.evaluate(() => savedSearchRow === document.querySelector('[data-quick-result="1"]') && savedSearchRow.classList.contains('selected') && document.querySelector('#quickSearchResults').scrollTop === savedSearchScroll), true, 'unchanged rows, selection and scroll survive refresh');
     await page.screenshot({ path: path.join(output, 'search.png') });
     assert.equal(await page.locator('#quickSearchInput').count(), 0, 'one input serves every search type');
     await page.locator('#searchMode').selectOption('tree');
     await page.waitForFunction(() => window.mockCalls.filter((c) => c.cmd === 'search_files').at(-1)?.args.scope === 'C:\\Projects');
+    await page.waitForFunction(() => !quickState.pending && quickState.resultKey === quickRequestKey());
+    const tabsBeforeReveal = await page.evaluate(() => state.tabs.length);
+    await page.locator('[data-quick-result]').first().locator('[data-quick-action="reveal"]').click();
+    await page.waitForFunction(() => !state.loading && state.selection.has('预览示例.pdf'));
+    assert.equal(await page.evaluate(() => state.tabs.length), tabsBeforeReveal + 1, 'locate opens an internal file tab');
+    assert.equal(await page.evaluate(() => window.mockCalls.some((call) => call.cmd === 'reveal_path')), false);
+    await page.evaluate(() => closeTab(state.tab));
+    await page.waitForFunction(() => !state.loading);
     await page.keyboard.press('Escape');
     await page.locator('#searchMode').selectOption('local');
     await page.locator('#search').fill('');
+    await page.locator('#searchSyntaxHelp').click();
+    assert.ok((await page.locator('#searchSyntaxDialog').textContent()).includes('size:>10mb'));
+    await page.locator('[data-syntax-close]').last().click();
+    await page.evaluate(() => {
+      const row = [...document.querySelectorAll('.row[data-i]')].find((node) => state.view[Number(node.dataset.i)].isDir);
+      const bounds = row.getBoundingClientRect();
+      window.dropFixtureTarget = join(state.path, state.view[Number(row.dataset.i)].name);
+      const position = { x: (bounds.x + 20) * devicePixelRatio, y: (bounds.y + bounds.height / 2) * devicePixelRatio };
+      window.mockListeners['tauri://drag-enter'].forEach((fn) => fn({ payload: { paths: ['C:\\Downloads\\fixture.txt'], position } }));
+      window.mockListeners['tauri://drag-drop'].forEach((fn) => fn({ payload: { paths: ['C:\\Downloads\\fixture.txt'], position } }));
+    });
+    assert.equal(await page.locator('#externalDropDialog .drop-destination').textContent(), await page.evaluate(() => dropFixtureTarget));
+    assert.equal(await page.evaluate(() => window.mockCalls.filter((c) => c.cmd === 'external_drop_transfer').length), 0, 'release alone never moves files');
+    await page.evaluate(() => { window.mockDropFailure = true; });
+    await page.locator('[data-drop-kind="move"]').click();
+    await page.waitForFunction(() => document.querySelector('#externalDropStatus').textContent.includes('Destination unavailable'));
+    assert.equal(await page.locator('[data-drop-kind="move"]').isEnabled(), true, 'failed transfer can be retried');
+    await page.evaluate(() => { window.mockDropFailure = false; });
+    await page.screenshot({ path: path.join(output, 'external-drop.png') });
+    await page.locator('[data-drop-kind="move"]').click();
+    await page.locator('#externalDropDialog').waitFor({ state: 'detached' });
+    await page.waitForFunction(() => !state.loading && !fileOpBusy);
+    assert.deepEqual(await page.evaluate(() => window.mockCalls.filter((c) => c.cmd === 'external_drop_transfer').at(-1).args), { kind: 'move', sources: ['C:\\Downloads\\fixture.txt'], dest: await page.evaluate(() => dropFixtureTarget) });
     await page.evaluate(() => openAiAssistant());
     await page.locator('[data-agent-open="skills"]').click();
     await page.locator('[data-agent-skill-group="builtin"] [data-agent-skill]').last().waitFor();
@@ -820,6 +1015,25 @@ const server = http.createServer((req, res) => {
     await page.locator('#btnSettings').click();
     await page.locator('#workspaceSettings').waitFor();
     await page.screenshot({ path: path.join(output, 'workspace-settings.png') });
+    await page.locator('[data-settings-tool="portable"]').click();
+    await page.locator('#portableSettingsDialog[open]').waitFor();
+    await page.locator('#portableToggle').click();
+    await page.waitForFunction(() => portableStatus?.enabled && !portableTransition);
+    assert.equal(await page.evaluate(() => JSON.stringify(JSON.parse(localStorage.getItem('mock.portableSettings'))).includes('dummy-session-key')), false);
+    await page.evaluate(() => toggleTheme());
+    await page.waitForFunction(() => !portableWriter && JSON.parse(localStorage.getItem('mock.portableSettings')).settings.theme === store.get('theme', 'light'));
+    await page.screenshot({ path: path.join(output, 'portable-settings.png') });
+    await page.evaluate(() => { window.mockPortableFailure = true; });
+    await page.locator('#portableSave').click();
+    await page.waitForFunction(() => document.getElementById('portableStatus').textContent.includes('read-only'));
+    assert.equal(await page.evaluate(() => portableStatus.enabled), true, 'failed write must not claim that portable mode changed');
+    await page.evaluate(() => { window.mockPortableFailure = false; });
+    await page.locator('#portableSave').click();
+    await page.waitForFunction(() => !portablePaused && !portableTransition);
+    await page.locator('#portableToggle').click();
+    await page.waitForFunction(() => portableStatus?.enabled === false && !portableTransition);
+    await page.locator('#portableSettingsDialog [data-portable-close]').last().click();
+    await page.locator('#btnSettings').click();
     await page.locator('[data-settings-tool="commands"]').click();
     assert.equal(await page.locator('dialog[open]').count(), 1);
     await page.keyboard.press('Escape');

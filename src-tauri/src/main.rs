@@ -4,9 +4,13 @@
 
 mod agent_profile;
 mod ai;
+mod archive;
 mod browser;
+mod external_drop;
 mod index;
+mod portable_settings;
 mod preview;
+mod search_query;
 mod ssh;
 mod ssh_credentials;
 mod ssh_managed;
@@ -429,6 +433,21 @@ fn rename_path(old: String, new: String) -> Result<(), String> {
 struct WatchState(Mutex<Option<notify::RecommendedWatcher>>);
 
 #[tauri::command]
+fn ui_set_theme(window: tauri::WebviewWindow, theme: String) -> Result<(), String> {
+    if window.label() != "main" {
+        return Err("Only the main workspace may change its appearance".into());
+    }
+    let color = match theme.as_str() {
+        "dark" => tauri::utils::config::Color(20, 24, 34, 255),
+        "light" => tauri::utils::config::Color(246, 247, 251, 255),
+        _ => return Err("Invalid workspace theme".into()),
+    };
+    window
+        .set_background_color(Some(color))
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 fn watch(path: String, app: AppHandle, state: State<'_, WatchState>) -> Result<(), String> {
     let mut slot = state.0.lock().unwrap();
     if path.is_empty() {
@@ -437,8 +456,17 @@ fn watch(path: String, app: AppHandle, state: State<'_, WatchState>) -> Result<(
     }
     // One pending event is enough: a refresh enumerates the whole directory.
     let (tx, rx) = std::sync::mpsc::sync_channel::<()>(1);
-    let mut watcher = notify::recommended_watcher(move |_res: notify::Result<notify::Event>| {
-        let _ = tx.try_send(());
+    let mut watcher = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
+        // Merely reading a preview/directory must not cause another enumeration.
+        if !matches!(
+            res,
+            Ok(notify::Event {
+                kind: notify::EventKind::Access(_),
+                ..
+            })
+        ) {
+            let _ = tx.try_send(());
+        }
     })
     .map_err(|e| format!("watcher: {}", e))?;
     notify::Watcher::watch(
@@ -464,6 +492,7 @@ fn main() {
     tauri::Builder::default()
         .manage(WatchState(Mutex::new(None)))
         .manage(browser::BrowserState::default())
+        .manage(portable_settings::PortableState::default())
         .setup(|app| {
             // If the shell cannot create an icon, keep normal taskbar
             // minimization available instead of hiding an unreachable window.
@@ -476,6 +505,8 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            portable_settings::portable_settings_load,
+            portable_settings::portable_settings_save,
             list_dir,
             preview::preview_file,
             roots,
@@ -483,11 +514,17 @@ fn main() {
             open_with,
             reveal,
             file_op,
+            external_drop::external_drop_transfer,
+            archive::archive_start,
+            archive::archive_progress,
+            archive::archive_cancel,
+            archive::archive_pick_directory,
             create_dir,
             rename_path,
             index::dir_sizes,
             index::sizes_lookup,
             index::search_files,
+            search_query::search_parse,
             index::search_status,
             index::search_rebuild,
             ai::ai_plan,
@@ -497,6 +534,11 @@ fn main() {
             ai::ai_discard,
             ai::ai_execute,
             agent_profile::agent_profile,
+            agent_profile::conversations::agent_chat_list,
+            agent_profile::conversations::agent_chat_read,
+            agent_profile::conversations::agent_chat_save,
+            agent_profile::conversations::agent_chat_delete,
+            agent_profile::conversations::agent_chat_export,
             agent_profile::agent_skill_import,
             agent_profile::agent_skill_set,
             agent_profile::agent_skill_remove,
@@ -521,6 +563,7 @@ fn main() {
             browser::browser_clear_data,
             browser::browser_downloads_show,
             watch,
+            ui_set_theme,
             ssh::ssh_check_client,
             ssh::ssh_start,
             ssh_managed::ssh_probe_host,
@@ -531,6 +574,11 @@ fn main() {
             ssh_managed::files::ssh_files_list,
             ssh_managed::files::ssh_pick_file,
             ssh_managed::files::ssh_file_transfer,
+            ssh_managed::files::ssh_transfer_status,
+            ssh_managed::files::resume::ssh_resume_discard,
+            ssh_managed::files::batch::ssh_transfer_prepare,
+            ssh_managed::files::batch::ssh_pick_upload_files,
+            ssh_managed::files::batch::ssh_pick_download_directory,
             ssh_managed::files::ssh_transfer_cancel,
             term::term_start,
             term::term_write,

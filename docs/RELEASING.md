@@ -51,4 +51,11 @@ python tools/package_source.py
 4. Windows 可执行文件通过 GitHub Releases 附件分发，源码仓库不提交 exe、pdb 或整个 target。发布包需随附本项目 LICENSE、第三方声明和实际分发组件的许可文本；Rust 依赖范围以锁文件和构建目标为准。
 5. 发布说明注明版本、Windows 架构、WebView2 要求及 OpenSSH 仅为兼容模式所需、预览限制和已知问题。浏览器登录数据、用户技能配置及 `.dalizi` 记忆不应随包分发。
 
-当前 `tauri.conf.json` 的安装包构建关闭；普通 `cargo build` 只生成应用程序，不生成安装器。程序仍使用本机应用数据目录，不能将“复制 exe 可运行”宣传为完整便携数据模式。
+当前 `tauri.conf.json` 的安装包构建关闭；普通 `cargo build` 只生成应用程序，不生成安装器。可选便携配置将通用偏好、AI 接口参数、网页收藏与历史保存在 EXE 同级的 `DaliziData/`。发布包与源码包不得携带这个个人数据目录（已加入忽略与仓库检查）。技能、索引、浏览器登录和系统凭据仍使用本机存储，不能宣传为完整数据便携。
+
+
+## 可重复打包与校验
+
+完成测试、同步版本并提交源码后，运行 `python tools/package_windows.py --licenses <已核对的许可证目录>`。许可证目录需包含 `frontend/`、`rust/`；可复用依赖版本完全一致的上一发行包，工具逐项核对当前 Windows 依赖树与许可证目录，缺失时拒绝打包。依赖变化时先补齐对应上游许可。
+
+工具核对 EXE 的版本资源，只复制 EXE、许可文本、使用说明与版本说明；生成 `BUILDINFO.json`、逐文件 SHA-256、ZIP 校验文件，并验证压缩包可解压且内容一致。同名包不会覆盖。上传 GitHub 草稿 Release 后核对附件大小与摘要，全部验证完成再公开；源码标签应指向 BUILDINFO 记录的提交。

@@ -1,0 +1,27 @@
+#aiPanel.has-chat-archives { grid-template-rows: var(--ai-header-height) auto auto auto minmax(0, 1fr) auto; }
+#aiPanel.has-chat-archives .ai-messages { grid-area: 5 / 1; }
+#aiPanel.has-chat-archives .ai-composer { grid-area: 6 / 1; }
+#aiArchiveBar { grid-area: 4 / 1; }
+#aiArchiveBar { display: flex; gap: 12px; align-items: center; padding: 5px 16px; border-bottom: 1px solid var(--border); font-size: 11px; min-width: 0; }
+#aiArchiveBar [data-chat-status] { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--txt3); }
+#aiArchiveBar button { flex-shrink: 0; }
+.chat-history-dialog { width: min(760px, calc(100vw - 36px)); }
+.chat-history-dialog .file-settings-body { max-height: 67vh; overflow: auto; }
+.chat-root { overflow-wrap: anywhere; font-weight: 600; }
+.chat-note, #chatCurrentStatus { color: var(--txt3); font-size: 12px; line-height: 1.65; }
+.chat-current { display: grid; gap: 10px; padding: 16px; background: var(--bg2); border: 1px solid var(--border); border-radius: 12px; }
+.chat-current input[type=text], #chatArchiveTitle { min-width: 0; padding: 9px; color: var(--txt); background: var(--bg); border: 1px solid var(--border); border-radius: 7px; }
+.chat-auto { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.chat-actions, .chat-list-heading { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.chat-list-heading { justify-content: space-between; margin-top: 12px; }
+.chat-history-dialog button { cursor: pointer; }
+.chat-actions button, .chat-list-heading button { padding: 7px 12px; border: 1px solid var(--border); background: var(--bg); border-radius: 7px; color: var(--txt); }
+.chat-actions button:hover, #chatSavedList button:hover { background: var(--bg2); }
+#chatSavedList { display: grid; gap: 6px; max-height: 220px; overflow: auto; }
+#chatSavedList button { display: grid; gap: 5px; text-align: left; padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--txt); }
+#chatSavedList strong { overflow-wrap: anywhere; }
+#chatSavedList small { color: var(--txt3); }
+#chatSavedPreview { margin-top: 16px; border-top: 1px solid var(--border); }
+#chatPreviewText { max-height: 240px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; font-size: 12px; line-height: 1.7; background: var(--bg2); padding: 12px; border-radius: 8px; }
+#chatHistoryStatus { overflow-wrap: anywhere; }
+#chatConfirmDelete { color: #df4f55; }

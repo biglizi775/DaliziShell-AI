@@ -3,6 +3,8 @@
 
 let browserEventsReady;
 let browserBoundsGeneration = 0;
+let browserBoundsPromise = null;
+const browserAppliedBounds = new Map();
 
 function browserBounds() {
   const rect = els.browserHost?.getBoundingClientRect();
@@ -103,14 +105,42 @@ browserEventsReady = Promise.all([
   listen('browser-settings-error', (event) => toast(String(event.payload), true)),
 ]).catch(() => null);
 
-async function syncBrowserBounds() {
-  const generation = ++browserBoundsGeneration;
-  const active = curTab();
-  const covered = !!document.querySelector('dialog[open]') || !els.menuLayer.classList.contains('hidden');
-  for (const tb of state.tabs.filter((item) => isBrowserTab(item) && item.browserReady)) {
-    if (generation !== browserBoundsGeneration) return;
-    await invoke('browser_set_active', { key: tb.key, active: tb === active && !covered, bounds: browserBounds() }).catch(() => {});
-  }
+function syncBrowserBounds() {
+  ++browserBoundsGeneration;
+  if (browserBoundsPromise) return browserBoundsPromise;
+  let completedGeneration;
+  browserBoundsPromise = (async () => {
+    let generation;
+    do {
+      // Wait for the current DOM/layout update, coalescing its repeated callers.
+      await Promise.resolve();
+      generation = browserBoundsGeneration;
+      const active = curTab(), bounds = browserBounds();
+      const covered = !!document.querySelector('dialog[open]') || !els.menuLayer.classList.contains('hidden');
+      const tabs = state.tabs.filter((tb) => isBrowserTab(tb) && tb.browserReady && !tb.disposed);
+      const keys = new Set(tabs.map((tb) => tb.key));
+      for (const key of browserAppliedBounds.keys()) if (!keys.has(key)) browserAppliedBounds.delete(key);
+      // Hide the old surface before showing the new one. IPC is serialized so
+      // a delayed old hide/show can never overtake a newer activation.
+      tabs.sort((a, b) => Number(a === active) - Number(b === active));
+      for (const tb of tabs) {
+        if (generation !== browserBoundsGeneration) break;
+        const visible = tb === active && !covered;
+        const signature = visible ? JSON.stringify(bounds) : 'hidden';
+        if (browserAppliedBounds.get(tb.key) === signature) continue;
+        try {
+          await invoke('browser_set_active', { key: tb.key, active: visible, bounds });
+          browserAppliedBounds.set(tb.key, signature);
+        } catch { browserAppliedBounds.delete(tb.key); }
+      }
+    } while (generation !== browserBoundsGeneration);
+    completedGeneration = generation;
+  })().finally(() => {
+    browserBoundsPromise = null;
+    // A caller can arrive between settling the worker and this finalizer.
+    if (completedGeneration !== undefined && completedGeneration !== browserBoundsGeneration) return syncBrowserBounds();
+  });
+  return browserBoundsPromise;
 }
 
 function ensureBrowserTab(tb, retry = false) {
@@ -160,6 +190,7 @@ async function newBrowserTab(url = browserNewTabUrl()) {
 function closeBrowserTab(tb) {
   if (!tb || !isBrowserTab(tb)) return;
   tb.disposed = true;
+  browserAppliedBounds.delete(tb.key);
   if (tb.browserReady) invoke('browser_close', { key: tb.key }).catch(() => {});
   tb.browserReady = false;
   if (typeof persistBrowserSession === 'function') persistBrowserSession();
@@ -252,6 +283,5 @@ els.browserHome.innerHTML = IC.home;
 new MutationObserver((changes) => {
   if (changes.some((change) => change.target.tagName === 'DIALOG' || change.target === els.menuLayer)) syncBrowserBounds();
 }).observe(document.body, { subtree: true, attributes: true, attributeFilter: ['open', 'class'] });
-window.addEventListener('resize', syncBrowserBounds);
 
 

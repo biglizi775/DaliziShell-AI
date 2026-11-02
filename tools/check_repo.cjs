@@ -13,7 +13,7 @@ try {
   const files = [...new Set(git('ls-files', '--cached', '--others', '--exclude-standard', '-z').split('\0').filter(Boolean))]
     .filter(file => fs.existsSync(path.join(root, file)));
   const included = new Set(files);
-  const forbidden = /(^|\/)(?:target|node_modules|__pycache__|\.venv|\.dalizi|\.codex|browser-profiles)(\/|$)|^(?:dist|tools\/vendor-cache|src-tauri\/gen)\/|(?:^|\/)\.env(?:\.|$)|(?:^|\/)\.cargo\/config\.toml$/;
+  const forbidden = /(^|\/)(?:target|node_modules|__pycache__|\.venv|\.dalizi|\.codex|browser-profiles|DaliziData)(\/|$)|^(?:dist|tools\/vendor-cache|src-tauri\/gen)\/|(?:^|\/)\.env(?:\.|$)|(?:^|\/)\.cargo\/config\.toml$/;
   for (const file of files) {
     if (forbidden.test(file) && !file.endsWith('/.env.example') && file !== '.env.example') errors.push(`Local/generated file is included: ${file}`);
     if (fs.statSync(path.join(root, file)).size > 50 * 1024 * 1024) errors.push(`Source file exceeds 50 MiB: ${file}`);
@@ -21,7 +21,7 @@ try {
   for (const file of ['src-tauri/Cargo.lock', 'package-lock.json', 'LICENSE', 'ui/vendor/LICENSE.xterm', 'ui/vendor/LICENSE.xterm-addon-fit', 'ui/vendor/pdfjs/LICENSE']) {
     if (!included.has(file)) errors.push(`Required source file is missing or ignored: ${file}`);
   }
-  for (const file of ['src-tauri/target/release/app.exe', 'src-tauri/gen/schemas/windows-schema.json', 'tools/vendor-cache/download.tgz', 'tools/__pycache__/fixture.pyc', '.dalizi/agent-memory.json', 'dist/source.zip', 'src-tauri/.cargo/config.toml', '.env']) {
+  for (const file of ['src-tauri/target/release/app.exe', 'src-tauri/gen/schemas/windows-schema.json', 'tools/vendor-cache/download.tgz', 'tools/__pycache__/fixture.pyc', '.dalizi/agent-memory.json', 'DaliziData/preferences.json', 'dist/source.zip', 'src-tauri/.cargo/config.toml', '.env']) {
     const check = spawnSync('git', ['-C', root, 'check-ignore', '--no-index', '-q', '--', file], { windowsHide: true });
     if (check.status !== 0) errors.push(`Ignore rule does not cover: ${file}`);
   }

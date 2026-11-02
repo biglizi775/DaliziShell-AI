@@ -263,10 +263,17 @@ pub async fn browser_create(
     let child = window
         .add_child(
             builder,
-            LogicalPosition::new(bounds.x, bounds.y),
+            // The tab may finish creating after the user has switched away.
+            // Keep the initial blank surface outside the visible client area;
+            // only browser_set_active publishes its final geometry.
+            LogicalPosition::new(-32000.0, -32000.0),
             LogicalSize::new(bounds.width, bounds.height),
         )
         .map_err(|e| e.to_string())?;
+    if let Err(error) = child.hide() {
+        let _ = child.close();
+        return Err(error.to_string());
+    }
     let mut result = settings::apply(child.clone(), settings.clone()).await;
     // Tauri initializes every child with its parent window's theme, which
     // writes a shared profile preference. Restore every existing native view
@@ -341,13 +348,15 @@ pub fn browser_set_active(
         .get(&key)
         .cloned()
         .ok_or_else(|| "browser tab not found".to_string())?;
-    webview
-        .set_position(LogicalPosition::new(bounds.x, bounds.y))
-        .map_err(|e| e.to_string())?;
-    webview
-        .set_size(LogicalSize::new(bounds.width, bounds.height))
-        .map_err(|e| e.to_string())?;
     let result = if active {
+        // One native bounds change avoids painting an intermediate position
+        // with the previous size. Hidden tabs retain their page viewport.
+        webview
+            .set_bounds(tauri::Rect {
+                position: LogicalPosition::new(bounds.x, bounds.y).into(),
+                size: LogicalSize::new(bounds.width, bounds.height).into(),
+            })
+            .map_err(|e| e.to_string())?;
         webview.show()
     } else {
         webview.hide()

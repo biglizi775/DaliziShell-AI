@@ -87,6 +87,7 @@ pub fn ssh_forget_credential(config: SshConfig) -> Result<(), String> {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AuthInput { pub secret: Option<String>, #[serde(default)] pub remember: bool, #[serde(default)] pub use_saved: bool }
 pub(super) struct Session {
+    pub resume_identity: String,
     pub id: u32, pub key: String, pub handle: client::Handle<Verifier>,
     writer: russh::ChannelWriteHalf<client::Msg>,
     pub stop: watch::Sender<bool>, pub sftp: OnceCell<Arc<russh_sftp::client::SftpSession>>,
@@ -132,7 +133,7 @@ pub async fn ssh_managed_start(key: String, config: SshConfig, auth: AuthInput, 
         let (stop, _) = watch::channel(false);
         let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
         if id < FIRST_ID { return Err("SSH session limit reached; restart the app".into()); }
-        let session = Arc::new(Session { id, key, handle, writer, stop, sftp: OnceCell::new(), transfers: Mutex::new(HashMap::new()), mode: config.info_mode });
+        let session = Arc::new(Session { id, key, handle, writer, stop, sftp: OnceCell::new(), transfers: Mutex::new(HashMap::new()), mode: config.info_mode, resume_identity: credential_id.clone() });
         sessions().lock().unwrap().insert(id, session.clone());
         let mut saved = false; let mut warning = None;
         if auth.remember && !secret.is_empty() {
