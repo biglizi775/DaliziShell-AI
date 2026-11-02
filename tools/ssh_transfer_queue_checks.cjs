@@ -47,15 +47,11 @@ module.exports = async (page, output) => {
   await page.waitForFunction(() => sshBatchDone(sshTaskBatches[3]));
   await page.evaluate(() => { mockTransferOwner.key = 'new-login'; mockTransferOwner.termId++; mockTransferOwner.exited = false; });
   await page.locator('[data-task-retry]').click(); await page.waitForSelector('#sshBatchReview[open]');
-  assert.equal(await page.locator('#sshBatchStart').isDisabled(), true, JSON.stringify(await page.evaluate(() => ({
-    selected: sshTaskDialog?.dataset.selected,
-    batches: sshTaskBatches.map(b => ({ id: b.id, items: b.items.map(i => ({ status: i.status, token: i.transferId })), retried: b.retried })),
-    verified: document.getElementById('sshBatchVerified')?.checked,
-    review: document.getElementById('sshBatchReview')?.textContent,
-  }))));
+  assert.equal(await page.locator('#sshBatchStart').isDisabled(), true);
   await page.locator('#sshBatchVerified').check(); await page.locator('#sshBatchStart').click();
   await page.waitForFunction(() => sshTaskBatches.length === 5); await page.locator('[data-task-cancel]').click();
   await page.waitForFunction(() => sshBatchDone(sshTaskBatches[4]));
   await page.locator('[data-task-clear]').click(); await page.waitForFunction(() => sshTaskBatches.length === 0);
-  assert.equal(await page.locator('#sshTaskEmpty').isVisible(), true);
+  // Clearing state and painting the empty view are separated by an animation frame.
+  await page.locator('#sshTaskEmpty').waitFor({ state: 'visible' });
 };
