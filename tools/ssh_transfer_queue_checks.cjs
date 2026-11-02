@@ -41,6 +41,8 @@ module.exports = async (page, output) => {
   assert.equal(await page.locator('#sshBatchList button').first().evaluate((el) => getComputedStyle(el).color), 'rgb(232, 237, 247)');
   await page.locator('[data-tasks-close]').last().click();
   await page.locator('[data-upload]').click(); await page.locator('#sshBatchStart').click();
+  // This case tests a disconnect during copying, not cancelling an unstarted queue.
+  await page.waitForFunction(() => sshTaskBatches.length === 4 && sshTaskBatches[3].items[0].status === 'running' && !sshTaskBatches[3].items[0].launchPending);
   await page.evaluate(() => { mockTransferOwner.exited = true; disconnectSshQueue(mockTransferOwner); });
   await page.waitForFunction(() => sshBatchDone(sshTaskBatches[3]));
   await page.evaluate(() => { mockTransferOwner.key = 'new-login'; mockTransferOwner.termId++; mockTransferOwner.exited = false; });
