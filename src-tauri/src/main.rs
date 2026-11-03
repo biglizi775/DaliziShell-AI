@@ -571,6 +571,7 @@ fn main() {
             ssh_managed::ssh_forget_credential,
             ssh_managed::ssh_managed_start,
             ssh_managed::ssh_managed_stats,
+            ssh_managed::ssh_managed_status,
             ssh_managed::files::ssh_files_list,
             ssh_managed::files::ssh_pick_file,
             ssh_managed::files::ssh_file_transfer,

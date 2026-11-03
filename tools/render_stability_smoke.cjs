@@ -39,6 +39,15 @@ let app, browser;
     assert.ok(page); const errors = [];
     page.on('pageerror', (error) => errors.push(error.message));
     const control = (action, width = 1280, height = 800) => execFileSync('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(root, 'tools/window_fixture.ps1'), '-FixturePid', String(app.pid), '-FixtureExe', exe, '-Action', action, '-Width', String(width), '-Height', String(height)], { windowsHide: true, timeout: 15000, stdio: 'pipe' });
+    if (process.argv.includes('--tabs')) {
+      control('resize', 1280, 800);
+      await require('./tab_overflow_checks.cjs')(page, { folder: work, output, native: true, resize: async (width, height) => { control('resize', width, height); } });
+      assert.deepEqual(errors, []);
+      fs.writeFileSync(path.join(output, 'results.json'), JSON.stringify({ exe, tabCount: 60, errors }, null, 2));
+      console.log('Native EXE tab overflow passed: wheel, scrollbar drag, fixed actions, active reveal, edge sorting and narrow window.');
+      console.log(output);
+      return;
+    }
     const metrics = await require('./render_stability_checks.cjs')(page, { folder: work, output, resize: async (width, height) => { control('resize', width, height); } });
     await page.evaluate(async () => { previewOpen = false; state.filter = ''; els.search.value = ''; renderAll(); await applyWorkspaceTheme('light'); });
     // Actual filesystem notifications: a busy editor defers, then catches up.

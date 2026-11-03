@@ -174,7 +174,7 @@ function initSshTaskCenter() {
 function selectedSshFiles(view) { return view.entries.filter((entry, index) => view.selection?.has(index) && !entry.isLink); }
 async function beginSshBatch(tb, direction, folder = false) {
   const view = tb.sshFiles;
-  if (!view || view.busy || tb.exited || !tb.sshAuthenticated || tb.sshDisconnectRequested || sshTaskPicker || sshTaskReview?.open) return;
+  if (!view || view.busy || view.ready === false || tb.exited || !tb.sshAuthenticated || tb.sshDisconnectRequested || sshTaskPicker || sshTaskReview?.open) return;
   const selected = selectedSshFiles(view);
   if (direction === 'download' && !selected.length) return;
   if (selected.length > 200) { toast(sshTaskText('每批最多 200 个文件，请减少选择。', 'Select at most 200 files per batch.'), true); return; }

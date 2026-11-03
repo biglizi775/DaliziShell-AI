@@ -19,12 +19,12 @@ function harness({ saved = snapshot(), settings = { restoreSession: true, record
   const storage = new Map([['browserSession', structuredClone(saved)], ['browserSettings', structuredClone(settings)]]);
   const writes = [], calls = [], events = {}, notices = [];
   const state = { tabs: [{ path: 'C:\\files', history: ['C:\\files'], hIdx: 0 }], tab: 0, path: 'C:\\files', navToken: 0, gen: 0 };
-  const node = () => ({ value: '', innerHTML: '', disabled: false, listeners: {}, classList: { contains: () => true }, addEventListener(name, callback) { this.listeners[name] = callback; }, getBoundingClientRect: () => ({ left: 0, top: 0, width: 800, height: 600 }) });
+  const node = () => ({ value: '', innerHTML: '', disabled: false, listeners: {}, querySelectorAll: () => [], classList: { contains: () => true }, addEventListener(name, callback) { this.listeners[name] = callback; }, getBoundingClientRect: () => ({ left: 0, top: 0, width: 800, height: 600 }) });
   const els = new Proxy({}, { get(target, key) { return target[key] ||= node(); } });
   const noop = () => {};
   let nextId = 0;
   const context = vm.createContext({
-    state, els, locale: 'en', URL, TextEncoder, console, setTimeout, clearTimeout,
+    state, els, $: (id) => els[id], locale: 'en', URL, TextEncoder, console, setTimeout, clearTimeout,
     crypto: { randomUUID: () => `browser-${++nextId}` },
     store: {
       get: (key, fallback) => storage.has(key) ? structuredClone(storage.get(key)) : fallback,

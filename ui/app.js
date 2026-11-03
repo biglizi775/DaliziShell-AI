@@ -682,7 +682,8 @@ async function newTermTab(cwd, sshConfig) {
     connection: sshConfig ? 'ssh' : 'local', sshConfig: sshConfig ? { host: sshConfig.host, port: sshConfig.port, user: sshConfig.user, identityFile: sshConfig.identityFile || '', infoMode: sshConfig.infoMode || 'posix', label: sshConfig.label || '' } : null,
     term: null, fit: null, el: null, exited: false, starting: true, disposed: false,
     input: '', writing: false, resizing: false };
-  if (sshConfig?.managed) { tb.sshConfig.managed = true; tb.sshAuth = sshConfig.auth; }
+  if (sshConfig?.managed) { tb.sshConfig.managed = true; tb.sshAuth = sshConfig.auth; tb.sshTerminalState = 'starting'; tb.sshTerminalVisible = true; }
+  else if (sshConfig?.managed === false) tb.sshConfig.managed = false;
   state.tabs.push(tb);
   state.tab = state.tabs.length - 1;
   try { attachTerm(tb); }
@@ -740,6 +741,12 @@ function startTermSession(tb, terminalReady = Promise.resolve()) {
         return tb;
       }
       tb.starting = false;
+      if (managed) {
+        // A successful native start is authenticated even if its state event was missed.
+        tb.sshAuthenticated = true;
+        if (typeof ensureSshFilePanel === 'function') ensureSshFilePanel(tb);
+        if (typeof refreshManagedTerminalState === 'function') void refreshManagedTerminalState(tb);
+      }
       if (tb.interruptPending && typeof interruptSshTab === 'function') await interruptSshTab(tb);
       if (!currentTermSession(tb, key)) return tb;
       flushTermInput(tb); fitTerm(tb);
@@ -819,6 +826,7 @@ function attachTerm(tb) {
   term.open(viewport);
   term.onData((d) => {
     if (tb.disposed || tb.exited || tb.sshDisconnectRequested) return;
+    if (tb.sshConfig?.managed && tb.sshTerminalState !== 'ready') return;
     tb.input += d;
     flushTermInput(tb);
   });
@@ -843,6 +851,7 @@ function attachTerm(tb) {
 
 async function flushTermInput(tb) {
   if (tb.writing || tb.termId == null || tb.disposed || tb.exited || tb.sshDisconnectRequested) return;
+  if (tb.sshConfig?.managed && tb.sshTerminalState !== 'ready') return;
   const key = tb.key, id = tb.termId;
   tb.writing = true;
   try {
@@ -859,7 +868,8 @@ async function flushTermInput(tb) {
     tb.input = '';
     if (!tb.exited && !tb.writeErr) {
       tb.writeErr = true;
-      if (tb.connection === 'ssh') { tb.sshError = String(e); if (typeof syncSshInfo === 'function') syncSshInfo(tb); }
+      if (tb.sshConfig?.managed) { tb.sshTerminalMessage = String(e); if (typeof refreshManagedTerminalState === 'function') void refreshManagedTerminalState(tb); }
+      else if (tb.connection === 'ssh') { tb.sshError = String(e); if (typeof syncSshInfo === 'function') syncSshInfo(tb); }
       toast(t('terminal') + ': ' + String(e), true);
     }
   } finally { if (currentTermSession(tb, key)) tb.writing = false; }
@@ -902,6 +912,7 @@ function killTerm(tb) {
 }
 
 function disposeTerm(tb) {
+  tb.sshWorkspaceResize?.disconnect();
   if (typeof disconnectSshQueue === 'function' && tb.connection === 'ssh') disconnectSshQueue(tb);
   tb.disposed = true;
   tb.input = '';
@@ -914,7 +925,10 @@ function disposeTerm(tb) {
 }
 
 function renderTabs() {
-  els.tabbar.innerHTML =
+  const viewport = $('tabViewport'), actions = $('tabActions');
+  const focused = document.activeElement?.closest?.('#tabViewport .tab');
+  const focusOwner = focused?.workbenchTab, focusClose = focused && document.activeElement.classList.contains('tclose');
+  const tabsHtml =
     state.tabs
       .map((tb, i) => {
         const term = isTermTab(tb);
@@ -930,16 +944,23 @@ function renderTabs() {
           <button class="tclose" data-tc="${i}" ${state.tabs.length <= 1 ? 'disabled' : ''}>${IC.x}</button>
         </div>`;
       })
-      .join('') +
+      .join('');
+  if (viewport.renderedHtml !== tabsHtml) { viewport.innerHTML = tabsHtml; viewport.renderedHtml = tabsHtml; }
+  for (const node of viewport.querySelectorAll('.tab')) node.workbenchTab = state.tabs[Number(node.dataset.t)];
+  const actionsHtml =
     `<button id="tabNew" class="tabnew" title="${esc(t('newTab'))}">${IC.plus}</button>` +
     `<button id="tabNewTerm" class="tabnew" title="${esc(t('newTermTab'))}">${IC.tconsole}</button>` +
     `<button id="tabNewSsh" class="tabnew" title="${locale === 'zh' ? '新建 SSH 连接' : 'New SSH connection'}" aria-label="${locale === 'zh' ? '新建 SSH 连接' : 'New SSH connection'}">${IC.ssh || IC.tconsole}<small>SSH</small></button>` +
     `<button id="tabNewBrowser" class="tabnew" title="${locale === 'zh' ? '新建浏览器标签页' : 'New browser tab'}" aria-label="${locale === 'zh' ? '新建浏览器标签页' : 'New browser tab'}">${IC.globe}<small>Web</small></button>`;
-  if (typeof persistBrowserSession === 'function') persistBrowserSession();
-  if (typeof updateReopenTabButton === 'function') {
-    els.tabbar.insertAdjacentHTML('beforeend', `<button id="tabReopen" class="tabnew" title="${locale === 'zh' ? '恢复刚关闭的标签' : 'Reopen closed tab'}" aria-label="${locale === 'zh' ? '恢复刚关闭的标签' : 'Reopen closed tab'}">↶</button>`);
-    updateReopenTabButton();
+  const reopenHtml = typeof updateReopenTabButton === 'function' ? `<button id="tabReopen" class="tabnew" title="${locale === 'zh' ? '恢复刚关闭的标签' : 'Reopen closed tab'}" aria-label="${locale === 'zh' ? '恢复刚关闭的标签' : 'Reopen closed tab'}">↶</button>` : '';
+  if (actions.renderedHtml !== actionsHtml + reopenHtml) { actions.innerHTML = actionsHtml + reopenHtml; actions.renderedHtml = actionsHtml + reopenHtml; }
+  if (typeof updateReopenTabButton === 'function') updateReopenTabButton();
+  if (focusOwner) {
+    const node = viewport.querySelector(`[data-t="${state.tabs.indexOf(focusOwner)}"]`);
+    (focusClose ? node?.querySelector('.tclose') : node)?.focus({ preventScroll: true });
   }
+  if (typeof syncTabViewport === 'function') syncTabViewport();
+  if (typeof persistBrowserSession === 'function') persistBrowserSession();
 }
 
 /* ============================== view building ============================== */
@@ -1806,7 +1827,8 @@ document.addEventListener('keydown', (ev) => {
 
 window.addEventListener('contextmenu', (ev) => ev.preventDefault());
 
-els.termHost.addEventListener('mousedown', () => {
+els.termHost.addEventListener('mousedown', (event) => {
+  if (event.target.closest('.ssh-files, .ssh-info-card, .ssh-workspace-toolbar, .ssh-workspace-divider')) return;
   const tb = curTab();
   if (isTermTab(tb) && tb.term) tb.term.focus();
 });

@@ -42,10 +42,14 @@ jobs:
         run: npm run test:workbench
       - name: Conversation and tab UI checks
         run: npm run test:productivity
+      - name: Tab overflow UI checks
+        run: npm run test:tabs
       - name: Dual pane UI checks
         run: npm run test:panes
       - name: SFTP queue UI checks
         run: npm run test:transfers
+      - name: SSH file access UI checks
+        run: npm run test:ssh-files
       - name: Rendering stability UI checks
         run: node tools/ui_smoke.cjs --render-stability
       - name: Select stable Rust

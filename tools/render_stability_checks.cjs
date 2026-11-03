@@ -14,14 +14,14 @@ module.exports = async function checkRenderStability(page, { folder, output, res
   await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   const unchanged = await page.evaluate(async () => {
     const rows = [...els.rows.children], labels = rows.map((row) => row.querySelector('.nm'));
-    const header = els.dhead.firstElementChild, tabs = els.tabbar.firstElementChild, side = els.side.firstElementChild;
+    const header = els.dhead.firstElementChild, tabs = $('tabViewport').firstElementChild, side = els.side.firstElementChild;
     let removals = 0;
     const observer = new MutationObserver((events) => { removals += events.reduce((n, event) => n + event.removedNodes.length, 0); });
     observer.observe(els.rows, { subtree: true, childList: true });
     for (let i = 0; i < 30; i++) { renderList(); renderRows(); }
     for (let i = 0; i < 4; i++) await refresh(true);
     await Promise.resolve(); observer.disconnect();
-    return { removals, rows: rows.every((row, i) => row.isConnected && row.querySelector('.nm') === labels[i]), header: header === els.dhead.firstElementChild, tabs: tabs === els.tabbar.firstElementChild, side: side === els.side.firstElementChild };
+    return { removals, rows: rows.every((row, i) => row.isConnected && row.querySelector('.nm') === labels[i]), header: header === els.dhead.firstElementChild, tabs: tabs === $('tabViewport').firstElementChild, side: side === els.side.firstElementChild };
   });
   assert.deepEqual(unchanged, { removals: 0, rows: true, header: true, tabs: true, side: true }, 'no-change refresh and resize rendering preserve the existing surfaces');
   await page.evaluate(() => {

@@ -28,10 +28,10 @@
   <aside id="sidebarShell">
     <a class="brand" href="#" id="brandHome"><span class="brand-mark">d<span>·</span></span><span>Dalizi <strong>Files</strong><small id="brandCaption">你的文件，自在有序</small></span></a>
     <nav id="side" aria-label="文件导航"></nav>
-    <div class="sidebar-bottom"><button id="btnSettings" class="command-trigger" aria-label="设置"><span aria-hidden="true">⚙</span><span id="settingsLabel">设置</span></button></div>
+    <div class="sidebar-bottom"><button id="btnSettings" class="command-trigger" aria-label="设置"><span aria-hidden="true">⚙</span><span id="settingsLabel">设置</span></button><small id="appVersion" title="Dalizi Files v0.5.1">v0.5.1</small></div>
   </aside>
   <section id="workspace">
-  <div id="tabbar"></div>
+  <div id="tabbar"><div id="tabStrip"><div id="tabViewport" tabindex="0"></div><div id="tabScrollTrack" role="scrollbar" aria-orientation="horizontal" aria-controls="tabViewport" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0" tabindex="-1"><div id="tabScrollThumb" aria-hidden="true"></div></div></div><div id="tabActions"></div></div>
   <div id="navigationShell"><header id="bar1">
     <div class="navbtns">
       <button id="btnBack" class="ibtn"></button>
@@ -127,6 +127,7 @@
 <script src="agent-profile.js"></script>
 <script src="ssh.js"></script>
 <script src="ssh-managed.js"></script>
+<script src="ssh-workspace.js"></script>
 <script src="ssh-transfer-queue.js"></script>
 <script src="ai.js"></script>
 <script src="ai-memory.js"></script>

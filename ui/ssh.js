@@ -31,7 +31,7 @@ let sshValidatedFields = new Set();
 const sshFieldIds = { host: 'sshHost', user: 'sshUser', port: 'sshPort', identity: 'sshIdentity', label: 'sshLabel', mode: 'sshMode' };
 const sshProfileStoreKey = 'sshConnections';
 function sshSafeConfig(value = {}) {
-  return { label: String(value.label || '').trim(), host: String(value.host || '').trim().replace(/^\[([^\]]+)\]$/, '$1'), port: value.port == null || value.port === '' ? 22 : Number(value.port), user: String(value.user || '').trim(), identityFile: String(value.identityFile ?? value.keyPath ?? '').trim(), infoMode: value.infoMode || 'posix', ...(value.managed === true ? { managed: true } : {}) };
+  return { label: String(value.label || '').trim(), host: String(value.host || '').trim().replace(/^\[([^\]]+)\]$/, '$1'), port: value.port == null || value.port === '' ? 22 : Number(value.port), user: String(value.user || '').trim(), identityFile: String(value.identityFile ?? value.keyPath ?? '').trim(), infoMode: value.infoMode || 'posix', ...(typeof value.managed === 'boolean' ? { managed: value.managed } : {}) };
 }
 function validateSshConfig(value) {
   const config = sshSafeConfig(value), errors = {};
@@ -63,7 +63,7 @@ function readSshProfiles() {
   return sshProfiles;
 }
 function persistSshProfiles() {
-  store.set(sshProfileStoreKey, sshProfiles.map(({ id, label, host, port, user, identityFile, infoMode, managed }) => ({ id, label, host, port, user, keyPath: identityFile, infoMode, ...(managed === true ? { managed: true } : {}) })));
+  store.set(sshProfileStoreKey, sshProfiles.map(({ id, label, host, port, user, identityFile, infoMode, managed }) => ({ id, label, host, port, user, keyPath: identityFile, infoMode, ...(typeof managed === 'boolean' ? { managed } : {}) })));
 }
 function saveSshProfile(config, id = sshSelectedProfile) {
   const validated = validateSshConfig(config);
@@ -149,6 +149,7 @@ async function submitSshForm(connect) {
   const { config, errors } = validateSshConfig(readSshForm()); showSshValidation(errors);
   if (Object.keys(errors).length) { const key = Object.keys(errors)[0]; $({ host: 'sshHost', user: 'sshUser', port: 'sshPort', identity: 'sshIdentity', label: 'sshLabel', mode: 'sshMode' }[key]).focus(); return false; }
   if (typeof submitManagedSsh === 'function' && $('sshManagedMode')?.checked) return submitManagedSsh(config, connect);
+  config.managed = false;
   if (connect && !sshClient?.available) { setSshDialogStatus(sshText('clientMissing'), true); return false; }
   if (!connect || $('sshRemember').checked) { saveSshProfile(config); renderSshSaved(); }
   if (!connect) { setSshDialogStatus(sshText('savedNotice')); return true; }
@@ -216,7 +217,7 @@ function syncSshInfo(tb) {
   const title = config.label || config.host || 'SSH';
   const serverIp = sshServerIp(tb);
   const data = [['serverIp', serverIp], ['system', info.os], ['hostname', info.hostname], ['kernel', info.kernel], ['arch', info.arch], ['remoteUser', info.user], ['uptime', info.uptime]];
-  const hint = tb.sshActionMessage || tb.sshError || (stopped ? sshText('disconnectedHint') : config.infoMode === 'shell' ? sshText('shellHint') : !tb.sshInfo ? sshText('terminalHint') : '');
+  const hint = tb.sshActionMessage || tb.sshError || (stopped ? sshText('disconnectedHint') : config.managed ? (tb.sshAuthenticated ? '' : locale === 'zh' ? '正在建立 SSH 连接…' : 'Connecting to SSH…') : config.infoMode === 'shell' ? sshText('shellHint') : !tb.sshInfo ? sshText('terminalHint') : '');
   tb.sshBar.innerHTML = `<div class="ssh-info-top"><span class="ssh-server-icon" aria-hidden="true">⌘</span><div class="ssh-info-title"><strong>${esc(title)}</strong><code title="${esc(sshText('connectionAddress'))}">${esc(sshAddress(config))}</code></div><span class="ssh-state ${status}" role="status"><i aria-hidden="true"></i>${esc(sshText(status))}</span><div class="ssh-info-actions"><button type="button" data-ssh-action="copy" title="${esc(sshText('copy'))}" aria-label="${esc(sshText('copy'))}">⧉</button><button type="button" data-ssh-action="details" aria-expanded="${!!tb.sshDetailsOpen}">${esc(sshText('details'))} ${tb.sshDetailsOpen ? '⌃' : '⌄'}</button><button type="button" data-ssh-action="interrupt" title="Ctrl+C"${tb.interruptPromise || tb.disposed ? ' disabled' : ''}>${esc(sshText('interrupt'))}</button><button type="button" data-ssh-action="reconnect"${tb.sshReconnecting || tb.sshDisconnecting || tb.disposed ? ' disabled' : ''}>${esc(sshText('reconnect'))}</button><button type="button" data-ssh-action="edit">${esc(sshText('editSession'))}</button><button type="button" data-ssh-action="disconnect"${tb.sshDisconnecting || tb.disposed || (tb.exited && !tb.startPromise) ? ' disabled' : ''}>${esc(sshText('disconnect'))}</button></div></div>${hint ? `<p class="ssh-info-hint${tb.sshError ? ' is-error' : ''}">${esc(hint)}</p>` : ''}<div class="ssh-info-summary"><span>${esc(sshText('serverIp'))}<b>${esc(serverIp)}</b></span><span>${esc(sshText('system'))}<b>${esc(info.os || '—')}</b></span>${info.uptime ? `<span>${esc(sshText('uptime'))}<b>${esc(info.uptime)}</b></span>` : ''}</div>${tb.sshDetailsOpen ? `<dl class="ssh-info-details">${data.map(([label, value]) => `<div><dt>${esc(sshText(label))}</dt><dd>${esc(value || '—')}</dd></div>`).join('')}</dl>` : ''}`;
   if (typeof fitTerm === 'function') fitTerm(tb);
   if (typeof renderManagedSshInfo === 'function') renderManagedSshInfo(tb);
@@ -231,6 +232,7 @@ function renderSshInfo(tb) { syncSshInfo(tb); }
 function syncSshWorkspace() { for (const tb of state.tabs) if (isSshTab(tb)) syncSshInfo(tb); }
 function interruptSshTab(tb) {
   if (!isSshTab(tb) || tb.disposed) return Promise.resolve(false);
+  if (tb.sshConfig?.managed && tb.sshTerminalState && tb.sshTerminalState !== 'ready') { tb.input = ''; tb.interruptPending = false; return Promise.resolve(false); }
   // Discard queued user input without swallowing xterm's standard/DEC cursor
   // position replies, which ConPTY can still be waiting to receive.
   tb.input = (String(tb.input || '').match(/\x1b\[\??\d+;\d+R/g) || []).join('');

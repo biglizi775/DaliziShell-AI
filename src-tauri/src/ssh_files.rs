@@ -24,9 +24,16 @@ fn join(parent: &str, name: &str) -> String { format!("{}/{}", parent.trim_end_m
 async fn stream(session: &Session) -> Result<russh::ChannelStream<russh::client::Msg>, String> {
     let mut channel = session.handle.channel_open_session().await.map_err(|e| e.to_string())?;
     channel.request_subsystem(true, "sftp").await.map_err(|e| e.to_string())?;
-    match tokio::time::timeout(Duration::from_secs(10), channel.wait()).await {
-        Ok(Some(russh::ChannelMsg::Success)) => Ok(channel.into_stream()),
-        _ => Err("服务器未启用 SFTP 子系统 / Server does not provide SFTP".into()),
+    let accepted = tokio::time::timeout(Duration::from_secs(10), async {
+        loop { match channel.wait().await {
+            Some(russh::ChannelMsg::Success) => return true,
+            Some(russh::ChannelMsg::WindowAdjusted { .. }) => (),
+            _ => return false,
+        } }
+    }).await.unwrap_or(false);
+    if accepted { Ok(channel.into_stream()) } else {
+        let _ = tokio::time::timeout(Duration::from_secs(1), channel.close()).await;
+        Err("服务器未启用 SFTP 子系统 / Server does not provide SFTP".into())
     }
 }
 async fn sftp(session: &Session) -> Result<Arc<SftpSession>, String> {

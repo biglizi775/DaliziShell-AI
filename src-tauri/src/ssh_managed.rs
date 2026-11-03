@@ -1,6 +1,6 @@
 //! Native SSH sessions: verified host identities, terminal and SFTP channels.
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex, OnceLock, atomic::{AtomicU32, Ordering}};
+use std::sync::{Arc, Mutex, OnceLock, atomic::{AtomicU32, AtomicU8, Ordering}};
 use std::time::{Duration, Instant};
 use russh::{client, ChannelMsg, Disconnect, keys::{HashAlg, PrivateKeyWithHashAlg, PublicKeyOrCertificate}};
 use serde::{Deserialize, Serialize};
@@ -89,7 +89,9 @@ pub struct AuthInput { pub secret: Option<String>, #[serde(default)] pub remembe
 pub(super) struct Session {
     pub resume_identity: String,
     pub id: u32, pub key: String, pub handle: client::Handle<Verifier>,
-    writer: russh::ChannelWriteHalf<client::Msg>,
+    writer: OnceCell<russh::ChannelWriteHalf<client::Msg>>,
+    terminal_state: AtomicU8,
+    terminal_message: Mutex<Option<String>>,
     pub stop: watch::Sender<bool>, pub sftp: OnceCell<Arc<russh_sftp::client::SftpSession>>,
     pub transfers: Mutex<HashMap<String, watch::Sender<bool>>>,
     mode: InfoMode,
@@ -98,8 +100,16 @@ pub(super) fn get(id: u32) -> Result<Arc<Session>, String> {
     sessions().lock().unwrap().get(&id).cloned().filter(|s| !*s.stop.borrow() && !s.handle.is_closed()).ok_or_else(|| "SSH 会话已结束，请重新登录 / SSH session is closed".into())
 }
 fn emit_state(app: &AppHandle, session: &Session, saved: bool, warning: Option<String>) {
-    let _ = app.emit("ssh-managed-state", serde_json::json!({"id":session.id,"key":session.key,"authenticated":true,"credentialSaved":saved,"warning":warning}));
+    let mut status = session_status(session);
+    status["credentialSaved"] = saved.into(); status["warning"] = warning.into();
+    let _ = app.emit("ssh-managed-state", status);
 }
+fn session_status(session: &Session) -> serde_json::Value {
+    let state = match session.terminal_state.load(Ordering::Acquire) { 1 => "ready", 2 => "unavailable", 3 => "closed", _ => "starting" };
+    serde_json::json!({"id":session.id,"key":session.key,"authenticated":true,"terminalState":state,"terminalMessage":*session.terminal_message.lock().unwrap()})
+}
+#[tauri::command]
+pub fn ssh_managed_status(id: u32) -> Result<serde_json::Value, String> { let session = get(id)?; Ok(session_status(&session)) }
 #[tauri::command]
 pub async fn ssh_managed_start(key: String, config: SshConfig, auth: AuthInput, cols: u16, rows: u16, app: AppHandle) -> Result<u32, String> {
     if key.is_empty() || key.len() > 200 || key.chars().any(char::is_control) || cols == 0 || rows == 0 || cols > 32767 || rows > 32767 { return Err("Invalid SSH session parameters".into()); }
@@ -124,23 +134,20 @@ pub async fn ssh_managed_start(key: String, config: SshConfig, auth: AuthInput, 
             handle.authenticate_password(&config.user, secret.as_str()).await
         }.map_err(|_| "SSH 认证失败 / SSH authentication failed")?.success();
         if !authenticated { let _ = handle.disconnect(Disconnect::ByApplication, "Authentication failed", "").await; return Err("认证失败；未保存此次密码，请检查密码或认证方式 / Authentication failed; password was not saved".into()); }
-        let mut channel = handle.channel_open_session().await.map_err(|e| e.to_string())?;
-        channel.request_pty(true, "xterm-256color", cols as u32, rows as u32, 0, 0, &[]).await.map_err(|e| e.to_string())?;
-        let mut initial = wait_ready(&mut channel).await?;
-        channel.request_shell(true).await.map_err(|e| e.to_string())?;
-        initial.extend(wait_ready(&mut channel).await?);
-        let (reader, writer) = channel.split();
         let (stop, _) = watch::channel(false);
         let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
         if id < FIRST_ID { return Err("SSH session limit reached; restart the app".into()); }
-        let session = Arc::new(Session { id, key, handle, writer, stop, sftp: OnceCell::new(), transfers: Mutex::new(HashMap::new()), mode: config.info_mode, resume_identity: credential_id.clone() });
+        let session = Arc::new(Session { id, key, handle, writer: OnceCell::new(), terminal_state: AtomicU8::new(0), terminal_message: Mutex::new(None), stop, sftp: OnceCell::new(), transfers: Mutex::new(HashMap::new()), mode: config.info_mode, resume_identity: credential_id.clone() });
         sessions().lock().unwrap().insert(id, session.clone());
+        spawn_connection_monitor(app.clone(), session.clone());
         let mut saved = false; let mut warning = None;
         if auth.remember && !secret.is_empty() {
             match credentials::write(&credential_id, &config.user, secret.as_bytes()) { Ok(()) => saved = true, Err(e) => warning = Some(e) }
         }
         emit_state(&app, &session, saved, warning);
-        spawn_reader(app.clone(), session.clone(), reader, initial);
+        // Authentication establishes the connection. PTY/shell is an optional,
+        // independent channel: refusal or timeout must not disable SFTP.
+        spawn_terminal(app.clone(), session.clone(), cols, rows);
         if session.mode != InfoMode::Shell {
             tauri::async_runtime::spawn(async move { if let Ok(info) = stats(&session).await { let _ = app.emit("ssh-managed-stats", serde_json::json!({"id":id,"key":session.key,"info":info})); } });
         }
@@ -150,11 +157,63 @@ pub async fn ssh_managed_start(key: String, config: SshConfig, auth: AuthInput, 
 }
 async fn wait_ready(channel: &mut russh::Channel<client::Msg>) -> Result<Vec<u8>, String> {
     let mut output = Vec::new();
-    loop { match channel.wait().await {
-        Some(ChannelMsg::Success) => return Ok(output),
-        Some(ChannelMsg::Data { data }) | Some(ChannelMsg::ExtendedData { data, .. }) if output.len() + data.len() <= 65536 => output.extend_from_slice(&data),
-        _ => return Err("服务器拒绝了交互终端 / Server refused the interactive terminal".into()),
-    } }
+    loop { if terminal_reply(channel.wait().await, &mut output)? { return Ok(output); } }
+}
+fn terminal_reply(message: Option<ChannelMsg>, output: &mut Vec<u8>) -> Result<bool, String> {
+    match message {
+        Some(ChannelMsg::Success) => Ok(true),
+        Some(ChannelMsg::Data { data }) | Some(ChannelMsg::ExtendedData { data, .. }) => {
+            if output.len() + data.len() > 65536 { return Err("终端启动输出过大 / Terminal startup output too large".into()); }
+            output.extend_from_slice(&data); Ok(false)
+        }
+        Some(ChannelMsg::Failure) => Err("服务器拒绝了 PTY 或交互 Shell；文件管理仍可使用 / Server refused PTY or shell; file management remains available".into()),
+        None | Some(ChannelMsg::Close | ChannelMsg::Eof | ChannelMsg::ExitStatus { .. } | ChannelMsg::ExitSignal { .. }) => Err("终端通道已关闭；文件管理仍可使用 / Terminal channel closed; file management remains available".into()),
+        _ => Ok(false), // Window adjustment is flow control, not a rejected request.
+    }
+}
+fn spawn_terminal(app: AppHandle, session: Arc<Session>, cols: u16, rows: u16) {
+    tauri::async_runtime::spawn(async move {
+        let open = async {
+            let mut channel = tokio::time::timeout(Duration::from_secs(10), session.handle.channel_open_session()).await.map_err(|_| "终端通道超时 / Terminal channel timed out")?.map_err(|e| e.to_string())?;
+            let setup = tokio::time::timeout(Duration::from_secs(20), async {
+                channel.request_pty(true, "xterm-256color", cols as u32, rows as u32, 0, 0, &[]).await.map_err(|e| e.to_string())?;
+                let mut initial = wait_ready(&mut channel).await?;
+                channel.request_shell(true).await.map_err(|e| e.to_string())?;
+                initial.extend(wait_ready(&mut channel).await?);
+                Ok::<_, String>(initial)
+            }).await.map_err(|_| "交互终端启动超时（20 秒）；文件管理仍可使用 / Terminal startup timed out (20 seconds); file management remains available".to_owned()).and_then(|r| r);
+            match setup {
+                Ok(initial) if get(session.id).is_ok() => {
+                    let (reader, writer) = channel.split();
+                    session.writer.set(writer).map_err(|_| "Terminal already initialized".to_owned())?;
+                    Ok((reader, initial))
+                }
+                result => { let _ = tokio::time::timeout(Duration::from_secs(1), channel.close()).await; Err(result.err().unwrap_or_else(|| "Connection closed".into())) }
+            }
+        }.await;
+        if get(session.id).is_err() { return; }
+        match open {
+            Ok((reader, initial)) => { session.terminal_state.store(1, Ordering::Release); emit_state(&app, &session, false, None); spawn_reader(app, session, reader, initial); }
+            Err(error) => {
+                *session.terminal_message.lock().unwrap() = Some(error);
+                session.terminal_state.store(2, Ordering::Release); emit_state(&app, &session, false, None);
+            }
+        }
+    });
+}
+fn spawn_connection_monitor(app: AppHandle, session: Arc<Session>) {
+    let mut stopped = session.stop.subscribe();
+    tauri::async_runtime::spawn(async move {
+        loop {
+            if *stopped.borrow() || session.handle.is_closed() { break; }
+            tokio::select! { _ = stopped.changed() => (), _ = tokio::time::sleep(Duration::from_millis(250)) => () }
+        }
+        session.stop.send_replace(true);
+        for stop in session.transfers.lock().unwrap().values() { let _ = stop.send(true); }
+        let _ = tokio::time::timeout(Duration::from_secs(2), session.handle.disconnect(Disconnect::ByApplication, "Session closed", "")).await;
+        sessions().lock().unwrap().remove(&session.id);
+        let _ = app.emit("term-closed", serde_json::json!({"id":session.id,"key":session.key,"exitCode":null}));
+    });
 }
 fn spawn_reader(app: AppHandle, session: Arc<Session>, mut reader: russh::ChannelReadHalf, mut pending: Vec<u8>) {
     tauri::async_runtime::spawn(async move {
@@ -173,28 +232,31 @@ fn spawn_reader(app: AppHandle, session: Arc<Session>, mut reader: russh::Channe
             }
         }
         if !pending.is_empty() { let _ = app.emit("term-out", serde_json::json!({"id":session.id,"key":session.key,"data":String::from_utf8_lossy(&pending)})); }
-        let _ = session.stop.send(true);
-        for stop in session.transfers.lock().unwrap().values() { let _ = stop.send(true); }
-        let _ = tokio::time::timeout(Duration::from_secs(2), session.handle.disconnect(Disconnect::ByApplication, "Session closed", "")).await;
-        sessions().lock().unwrap().remove(&session.id);
-        let _ = app.emit("term-closed", serde_json::json!({"id":session.id,"key":session.key,"exitCode":code}));
+        if get(session.id).is_ok() {
+            *session.terminal_message.lock().unwrap() = Some(format!("交互终端已退出（{}），文件管理仍可使用 / Shell exited; file management remains available", code.map(|n| n.to_string()).unwrap_or_else(|| "—".into())));
+            session.terminal_state.store(3, Ordering::Release); emit_state(&app, &session, false, None);
+        }
     });
 }
 pub async fn write(id: u32, data: String) -> Result<(), String> {
     if data.len() > 1024 * 1024 { return Err("Terminal input too large".into()); }
     let session = get(id)?;
-    tokio::time::timeout(Duration::from_secs(3), session.writer.data(data.as_bytes())).await.map_err(|_| "SSH 写入超时 / SSH write timeout")?.map_err(|e| e.to_string())
+    if session.terminal_state.load(Ordering::Acquire) != 1 { return Err("交互终端未就绪或不可用；文件管理仍可使用 / Terminal not available; file management remains available".into()); }
+    let writer = session.writer.get().ok_or("Terminal not ready")?;
+    tokio::time::timeout(Duration::from_secs(3), writer.data(data.as_bytes())).await.map_err(|_| "SSH 写入超时 / SSH write timeout")?.map_err(|e| e.to_string())
 }
 pub async fn resize(id: u32, cols: u16, rows: u16) -> Result<(), String> {
     let session = get(id)?;
-    session.writer.window_change(cols as u32, rows as u32, 0, 0).await.map_err(|e| e.to_string())
+    if session.terminal_state.load(Ordering::Acquire) != 1 { return Ok(()); }
+    if let Some(writer) = session.writer.get() { writer.window_change(cols as u32, rows as u32, 0, 0).await.map_err(|e| e.to_string())?; }
+    Ok(())
 }
 pub async fn kill(id: u32) -> Result<(), String> {
     let session = sessions().lock().unwrap().get(&id).cloned();
-    if let Some(session) = session { let _ = session.stop.send(true); }
+    if let Some(session) = session { session.stop.send_replace(true); }
     Ok(())
 }
-pub fn shutdown() { for session in sessions().lock().unwrap().values() { let _ = session.stop.send(true); } }
+pub fn shutdown() { for session in sessions().lock().unwrap().values() { session.stop.send_replace(true); } }
 
 const STATS_COMMAND: &str = r#"LC_ALL=C; export LC_ALL
 printf 'hostname\t'; hostname 2>/dev/null
@@ -250,6 +312,16 @@ pub async fn ssh_managed_stats(id: u32) -> Result<HashMap<String, String>, Strin
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn terminal_ack_ignores_flow_control_but_reports_real_rejection_and_bounds_output() {
+        let mut output = vec![];
+        assert!(!terminal_reply(Some(ChannelMsg::WindowAdjusted { new_size: 4096 }), &mut output).unwrap());
+        assert!(terminal_reply(Some(ChannelMsg::Success), &mut output).unwrap());
+        assert!(terminal_reply(Some(ChannelMsg::Failure), &mut output).unwrap_err().contains("PTY"));
+        assert!(terminal_reply(None, &mut output).unwrap_err().contains("closed"));
+        let bytes = vec![b'x'; 65537];
+        assert!(terminal_reply(Some(ChannelMsg::Data { data: bytes.into() }), &mut output).is_err());
+    }
     #[test]
     fn resource_parser_bounds_untrusted_output_and_rejects_invalid_sizes() {
         let input = format!("hostname\tserver\u{1b}\nunknown\tignored\nmemoryTotalKiB\t8388608\ndiskTotalKiB\t-1\nmemoryAvailableKiB\tNaN\nos\t\"Linux\"\nuser\t{}", "x".repeat(700));

@@ -37,9 +37,10 @@ Pop-Location
 | `ui/app.js`、`workspace*.js`、`columns.js` | 主界面、工作区、设置、列与属性 |
 | `ui/places.js`、`ai-memory.js` | 收藏、统一会话快照、自动摘要与统计界面 |
 | `ui/ai-conversations.js`、`src-tauri/src/agent_conversations.rs` | 目录级对话档案、串行/CAS 保存、历史恢复、原生 Markdown 导出 |
-| `ui/tab-management.js` | 指针拖动/键盘排序、内存中的最近关闭标签及隐私清理 |
+| `ui/tab-management.js` | 标签滚轮/滚动条、活动项定位、边缘连续滚动与排序、最近关闭标签及隐私清理 |
 | `ui/ai.js`、`agent-*.js` | 对话、布局、技能与记忆管理 |
 | `ui/browser*.js`、`ssh*.js`、`document-preview.js` | 浏览器、SSH 与文档界面 |
+| `ui/ssh-workspace.js` | SSH 分屏工作区、拖动分隔条、目录筛选/跳转/复制路径 |
 | `ui/vendor/` | 运行必需的离线库、字体与解码资源，须提交 |
 | `resources/builtin-skills/` | 9 项内置技能的 SKILL.md 正文 |
 | `tests/` | Node 内置测试运行器，模拟 IPC 验证交互与状态 |
@@ -72,6 +73,8 @@ node tools/ui_smoke.cjs --browser-startup
 node tools/ui_smoke.cjs --copy-paths
 node tools/ui_smoke.cjs --ai-api
 node tools/ui_smoke.cjs --workbench
+npm run test:tabs
+npm run test:ssh-files
 ```
 
 也可用 `DALIZI_BROWSER` 指定现有 Chromium 可执行文件；不需要配置 Codex 或个人机器的绝对路径。截图保存在 `src-tauri/target/ui-smoke/`。模拟 IPC 通过不等同于真实 Windows API、远程服务器或所有 WebView2 版本通过。
@@ -96,6 +99,14 @@ npm run test:preview
 可选 XLSB 样本来自 [Calamine tests/date.xlsb](https://github.com/tafia/calamine/blob/master/tests/date.xlsb)，放入同目录后参与解析及显示检查；不随本项目分发。使用私人文件诊断时不要提交生成的 `results.json` 或截图。云盘已缓存/未下载文件仍需在目标机器上单独验收。
 
 ## 可选原生检查
+
+SSH 文件入口：`npm run test:ssh-files` 检查兼容模式的内置连接入口、原终端保留、成功登录但状态事件漏达时自动展示目录、上传/下载确认与任务入口、实际键盘输入远程路径、手动收起、SFTP 失败/刷新恢复、断开禁用、重新登录及小窗口布局。`npm run test:ssh` 使用独立 EXE 和本地生成的 SSH/SFTP 服务，实际验证自动目录展示、文件按钮、路径输入、上传下载字节一致性、取消及续传；可通过 `DALIZI_EXE` 指定 release 程序。
+
+原生 SSH 检查还覆盖拒绝 PTY、拒绝 Shell、ACK 前发送窗口调整消息，以及 Shell 退出后 SFTP 保持可用。`ssh_sftp_only_native.cjs` 在每种场景检查自动目录、真实上传/下载字节及断开清理。后端认证后立即注册连接，终端为独立通道并有启动预算，连接监控统一处理退出与清理；终端通道结束不会发送表示整个连接关闭的 `term-closed`。
+
+SSH 工作区专项还验证默认终端/文件分屏、分隔条实际拖动、筛选后的全选、资源刷新保持筛选输入焦点，以及小窗口列表/终端可见。版本由 package.json、Cargo.toml/Cargo.lock、tauri.conf.json 与 UI 左下角标记同步维护，避免多个测试 EXE 无法区分。
+
+标签溢出：`npm run test:tabs` 使用 60 个标签检查双轴滚轮、显式滚动条拖动、固定新建按钮、活动项自动定位、刷新保留手动滚动位置、边缘停留排序以及窄窗口 AI 面板布局。构建 release 后运行 `npm run test:stability -- --tabs`，在独立 EXE/WebView2 配置与生成的目录中执行相同检查，通过 Win32 调整测试窗口；截图与结果保存在 `src-tauri/target/render-stability-*`。
 
 界面稳定性：`node tools/ui_smoke.cjs --render-stability` 检查重复刷新时行/表头节点保留、虚拟滚动复用、缩放期间重命名文本/焦点/光标、迟到刷新保持最新选择/滚动、编辑期间目录事件延迟应用、重命名所属目录校验、PDF 双缓冲以及重复浏览器 IPC 合并。它作为独立 UI 回归加入 CI。
 

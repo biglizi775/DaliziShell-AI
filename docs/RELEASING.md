@@ -58,4 +58,6 @@ python tools/package_source.py
 
 完成测试、同步版本并提交源码后，运行 `python tools/package_windows.py --licenses <已核对的许可证目录>`。许可证目录需包含 `frontend/`、`rust/`；可复用依赖版本完全一致的上一发行包，工具逐项核对当前 Windows 依赖树与许可证目录，缺失时拒绝打包。依赖变化时先补齐对应上游许可。
 
-工具核对 EXE 的版本资源，只复制 EXE、许可文本、使用说明与版本说明；生成 `BUILDINFO.json`、逐文件 SHA-256、ZIP 校验文件，并验证压缩包可解压且内容一致。同名包不会覆盖。上传 GitHub 草稿 Release 后核对附件大小与摘要，全部验证完成再公开；源码标签应指向 BUILDINFO 记录的提交。
+工具核对 EXE 的版本资源，只复制 EXE、许可文本、使用说明、版本说明与历史更新记录；生成 `BUILDINFO.json`、逐文件 SHA-256、ZIP 校验文件，并验证压缩包可解压且内容一致。同名包不会覆盖；已有本地预览包时，可使用 `--output-dir dist/github-release-<版本号>` 输出正式包，保留旧文件。`BUILDINFO.json` 记录提交与 `dirty` 状态；正式发布应在干净提交后打包，`dirty` 为 `false`。上传 GitHub 草稿 Release 后核对附件大小与摘要，全部验证完成再公开；源码标签应指向 BUILDINFO 记录的提交。
+
+每次发布同步项目首页的版本、下载链接和历史功能表，更新 `docs/CHANGELOG.md`、`docs/USER_GUIDE.md`、`docs/README.md` 与对应 `docs/RELEASE_<版本号>.md`。历史记录保留旧版测试与限制，不改写为当前能力；只为实际公开发行的版本添加 Release 链接。发布后核对 GitHub `releases/latest` 指向新版本，并验证下载附件的摘要。

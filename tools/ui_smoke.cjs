@@ -15,8 +15,10 @@ const workbenchOnly = process.argv.includes('--workbench');
 const archiveOnly = process.argv.includes('--archive');
 const stabilityOnly = process.argv.includes('--render-stability');
 const productivityOnly = process.argv.includes('--productivity');
+const tabsOnly = process.argv.includes('--tabs');
 const panesOnly = process.argv.includes('--panes');
 const transfersOnly = process.argv.includes('--transfers');
+const sshFilesOnly = process.argv.includes('--ssh-files');
 function makeBuiltinSkills() {
   return [
     ['file-organize', '文件整理'], ['task-planning', '任务拆解'], ['product-design', '产品与交互设计'],
@@ -105,7 +107,10 @@ const server = http.createServer((req, res) => {
           if (cmd === 'ssh_pick_upload_files') return window.mockUploadFiles || ['C:\\Uploads\\one.txt', 'C:\\Uploads\\two.txt'];
           if (cmd === 'ssh_pick_download_directory') return 'C:\\Downloads';
           if (cmd === 'ssh_transfer_prepare') return args.paths.map((value) => ({ name: value.split('\\').at(-1), localPath: args.direction === 'upload' ? value : args.directory + '\\' + value, remote: args.direction === 'upload' ? args.remote : args.remote.replace(/\/$/, '') + '/' + value, size: 100 }));
-          if (cmd === 'ssh_files_list') return { path: args.path === '.' ? '/data' : args.path, truncated: false, entries: [{ name: '子目录', isDir: true, isLink: false }, ...['中文.txt', 'two.txt', 'three.txt'].map((name) => ({ name, isDir: false, isLink: false, size: 100, modified: 1792800000 }))] };
+          if (cmd === 'ssh_files_list') {
+            if (window.mockSftpError) throw Error('SFTP subsystem unavailable');
+            return { path: args.path === '.' ? '/data' : args.path, truncated: false, entries: [{ name: '子目录', isDir: true, isLink: false }, ...['中文.txt', 'two.txt', 'three.txt'].map((name) => ({ name, isDir: false, isLink: false, size: 100, modified: 1792800000 }))] };
+          }
           if (cmd === 'ssh_file_transfer') {
             window.mockTransfers ||= {};
             const progress = { id: args.id, key: window.mockTransferOwner?.key, transferId: args.requestId, direction: args.direction, name: args.localPath.split('\\').at(-1), bytes: 0, total: 100, status: 'running' };
@@ -215,6 +220,15 @@ const server = http.createServer((req, res) => {
             saveProfile(); return added;
           }
           if (cmd === 'term_start') return 101;
+          if (cmd === 'ssh_managed_start') {
+            const id = ++sshSequence;
+            window.mockManagedSessions ||= {};
+            const status = { id, key: args.key, authenticated: true, terminalState: window.mockTerminalState || 'ready', terminalMessage: window.mockTerminalState === 'unavailable' ? '服务器不提供交互终端，文件管理仍可使用' : '' };
+            mockManagedSessions[id] = status;
+            if (!window.mockSkipManagedEvent) window.emitMockEvent('ssh-managed-state', status);
+            return id;
+          }
+          if (cmd === 'ssh_managed_status') return structuredClone(window.mockManagedSessions?.[args.id] || null);
           if (cmd === 'ssh_check_client') return { available: true, path: 'C:\\Windows\\System32\\OpenSSH\\ssh.exe', version: 'OpenSSH_for_Windows_9.5p1 (test fixture)' };
           if (cmd === 'ssh_start') {
             const id = ++sshSequence;
@@ -251,6 +265,8 @@ const server = http.createServer((req, res) => {
       };
     }, { pdf: makePreviewPdf(), startupOnly: browserStartupOnly, sshRecovery: sshRecoveryOnly, builtinMode: builtinSkillsOnly, builtinSkills: makeBuiltinSkills(), copyPaths: copyPathsOnly });
     await page.goto(`http://127.0.0.1:${server.address().port}`);
+    if (sshFilesOnly) { await require('./ssh_files_access_checks.cjs')(page, output); assert.deepEqual(errors, []); console.log('SSH file access UI passed.'); return; }
+    if (tabsOnly) { await require('./tab_overflow_checks.cjs')(page, {output}); assert.deepEqual(errors, []); console.log('Tab overflow checks passed.'); return; }
     if (panesOnly) { await require('./dual_pane_checks.cjs')(page, output); assert.deepEqual(errors, []); console.log('Dual pane checks passed.'); return; }
     if (transfersOnly) {
       await require('./ssh_transfer_queue_checks.cjs')(page, output);

@@ -11,17 +11,18 @@ import zipfile
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--licenses', required=True, type=Path, help='Verified licenses directory from this dependency set')
+parser.add_argument('--output-dir', type=Path, help='Output directory; defaults to dist. Existing packages are never overwritten.')
 args = parser.parse_args()
 root = Path(__file__).resolve().parents[1]
 version = json.loads((root / 'package.json').read_text(encoding='utf-8'))['version']
 exe = root / 'src-tauri/target/release/dalizi-files.exe'
 assert exe.is_file(), 'Build the release executable first'
-command = "(Get-Item -LiteralPath '" + str(exe).replace("'", "''") + "').VersionInfo.FileVersion"
+command = "$ProgressPreference='SilentlyContinue'; (Get-Item -LiteralPath '" + str(exe).replace("'", "''") + "').VersionInfo.FileVersion"
 pe_version = subprocess.check_output(['powershell', '-NoProfile', '-EncodedCommand',
     base64.b64encode(command.encode('utf-16-le')).decode()], text=True).strip()
 assert pe_version.split('.')[:3] == version.split('.'), f'Executable version mismatch: {pe_version}'
 tree = subprocess.check_output(['cargo', 'tree', '--locked', '--offline', '--target', 'x86_64-pc-windows-msvc',
-    '--prefix', 'none', '--edges', 'normal,build', '--format', '{p}'], cwd=root / 'src-tauri', text=True)
+    '--prefix', 'none', '--edges', 'normal,build', '--format', '{p}'], cwd=root / 'src-tauri', text=True, encoding='utf-8')
 for name, number in set(re.findall(r'^([\w-]+) v([\w.+-]+)', tree, re.M)):
     if name == 'dalizi-files':
         continue
@@ -32,8 +33,9 @@ for file in args.licenses.rglob('*'):
     assert not file.is_symlink(), f'Unexpected license symlink: {file}'
 
 prefix = f'dalizi-files-{version}-windows-x64'
-stage = root / 'dist' / prefix
-archive = root / 'dist' / f'{prefix}.zip'
+output = args.output_dir.resolve() if args.output_dir else root / 'dist'
+stage = output / prefix
+archive = output / f'{prefix}.zip'
 assert not stage.exists() and not archive.exists(), 'Refusing to overwrite an existing package'
 stage.mkdir(parents=True)
 shutil.copy2(exe, stage / 'DaliziFiles.exe')
@@ -41,6 +43,7 @@ shutil.copy2(root / 'LICENSE', stage / 'LICENSE')
 shutil.copy2(root / 'THIRD_PARTY_NOTICES.md', stage / 'THIRD_PARTY_NOTICES.txt')
 shutil.copytree(args.licenses, stage / 'licenses')
 shutil.copy2(root / f'docs/RELEASE_{version}.md', stage / '更新说明.txt')
+shutil.copy2(root / 'docs/CHANGELOG.md', stage / '更新历史.txt')
 (stage / '使用说明.txt').write_text(f'''呆梨文件 Dalizi Files {version}
 
 Windows 10 1809+ / Windows 11 x64，需要 Microsoft Edge WebView2 Runtime。
@@ -52,6 +55,8 @@ Windows 10 1809+ / Windows 11 x64，需要 Microsoft Edge WebView2 Runtime。
 
 双面板：文件标签点击“双面板”，两侧独立浏览，箭头按钮选择复制或移动；
 “设为工作目录”切换左侧目录。AI 和记忆始终跟随左侧工作目录。
+SSH：内置模式登录后自动显示服务器概况、终端和远程目录。拖动分隔条调整
+高度，或在工具栏选择分屏、文件、终端。目录支持筛选、跳转和复制路径。
 SFTP：远程文件支持批量与文件夹上传/下载，任务面板提供暂停、取消、重试。
 续传仅在本次运行内有效，先校验已有字节，不自动重新登录；退出前完成传输
 或使用“清理续传临时文件”。异常退出可能留下 .dalizi-*.part，请核对后清理。
@@ -64,8 +69,10 @@ SFTP：远程文件支持批量与文件夹上传/下载，任务面板提供暂
 下载：https://github.com/biglizi775/DaliziShell-AI/releases
 ''', encoding='utf-8')
 digest = lambda data: hashlib.sha256(data).hexdigest().upper()
-commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=root, text=True).strip()
+commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=root, text=True, encoding='utf-8').strip()
+dirty = bool(subprocess.check_output(['git', 'status', '--porcelain', '--untracked-files=normal'], cwd=root, text=True, encoding='utf-8').strip())
 (stage / 'BUILDINFO.json').write_text(json.dumps({'version': version, 'commit': commit,
+    'dirty': dirty,
     'target': 'x86_64-pc-windows-msvc', 'exeSha256': digest(exe.read_bytes()),
     'lockSha256': digest((root / 'src-tauri/Cargo.lock').read_bytes())}, indent=2) + '\n', encoding='utf-8')
 files = sorted(p for p in stage.rglob('*') if p.is_file())

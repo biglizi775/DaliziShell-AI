@@ -34,6 +34,7 @@ fingerprints = []
 auth_attempts = 0
 transports = []
 allow_cleanup = False
+terminal_policy = 'normal'
 
 def fingerprint(key):
     return 'SHA256:' + base64.b64encode(hashlib.sha256(key.asbytes()).digest()).decode().rstrip('=')
@@ -106,6 +107,8 @@ class Files(paramiko.SFTPServerInterface):
         except OSError as e: return paramiko.SFTPServer.convert_errno(e.errno or 13)
 
 class Server(paramiko.ServerInterface):
+    def __init__(self):
+        self.terminal_policy = terminal_policy
     def check_auth_password(self, user, value):
         global auth_attempts
         auth_attempts += 1
@@ -118,10 +121,18 @@ class Server(paramiko.ServerInterface):
 
     def get_allowed_auths(self, user): return 'password,publickey'
     def check_channel_request(self, kind, channel_id): return paramiko.OPEN_SUCCEEDED if kind == 'session' else paramiko.OPEN_FAILED_ADMINISTRATIVELY_PROHIBITED
-    def check_channel_pty_request(self, *args): return True
+    def check_channel_pty_request(self, channel, *args):
+        if self.terminal_policy == 'deny-pty': return False
+        if self.terminal_policy == 'window-adjust':
+            # Send legal channel flow control before the request acknowledgement.
+            message = paramiko.Message(); message.add_byte(b'\x5d'); message.add_int(channel.remote_chanid); message.add_int(1024)
+            channel.transport._send_user_message(message)
+        return True
     def check_channel_window_change_request(self, *args): return True
 
     def check_channel_shell_request(self, channel):
+        if self.terminal_policy == 'deny-shell': return False
+        if self.terminal_policy == 'slow-shell': time.sleep(6)
         def shell():
             try:
                 channel.send(b'fixture ready\r\n')
@@ -140,6 +151,7 @@ class Server(paramiko.ServerInterface):
         threading.Thread(target=shell, daemon=True).start(); return True
 
     def check_channel_exec_request(self, channel, command):
+        if self.terminal_policy in ['deny-pty', 'deny-shell']: return False
         windows = command.startswith(b'powershell.exe ')
         if windows:
             script = base64.b64decode(command.split()[-1]).decode('utf-16-le')
@@ -196,6 +208,10 @@ try:
             host_key = paramiko.RSAKey.generate(2048); fingerprints.append(fingerprint(host_key))
             print(json.dumps(dict(fingerprint=fingerprints[-1],authAttempts=auth_attempts)),flush=True)
         elif command == 'auth-count': print(json.dumps(dict(authAttempts=auth_attempts)),flush=True)
+        elif command.startswith('terminal-policy '):
+            terminal_policy = command.split(' ',1)[1]
+            assert terminal_policy in ['normal','deny-pty','deny-shell','window-adjust','slow-shell']
+            print(json.dumps(dict(terminalPolicy=terminal_policy)),flush=True)
         elif command == 'allow-cleanup': allow_cleanup = True
         elif command == 'stop': break
 finally:

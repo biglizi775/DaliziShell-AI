@@ -27,3 +27,11 @@ test('closed tab history is bounded and never stores terminal connections or dis
   h.run('for (let i = 0; i < 25; i++) rememberClosedTab({ path: "C:\\\\folder" + i })'); assert.equal(h.run('recentlyClosedTabs.length'), 20);
   assert.equal(h.run('recentlyClosedTabs[0].path'), 'C:\\folder5');
 });
+test('tab wheels accept both axes and delta units without hijacking Ctrl zoom', () => {
+  const h = harness();
+  assert.equal(h.run('tabWheelDistance({deltaX:0,deltaY:120,deltaMode:0},400)'), 120);
+  assert.equal(h.run('tabWheelDistance({deltaX:-50,deltaY:3,deltaMode:0},400)'), -50);
+  assert.equal(h.run('tabWheelDistance({deltaX:0,deltaY:3,deltaMode:1},400)'), 96);
+  assert.equal(h.run('tabWheelDistance({deltaX:0,deltaY:-1,deltaMode:2},400)'), -400);
+  assert.equal(h.run('tabWheelDistance({deltaX:0,deltaY:120,deltaMode:0,ctrlKey:true},400)'), 0);
+});
