@@ -13,6 +13,8 @@ use std::sync::{
 
 use serde::{Deserialize, Serialize};
 use tauri::webview::{PageLoadEvent, WebviewBuilder};
+use webview2_com::ExecuteScriptCompletedHandler;
+use windows_core::HSTRING;
 use tauri::{AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, State, WebviewUrl, Wry};
 
 #[path = "browser_downloads.rs"]
@@ -86,6 +88,122 @@ pub(crate) fn valid_url(value: &str) -> Result<url::Url, String> {
         return Err("此地址不能作为网页打开 / Reserved or credential-bearing URL".into());
     }
     Ok(url)
+}
+
+pub(crate) fn http_page_url(value: &str) -> Result<String, String> {
+    let url = valid_url(value)?;
+    if !matches!(url.scheme(), "http" | "https") {
+        return Err("只能打开 http 或 https 地址 / Only an http or https address can be opened".into());
+    }
+    Ok(url.to_string())
+}
+
+pub(crate) fn accept_current_tab(
+    active_key: Option<&str>,
+    key: &str,
+    live_url: Option<&str>,
+    claimed_url: &str,
+) -> Result<String, String> {
+    if !valid_key(key) {
+        return Err("浏览器标签标识无效 / Invalid browser tab key".into());
+    }
+    let Some(live) = live_url else {
+        return Err("这个浏览器标签已关闭，未执行网页操作 / This browser tab is closed; the page was not changed".into());
+    };
+    if active_key != Some(key) {
+        return Err("这个标签已经不是当前浏览器标签，未执行网页操作 / This is no longer the current browser tab; the page was not changed".into());
+    }
+    let live = valid_url(live)?.to_string();
+    let claimed = valid_url(claimed_url)?.to_string();
+    if live != claimed {
+        return Err(format!("这个标签的地址已经变化（当时是 {claimed}，现在是 {live}），未执行网页操作 / This tab's address changed from {claimed} to {live}; the page was not changed"));
+    }
+    Ok(live)
+}
+
+pub(crate) const VISIBLE_TEXT_LIMIT: usize = 8192;
+const VISIBLE_TEXT_SCRIPT: &str = r#"(()=>{const body=document.body;const text=body&&typeof body.innerText==="string"?body.innerText:"";return {title:String(document.title||"").slice(0,300),url:String(location.href||""),text:text.slice(0,12000)};})()"#;
+
+pub(crate) fn bound_visible_text(text: &str) -> (String, bool) {
+    let mut end = text.len().min(VISIBLE_TEXT_LIMIT);
+    while end > 0 && !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    (text[..end].to_owned(), text.len() > end)
+}
+
+pub(crate) fn confirm_tab(
+    state: &BrowserState,
+    key: &str,
+    expected_url: &str,
+) -> Result<(String, tauri::Webview<Wry>), String> {
+    let active = state.4.active_key()?;
+    let webview = state
+        .0
+        .lock()
+        .map_err(|_| "浏览器状态不可用 / Browser state unavailable".to_string())?
+        .get(key)
+        .cloned();
+    let live = webview.as_ref().and_then(|view| view.url().ok()).map(|url| url.to_string());
+    let url = accept_current_tab(active.as_deref(), key, live.as_deref(), expected_url)?;
+    Ok((url, webview.unwrap()))
+}
+
+#[derive(Debug)]
+pub(crate) struct VisiblePage {
+    pub title: String,
+    pub text: String,
+    pub truncated: bool,
+}
+
+pub(crate) async fn read_visible_summary(
+    webview: tauri::Webview<Wry>,
+    expected_url: &str,
+    cancel: &std::sync::atomic::AtomicBool,
+) -> Result<VisiblePage, String> {
+    if cancel.load(Ordering::Acquire) {
+        return Err("请求已取消 / Request cancelled".into());
+    }
+    let parsed: serde_json::Value = run_fixed_script(webview.clone(), VISIBLE_TEXT_SCRIPT).await?;
+    if cancel.load(Ordering::Acquire) {
+        return Err("请求已取消 / Request cancelled".into());
+    }
+    let current = webview.url().map_err(|error| error.to_string())?.to_string();
+    if valid_url(&current)?.to_string() != expected_url {
+        return Err(format!("读取时这个标签的地址已经变化（当时是 {expected_url}，现在是 {current}），未继续 / This tab's address changed from {expected_url} to {current} while reading"));
+    }
+    let reported = parsed["url"].as_str().unwrap_or("");
+    if valid_url(reported).ok().as_ref().map(|url| url.to_string()).as_deref() != Some(expected_url) {
+        return Err("读取时页面地址与当前标签不一致，未采用这次正文 / The page address changed while reading; the text was discarded".into());
+    }
+    let title = parsed["title"].as_str().unwrap_or("").chars().filter(|c| !c.is_control()).take(200).collect();
+    let (text, truncated) = bound_visible_text(parsed["text"].as_str().unwrap_or(""));
+    Ok(VisiblePage { title, text, truncated })
+}
+
+async fn run_fixed_script(webview: tauri::Webview<Wry>, source: &'static str) -> Result<serde_json::Value, String> {
+    let (sender, receiver) = tokio::sync::oneshot::channel();
+    let reply = Arc::new(Mutex::new(Some(sender)));
+    webview.with_webview(move |native| unsafe {
+        let done = reply.clone();
+        let callback = ExecuteScriptCompletedHandler::create(Box::new(move |result, json| {
+            let result = result.map_err(|error| error.to_string()).and_then(|_| serde_json::from_str(&json).map_err(|error| error.to_string()));
+            if let Some(sender) = done.lock().ok().and_then(|mut slot| slot.take()) {
+                let _ = sender.send(result);
+            }
+            Ok(())
+        }));
+        if let Err(error) = native.controller().CoreWebView2().and_then(|view| view.ExecuteScript(&HSTRING::from(source), &callback)) {
+            if let Some(sender) = reply.lock().ok().and_then(|mut slot| slot.take()) {
+                let _ = sender.send(Err(error.to_string()));
+            }
+        }
+    }).map_err(|error| error.to_string())?;
+    match tokio::time::timeout(std::time::Duration::from_secs(8), receiver).await {
+        Ok(Ok(result)) => result,
+        Ok(Err(_)) => Err("读取页面被中断 / Page reading was interrupted".into()),
+        Err(_) => Err("读取当前页超时 / Reading the current page timed out".into()),
+    }
 }
 
 fn valid_bounds(bounds: &BrowserBounds) -> Result<(), String> {
@@ -598,4 +716,39 @@ pub async fn browser_extension_install(
     let path = extension_dir(Some(path))?
         .ok_or("请选择解压扩展目录 / Choose an unpacked extension folder")?;
     extensions::install(extension_webview(&state, &key)?, path).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_current_tab_is_refused_when_it_closes_or_its_address_changes() {
+        let url = "https://example.com/docs";
+        assert_eq!(accept_current_tab(Some("tab"), "tab", Some(url), url).unwrap(), url);
+        assert!(accept_current_tab(Some("tab"), "tab", None, url).unwrap_err().contains("已关闭"));
+        assert!(accept_current_tab(Some("other"), "tab", Some(url), url).unwrap_err().contains("不是当前"));
+        assert!(accept_current_tab(None, "tab", Some(url), url).unwrap_err().contains("不是当前"));
+        assert!(accept_current_tab(Some("tab"), "tab", Some("https://example.com/other"), url).unwrap_err().contains("已经变化"));
+        assert!(accept_current_tab(Some("tab"), "bad key", Some(url), url).is_err());
+        assert!(http_page_url("https://example.com/next").is_ok());
+        assert!(http_page_url("http://127.0.0.1:9/local").is_ok());
+        for blocked in ["javascript:alert(1)", "file:///C:/secret", "about:blank", "https://user:secret@example.com/"] {
+            assert!(http_page_url(blocked).is_err(), "{blocked}");
+        }
+    }
+
+    #[test]
+    fn visible_text_is_a_fixed_read_with_a_byte_limit() {
+        assert!(VISIBLE_TEXT_SCRIPT.contains("innerText"));
+        assert!(VISIBLE_TEXT_SCRIPT.contains("document.title"));
+        assert!(VISIBLE_TEXT_SCRIPT.contains("location.href"));
+        assert!(!VISIBLE_TEXT_SCRIPT.contains("eval("));
+        assert!(!VISIBLE_TEXT_SCRIPT.contains("fetch("));
+        let (text, truncated) = bound_visible_text(&"文".repeat(10_000));
+        assert!(truncated);
+        assert!(text.len() <= VISIBLE_TEXT_LIMIT);
+        assert!(text.is_char_boundary(text.len()));
+        assert_eq!(bound_visible_text("short"), ("short".into(), false));
+    }
 }

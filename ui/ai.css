@@ -244,6 +244,7 @@ body.resizing-ai-panel .ai-resize-handle::after, body.ai-resizing .ai-resize-han
 [data-theme="dark"] .ai-result.success { color: #8dcfb0; }
 .ai-result.failed { color: var(--danger); }
 .ai-action-message { margin-top: 8px; color: var(--txt2); font-size: 10px; line-height: 1.7; overflow-wrap: anywhere; user-select: text; }
+.ai-check-output { max-height: 240px; margin: 8px 0 0; padding: 8px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: 11px/1.5 ui-monospace, Consolas, monospace; user-select: text; background: var(--bg2, rgba(0,0,0,.04)); }
 
 @media (max-width: 1080px) {
   .ai-chat-header { padding-left: 14px; padding-right: 11px; gap: 7px; }

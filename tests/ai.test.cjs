@@ -566,17 +566,58 @@ test('an SSH tab cannot reuse local folder memory, selections or executable plan
 });
 
 test('web and SSH tabs do not silently acquire the initialized local inbox', async () => {
-  for (const tab of [{ kind: 'browser' }, { kind: 'term', connection: 'ssh' }]) {
-    const h = harness();
-    h.context.state.tabs.push(tab);
-    h.run("aiInboxRoot = 'D:/AgentInbox'; state.tab = 1");
-    assert.equal(h.run('aiBrowsingFolder()'), null);
-    h.run('syncAiWorkspace()');
-    assert.equal(h.run('aiCurrentSession()'), null);
-    assert.equal(h.get('aiPrompt').disabled, true);
-    await h.run('sendAiMessage()');
-    assert.equal(h.calls.length, 0);
-  }
+  const ssh = harness();
+  ssh.context.state.tabs.push({ kind: 'term', connection: 'ssh' });
+  ssh.run("aiInboxRoot = 'D:/AgentInbox'; state.tab = 1");
+  assert.equal(ssh.run('aiBrowsingFolder()'), null);
+  ssh.run('syncAiWorkspace()');
+  assert.equal(ssh.run('aiCurrentSession()'), null);
+  assert.equal(ssh.get('aiPrompt').disabled, true);
+  await ssh.run('sendAiMessage()');
+  assert.equal(ssh.calls.length, 0);
+
+  const web = harness(async (cmd) => cmd === 'ai_plan' ? ({ id: 'page-plan', root: '', summary: 'Read this tab first', actions: [{ kind: 'browser_read', source: 'Example', target: 'https://example.com/a' }], permissionMode: 'confirm', steps: [] }) : undefined);
+  web.context.state.tabs.push({ kind: 'browser', key: 'tab-key', url: 'https://example.com/a', title: 'Example', browserReady: true });
+  web.run("aiInboxRoot = 'D:/AgentInbox'; aiProjectRoot = ''; state.tab = 1; syncAiWorkspace();");
+  assert.equal(web.run('aiBrowsingFolder()'), null);
+  assert.equal(web.run('aiCurrentSession().browserPage'), true);
+  assert.equal(web.run('aiCurrentSession().root'), '');
+  assert.equal(web.run('aiCurrentSession().projectTools'), false);
+  assert.notEqual(web.run('aiCurrentSession().root'), 'D:/AgentInbox');
+  web.run("aiCurrentSession().agentRole = { id: 'web', access: 'advice', nameZh: '网页助手', nameEn: 'Web' };");
+  web.get('aiPrompt').value = 'What is on this page?';
+  await web.run('sendAiMessage()');
+  const request = web.calls.find((call) => call.cmd === 'ai_plan').args.request;
+  assert.equal(request.generalChat, true);
+  assert.equal(request.streamChat, false);
+  assert.equal(request.roleId, 'web');
+  assert.equal(request.browserTab.key, 'tab-key');
+  assert.equal(request.browserTab.url, 'https://example.com/a');
+  assert.equal(request.browserTab.title, 'Example');
+  assert.equal(request.selection.length, 0);
+  assert.equal(web.run("aiCurrentSession().messages.some(m => m.planState === 'pending' && m.plan.actions[0].kind === 'browser_read')"), true);
+  const card = web.run("aiMessageMarkup(aiCurrentSession().messages.find(m => m.plan))");
+  assert.match(card, /Example/);
+  assert.match(card, /https:\/\/example.com\/a/);
+  assert.match(card, /Read this tab/);
+});
+
+test('browser actions stay confirmed in auto mode and read-only can run only a page read', async () => {
+  const opened = { id: 'nav', root: 'C:\\work', summary: 'Open the docs', actions: [{ kind: 'browser_open', source: 'Example', target: 'https://example.com/docs' }], permissionMode: 'auto', steps: [] };
+  const auto = harness(async (cmd) => cmd === 'ai_plan' ? opened : undefined);
+  auto.run("setAiPermissionMode('auto'); aiCurrentSession().agentRole = { id: 'web', access: 'advice' };");
+  auto.get('aiPrompt').value = 'Open the docs';
+  await auto.run('sendAiMessage()');
+  assert.equal(auto.calls.some((call) => call.cmd === 'ai_execute'), false);
+  assert.equal(auto.run("aiCurrentSession().messages.some(m => m.planState === 'pending')"), true);
+
+  const read = harness(async (cmd) => cmd === 'ai_execute' ? ({ completed: true, results: [{ kind: 'browser_read', target: 'https://example.com/a', status: 'success', message: 'Visible text' }], journalId: '', stopped: false }) : undefined);
+  read.context.projectText = (_zh, en) => en;
+  read.run("aiCurrentSession().permissionMode = 'read-only'; aiCurrentSession().agentRole = { id: 'web', access: 'advice' };");
+  read.run("addAiMessage(aiCurrentSession(), 'assistant', 'Read the current tab', { plan: { id: 'read-plan', root: 'C:\\\\work', actions: [{ kind: 'browser_read', source: 'Example', target: 'https://example.com/a' }], permissionMode: 'read-only' }, planState: 'pending' });");
+  read.run("document.body.append?.(document.createElement('input'));");
+  await read.run("executeAiPlan(aiCurrentSession().messages.at(-1).id, false, true)");
+  assert.equal(read.calls.some((call) => call.cmd === 'ai_execute' && call.args.approved === true && call.args.permissionMode === 'read-only'), true);
 });
 
 test('a pinned project remains the target on a web tab without inheriting stale explorer selections', () => {

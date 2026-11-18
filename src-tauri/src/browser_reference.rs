@@ -172,6 +172,12 @@ impl References {
             s.quotes.remove(id);
         }
     }
+    pub(crate) fn active_key(&self) -> Result<Option<String>, String> {
+        self.0
+            .lock()
+            .map(|store| store.active.clone())
+            .map_err(|_| "网页标签状态不可用 / Browser tab state is unavailable".into())
+    }
     pub fn is_live(&self, id: &str) -> bool {
         self.0.lock().ok().is_some_and(|s| {
             s.quotes

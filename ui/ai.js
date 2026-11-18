@@ -18,6 +18,7 @@ const AI_TEXT = {
     support: '支持问答、新建文件夹和 Markdown/文本文档、移动、重命名、复制文件；不执行删除、文件夹复制或终端命令。',
     following: '当前标签页目录', terminal: '当前终端启动目录', permissions: '本标签页权限', readOnly: '只读', confirmMode: '确认后执行', autoMode: '自动执行（当前目录）',
     readOnlyHint: 'AI 仅分析和回答，不执行文件操作。', confirmHint: '每份文件操作计划经你核对确认后执行。', autoHint: '发送后可自动创建目录和文档、移动、重命名和复制；修改已有文档时先审阅。', modeChanged: '权限已更新，之前的待执行计划已失效。', memoryLocation: '目录记忆文件',
+    browserScope: '当前浏览器标签', browserTab: '当前网页', webReadOnlyHint: '只读时只能确认读取当前这一个浏览器标签，不能打开地址、后退、前进或刷新。', webConfirmHint: '网页动作始终需要你确认，即使选择了自动执行。每次只操作当前这一个浏览器标签。', pageConfirmation: '我已核对当前标签和将要执行的网页动作',
     noFolder: '选择本地任务目标', noFolderHint: '打开本地目录，或在「项目」中选择固定项目或本地收件箱。', remoteFolder: '远程 SSH 终端', remoteHint: '当前 Agent 未连接此主机。要继续本地任务，请在「项目」中选择本地目标。',
     welcome: '今天想一起完成什么？', welcomeHint: '可以直接讨论问题、写作或开发。需要读取项目文件时，切换到项目工具。',
     example1: '帮我把一个想法写成可执行计划', example2: '帮我设计一个小程序', example3: '帮我润色一段文字',
@@ -28,7 +29,7 @@ const AI_TEXT = {
     review: '待确认操作', confirmation: '我已核对路径与操作内容', execute: '确认执行', discard: '放弃计划',
     executing: '正在执行…', done: '操作已完成', partial: '部分操作失败，后续步骤已停止；已完成步骤不会自动回滚。',
     superseded: '旧计划已失效，请查看最新回复。', expired: '计划已过期，未执行。需要时请重新生成。', discarded: '此计划未执行或未全部完成。',
-    source: '源路径', target: '目标路径', mkdir: '新建文件夹', move: '移动', rename: '重命名', copy: '复制文件', create_text: '新建文档', edit_text: '修改文档', saveReply: '存为项目文档', documentPreview: '将写入的完整正文',
+    source: '源路径', target: '目标路径', mkdir: '新建文件夹', move: '移动', rename: '重命名', copy: '复制文件', create_text: '新建文档', edit_text: '修改文档', run_check: '运行检查', browser_read: '读取当前页', browser_open: '在当前标签打开', browser_back: '后退', browser_forward: '前进', browser_reload: '刷新', saveReply: '存为项目文档', documentPreview: '将写入的完整正文',
     success: '已完成', failed: '失败', skipped: '未执行', context: '基于 {n} 条目录信息', truncated: '目录信息超过上限，仅包含部分项目。',
     invalidScope: '回复的工作目录与当前会话不符，已丢弃此计划。', resize: '调整对话面板宽度',
   },
@@ -50,6 +51,7 @@ const AI_TEXT = {
     support: 'Ask questions, create folders or Markdown/text documents, move, rename or copy files. No deletion, folder copying or terminal commands.',
     following: 'Current tab folder', terminal: 'Current terminal starting folder', permissions: 'Permissions for this tab', readOnly: 'Read-only', confirmMode: 'Ask before changes', autoMode: 'Auto in this folder',
     readOnlyHint: 'The AI can analyze and answer, but cannot run file operations.', confirmHint: 'Review and confirm each file operation plan before it runs.', autoHint: 'Sending may create folders or documents, move, rename or copy within this folder. No overwrite or deletion.', modeChanged: 'Permissions updated. Previous pending plans have expired.', memoryLocation: 'Folder memory file',
+    browserScope: 'Current browser tab', browserTab: 'Current page', webReadOnlyHint: 'Read-only can only read this one browser tab. It cannot open an address, go back, go forward or reload.', webConfirmHint: 'Every page action waits for confirmation, even in automatic mode. It only touches the browser tab you are looking at.', pageConfirmation: 'I checked this tab and the page action',
     noFolder: 'Choose a local task target', noFolderHint: 'Open a local folder, or use Projects to pin a project or the local inbox.', remoteFolder: 'Remote SSH terminal', remoteHint: 'The agent is not connected to this host. To continue a local task, choose its target in Projects.',
     welcome: 'What would you like to work on?', welcomeHint: 'Ask a question, draft something, or plan a project. Enable project tools to work with local files.',
     example1: 'Help me turn an idea into a plan', example2: 'Help me design a small application', example3: 'Help me edit a draft',
@@ -60,7 +62,7 @@ const AI_TEXT = {
     review: 'Review operations', confirmation: 'I reviewed the paths and proposed changes', execute: 'Confirm and run', discard: 'Discard plan',
     executing: 'Running…', done: 'Operations completed', partial: 'An action failed. Later actions stopped; completed steps were not rolled back.',
     superseded: 'This plan was superseded. Review the latest reply.', expired: 'This plan expired without running. Request a new plan if needed.', discarded: 'This plan was not fully executed.',
-    source: 'Source', target: 'Target', mkdir: 'Create folder', move: 'Move', rename: 'Rename', copy: 'Copy file', create_text: 'Create document', edit_text: 'Edit document', saveReply: 'Save to project', documentPreview: 'Full document to write',
+    source: 'Source', target: 'Target', mkdir: 'Create folder', move: 'Move', rename: 'Rename', copy: 'Copy file', create_text: 'Create document', edit_text: 'Edit document', run_check: 'Run check', browser_read: 'Read this tab', browser_open: 'Open in this tab', browser_back: 'Go back', browser_forward: 'Go forward', browser_reload: 'Reload', saveReply: 'Save to project', documentPreview: 'Full document to write',
     success: 'Completed', failed: 'Failed', skipped: 'Skipped', context: 'Based on {n} directory entries', truncated: 'Only part of the directory was included.',
     invalidScope: 'The reply used a different working folder. Its plan was discarded.', resize: 'Resize chat panel',
   },
@@ -86,7 +88,29 @@ const aiChars = (text, max) => Array.from(String(text)).slice(0, max).join('');
 function aiCurrentSession() { return aiSessions.get(aiCurrentKey) || null; }
 function aiTabId(tab = curTab()) { return tab ? (tab.aiSessionId ||= crypto.randomUUID()) : ''; }
 function aiSessionKeyFor(root, tab = curTab()) { return root ? (aiProjectScope(root) ? 'project' : aiTabId(tab)) + '::' + aiKey(root) : ''; }
-function aiTabIsActive(session) { return !!session && aiSessionKeyFor(aiBrowsingFolder()) === session.key; }
+function aiBrowserPage(tab = curTab()) { return !aiProjectRoot && tab?.kind === 'browser'; }
+function aiBrowserKey(tab = curTab()) { return tab?.kind === 'browser' ? 'browser::' + aiTabId(tab) : ''; }
+function aiBrowserSession(tab = curTab()) {
+  const key = aiBrowserKey(tab);
+  if (!key) return null;
+  let session = aiSessions.get(key);
+  if (!session) {
+    session = { key, root: '', browserPage: true, tab, permissionMode: 'confirm', activation: 0, messages: [], draft: '', requestId: null, running: false, revision: 0, includeSelection: false, projectTools: false };
+    aiSessions.set(key, session);
+    for (const candidate of aiSessions.values()) {
+      if (aiSessions.size <= 24) break;
+      if (candidate === session || !canReleaseAiSession(candidate)) continue;
+      if (candidate.archive?.timer != null) clearTimeout(candidate.archive.timer);
+      aiSessions.delete(candidate.key);
+    }
+  }
+  return session;
+}
+function aiTabIsActive(session) {
+  if (!session) return false;
+  if (session.browserPage) return aiBrowserPage() && session.key === aiBrowserKey();
+  return aiSessionKeyFor(aiBrowsingFolder()) === session.key;
+}
 function aiAutoTab(session) {
   const tab = curTab();
   if (!session || !tab || tab.kind === 'browser' || tab.connection === 'ssh') return null;
@@ -197,7 +221,7 @@ function disposeAiTab(tab) {
 function setAiPermissionMode(mode) {
   const session = aiCurrentSession();
   if (!session || session.running || !['read-only', 'confirm', 'auto'].includes(mode) || session.permissionMode === mode) return;
-  if (session.agentRole && session.agentRole.access !== 'standard' && mode !== 'read-only') return;
+  if (session.agentRole && session.agentRole.access !== 'standard' && session.agentRole.id !== 'web' && mode !== 'read-only') return;
   if (mode === 'auto' && !aiAutoTab(session)) { updateAiComposer(); return; }
   cancelAiRequest(session, false); discardSessionPlans(session);
   session.autoTab = mode === 'auto' ? curTab() : null;
@@ -455,12 +479,12 @@ function setAiWidth(value) {
 function syncAiWorkspace() {
   if (!aiPanel) return;
   if(typeof syncHarnessUnread==='function')syncHarnessUnread();
-  const root = aiBrowsingFolder(), key = aiSessionKeyFor(root), previous = aiCurrentSession();
+  const browser = aiBrowserPage(), root = aiBrowsingFolder(), key = browser ? aiBrowserKey() : aiSessionKeyFor(root), previous = aiCurrentSession();
   syncPinnedAuto(previous);
-  if (key !== aiCurrentKey) {
+  if (key !== aiCurrentKey || (key && !aiSessions.has(key))) {
     if (previous) { previous.draft = $('aiPrompt').value; previous.subfolderSelection = null; previous.activation++; }
     aiCurrentKey = key;
-    const session = root ? aiSessionFor(root) : null;
+    const session = browser ? aiBrowserSession() : (root ? aiSessionFor(root) : null);
     if (session && aiProjectScope(root)) void resumeAiProject(session);
     $('aiPrompt').value = session?.draft || ''; aiPaintIdentity = '';
   }
@@ -469,11 +493,11 @@ function syncAiWorkspace() {
   aiPanel.querySelectorAll('[data-ai-text]').forEach((el) => { el.textContent = aiText(el.dataset.aiText); });
   aiPanel.querySelectorAll('[data-ai-title]').forEach((el) => { el.title = aiText(el.dataset.aiTitle); el.setAttribute('aria-label', el.title); });
   aiPanel.querySelector('[data-ai-resize]').setAttribute('aria-label', aiText('resize'));
-  const remote = curTab()?.connection === 'ssh';
-  $('aiPrompt').placeholder = aiText(root ? 'prompt' : remote ? 'remoteFolder' : 'noFolder'); $('aiPrompt').setAttribute('aria-label', aiText('prompt'));
-  $('aiFolderName').textContent = root ? basename(root) || root : aiText(remote ? 'remoteFolder' : 'noFolder');
-  $('aiFolderPath').textContent = root || aiText(remote ? 'remoteHint' : 'noFolderHint'); $('aiFolderPath').title = root || '';
-  $('aiScopeMode').textContent = !root ? (locale === 'zh' ? '未选择任务目标' : 'No task target') : aiProjectRoot ? (locale === 'zh' ? '固定的本地项目' : 'Pinned local project') : aiText(isTermTab(curTab()) ? 'terminal' : 'following');
+  const remote = curTab()?.connection === 'ssh', page = browser ? curTab() : null;
+  $('aiPrompt').placeholder = aiText(page ? 'prompt' : root ? 'prompt' : remote ? 'remoteFolder' : 'noFolder'); $('aiPrompt').setAttribute('aria-label', aiText('prompt'));
+  $('aiFolderName').textContent = page ? (page.title || page.url || aiText('browserTab')) : root ? basename(root) || root : aiText(remote ? 'remoteFolder' : 'noFolder');
+  $('aiFolderPath').textContent = page ? (page.url || '') : root || aiText(remote ? 'remoteHint' : 'noFolderHint'); $('aiFolderPath').title = page?.url || root || '';
+  $('aiScopeMode').textContent = page ? aiText('browserScope') : !root ? (locale === 'zh' ? '未选择任务目标' : 'No task target') : aiProjectRoot ? (locale === 'zh' ? '固定的本地项目' : 'Pinned local project') : aiText(isTermTab(curTab()) ? 'terminal' : 'following');
   $('aiContextRow')?.classList.toggle('hidden', remote && !root);
   const memoryPath = root ? root.replace(/[\\/]+$/, '') + '\\.dalizi\\agent-memory.json' : '';
   $('aiMemoryPath').textContent = root ? '.dalizi / agent-memory.json' : '';
@@ -653,7 +677,8 @@ function updateAiComposer() {
   if (!aiPanel) return;
   if (typeof renderAgentRole === 'function') renderAgentRole();
   const session = aiCurrentSession(), busy = !!(session?.requestId || session?.running || session?.restoring);
-  $('aiProjectTools').checked = !!session?.projectTools; $('aiProjectTools').disabled = !session || busy || session.agentRole?.access === 'advice';
+  const webRole = session?.agentRole?.id === 'web';
+  $('aiProjectTools').checked = !!session?.projectTools; $('aiProjectTools').disabled = !session || busy || session.browserPage || session.agentRole?.access === 'advice';
   $('aiPrompt').disabled = !session || session.running;
   const send = aiPanel.querySelector('[data-ai-action="send"]'); send.disabled = !session || busy; send.textContent = aiText(session?.running ? 'executing' : 'send');
   aiPanel.querySelector('[data-ai-action="cancel"]').classList.toggle('hidden', !session?.requestId);
@@ -667,10 +692,12 @@ function updateAiComposer() {
   $('aiComposerNote').textContent = aiText('hint') + ' · ' + (typeof chatText === 'function' ? chatText('对话可在当前目录保存与恢复', 'Save and restore conversations in this folder') : aiText('memory'));
   if (typeof renderAiArchiveStatus === 'function') renderAiArchiveStatus();
   $('aiPermissionMode').value = session?.permissionMode || 'confirm';
-  $('aiPermissionMode').disabled = !session?.projectTools || session.running || (!!session.agentRole && session.agentRole.access !== 'standard');
+  $('aiPermissionMode').disabled = !session || session.running || (!webRole && (!session.projectTools || (!!session.agentRole && session.agentRole.access !== 'standard')));
   const autoTab = aiAutoTab(session), autoOption = $('aiPermissionMode').querySelector?.('option[value="auto"]');
   if (autoOption) autoOption.disabled = !autoTab;
-  $('aiPermissionHint').textContent = session?.projectTools && session.permissionMode === 'confirm' && !autoTab
+  $('aiPermissionHint').textContent = webRole
+    ? aiText(session.permissionMode === 'read-only' ? 'webReadOnlyHint' : 'webConfirmHint')
+    : session?.projectTools && session.permissionMode === 'confirm' && !autoTab
     ? (locale === 'zh' ? '文件操作需要确认。要开启自动执行，请回到项目的本地目录。' : 'Review file changes here. Return to the local project folder to enable automatic execution.')
     : aiText(session?.permissionMode === 'auto' ? 'autoHint' : session?.permissionMode === 'read-only' ? 'readOnlyHint' : 'confirmHint');
   $('aiPermissionHint').classList.toggle('is-auto', session?.permissionMode === 'auto');
@@ -679,7 +706,11 @@ function updateAiComposer() {
 function aiActionMarkup(action, result) {
   const preview = action.kind === 'create_text' && typeof action.content === 'string'
     ? `<div class="ai-document-preview"><small>${esc(aiText('documentPreview'))}</small><pre>${esc(action.content)}</pre></div>` : '';
-  return `<div class="ai-action"><div class="ai-action-title"><strong>${esc(aiText(action.kind))}</strong>${result ? `<span class="ai-result ${esc(result.status)}">${esc(aiText(result.status))}</span>` : ''}</div>${action.source ? `<div class="ai-path"><span>${aiText('source')}</span><code>${esc(action.source)}</code></div>` : ''}<div class="ai-path"><span>${aiText('target')}</span><code>${esc(action.target)}</code></div>${preview}${result?.message ? `<small class="ai-action-message">${esc(result.message)}</small>` : ''}</div>`;
+  const pageAction = String(action.kind || '').startsWith('browser_');
+  const output = (action.kind === 'run_check' || action.kind === 'browser_read') && result?.message ? `<pre class="ai-check-output">${esc(result.message)}</pre>` : (result?.message ? `<small class="ai-action-message">${esc(result.message)}</small>` : '');
+  const sourceLabel = pageAction ? (locale === 'zh' ? '当前标签' : 'Current tab') : aiText('source');
+  const targetLabel = action.kind === 'browser_open' ? (locale === 'zh' ? '将打开' : 'Will open') : pageAction ? (locale === 'zh' ? '当前地址' : 'Current address') : aiText('target');
+  return `<div class="ai-action"><div class="ai-action-title"><strong>${esc(aiText(action.kind))}</strong>${result ? `<span class="ai-result ${esc(result.status)}">${esc(aiText(result.status))}</span>` : ''}</div>${action.source ? `<div class="ai-path"><span>${sourceLabel}</span><code>${esc(action.source)}</code></div>` : ''}<div class="ai-path"><span>${targetLabel}</span><code>${esc(action.target)}</code></div>${preview}${output}</div>`;
 }
 function aiStepKind(kind) {
   if (kind === 'read') return projectText('读取文件', 'Read file');
@@ -709,7 +740,8 @@ function aiMessageMarkup(message) {
     const pending = message.planState === 'pending';
     const label = {pending:'review', running:'executing', done:'done', discarded:'discarded', expired:'expired'}[message.planState] || 'superseded';
     const title = message.roleChanged ? (locale === 'zh' ? '角色或推荐技能已更改，请重新生成计划' : 'Role or skills changed. Generate a new plan.') : aiText(label);
-    card = `<details class="ai-plan-card" data-ai-plan-details="${message.id}" ${message.expanded ? 'open' : ''}><summary>${esc(title)} · ${message.plan.actions.length}</summary><div class="ai-plan-actions">${message.plan.actions.map((action) => aiActionMarkup(action)).join('')}</div>${pending ? `<div class="ai-confirmation"><label><input type="checkbox" data-ai-confirm="${message.id}"><span>${esc(aiText('confirmation'))}</span></label><div><button class="ai-primary" data-ai-action="execute" data-message="${message.id}" disabled>${esc(aiText('execute'))}</button><button class="ai-secondary" data-ai-action="discard">${esc(aiText('discard'))}</button></div></div>` : ''}</details>`;
+    const pagePlan = message.plan.actions.every((action) => String(action.kind || '').startsWith('browser_'));
+    card = `<details class="ai-plan-card" data-ai-plan-details="${message.id}" ${message.expanded ? 'open' : ''}><summary>${esc(title)} · ${message.plan.actions.length}</summary><div class="ai-plan-actions">${message.plan.actions.map((action) => aiActionMarkup(action)).join('')}</div>${pending ? `<div class="ai-confirmation"><label><input type="checkbox" data-ai-confirm="${message.id}"><span>${esc(aiText(pagePlan ? 'pageConfirmation' : 'confirmation'))}</span></label><div><button class="ai-primary" data-ai-action="execute" data-message="${message.id}" disabled>${esc(aiText('execute'))}</button><button class="ai-secondary" data-ai-action="discard">${esc(aiText('discard'))}</button></div></div>` : ''}</details>`;
   }
   if (message.plan?.actions[0]?.kind === 'edit_text' && message.planState === 'pending') {
     const filename = basename(message.plan.actions[0].target);
@@ -719,7 +751,7 @@ function aiMessageMarkup(message) {
     const {index,status} = message.fileProgress, actions = message.plan.actions;
     card += `<p class="ai-message-meta" data-file-progress>${index + 1}/${actions.length} · ${esc(fileHistoryLabel(status))} · ${esc(actions[index].target)}</p>`;
   }
-  if (message.planState === 'running' && message.plan?.actions.length > 1) {
+  if (message.planState === 'running' && (message.plan?.actions.length > 1 || message.plan?.actions.some((action) => String(action.kind || '').startsWith('browser_')))) {
     card += `<button class="ai-secondary" data-ai-action="stop-files" data-message="${esc(message.id)}"${message.stopRequested ? ' disabled' : ''}>${esc(locale === 'zh' ? (message.stopRequested ? '已请求停止后续步骤' : '停止后续步骤') : (message.stopRequested ? 'Stop requested' : 'Stop remaining steps'))}</button>`;
   }
   if (message.journalId) card += `<button class="ai-link" data-ai-action="file-receipt" data-record="${esc(message.journalId)}">${esc(locale === 'zh' ? '查看文件操作记录' : 'View file operation record')}</button>`;
@@ -816,7 +848,9 @@ async function sendAiMessage() {
   const model = aiPublicSettings(aiSettings), route = {...model, apiKey: aiSessionKey};
   const submittedRole = session.agentRole, useRoleSkills = !!session.useRoleSkills, roleGeneration = session.roleGeneration || 0;
   const roleLabel = {zh: submittedRole?.nameZh || '通用助手', en: submittedRole?.nameEn || 'General'};
-  const generalChat = !session.projectTools, streamChat = generalChat && aiStreamReplies;
+  const webRole = (submittedRole?.id || 'general') === 'web';
+  const generalChat = !session.projectTools, streamChat = generalChat && aiStreamReplies && !webRole;
+  const browserTab = webRole && curTab()?.kind === 'browser' && curTab().key ? { key: curTab().key, url: curTab().url || '', title: curTab().title || '' } : null;
   discardSessionPlans(session);
   const previousMessages = session.messages.slice(), selection = session.projectTools ? aiSelectedPaths(session) : [];
   session.subfolderSelection = null;
@@ -828,7 +862,7 @@ async function sendAiMessage() {
   session.requestRoleLabel = roleLabel;
   renderAiConversation(); updateAiComposer();
   try {
-    const context = typeof getAgentRequestContext === 'function' ? await getAgentRequestContext(session.root) : {};
+    const context = session.browserPage ? { skillIds: [], useMemory: false, learnMemory: false } : (typeof getAgentRequestContext === 'function' ? await getAgentRequestContext(session.root) : {});
     if (session.requestId !== requestId || aiSessions.get(session.key) !== session) return;
     if (typeof prepareAiMemory === 'function') {
       try { await prepareAiMemory(session, requestId, previousMessages, false, route); }
@@ -840,9 +874,13 @@ async function sendAiMessage() {
       skillIds: context.skillIds || [], roleId: submittedRole?.id || 'general', useRoleSkills,
       ...(context.copyRevisions ? {copyRevisions:context.copyRevisions} : {}),
       useMemory: !!context.useMemory, learnMemory: !!context.learnMemory, permissionMode,
+      ...(browserTab ? { browserTab } : {}),
     } });
     if (session.requestId !== requestId || aiSessions.get(session.key) !== session) { invoke('ai_discard', { id: plan.id }).catch(() => {}); return; }
-    if (aiKey(plan.root) !== aiKey(session.root) || plan.permissionMode !== permissionMode || ((generalChat || permissionMode === 'read-only') && plan.actions.length)) { invoke('ai_discard', { id: plan.id }).catch(() => {}); throw new Error(aiText('invalidScope')); }
+    const pageActions = plan.actions.length > 0 && plan.actions.every((action) => String(action.kind || '').startsWith('browser_'));
+    const illegalPage = webRole && plan.actions.length && (!pageActions || (permissionMode === 'read-only' && plan.actions.some((action) => action.kind !== 'browser_read')));
+    const illegalFile = !webRole && (generalChat || permissionMode === 'read-only') && plan.actions.length;
+    if (aiKey(plan.root) !== aiKey(session.root) || plan.permissionMode !== permissionMode || illegalPage || illegalFile) { invoke('ai_discard', { id: plan.id }).catch(() => {}); throw new Error(aiText('invalidScope')); }
     if (!plan.steps && plan.inspected?.length) addAiMessage(session, 'notice', plan.inspected.join('\n'));
     session.streamText = '';
     syncPinnedAuto(session);
@@ -858,7 +896,7 @@ async function sendAiMessage() {
       memorySuggestions: (context.learnMemory ? plan.memorySuggestions || [] : []).filter((value) => typeof value === 'string' && value.trim()).slice(0, 3).map((content) => ({ content: aiChars(content, 600), status: 'pending' })),
     });
     if (message.planState === 'pending') watchAiPlanExpiry(session, message);
-    if (message.planState === 'pending' && permissionMode === 'auto' && session.permissionMode === permissionMode && !foregroundChanged && !plan.actions.some(a => a.kind === 'edit_text')) {
+    if (message.planState === 'pending' && permissionMode === 'auto' && session.permissionMode === permissionMode && !foregroundChanged && !plan.actions.some(a => a.kind === 'edit_text' || a.kind === 'run_check' || String(a.kind || '').startsWith('browser_'))) {
       session.requestId = null;
       await executeAiPlan(message.id, true);
     }
@@ -888,7 +926,8 @@ function cancelAiRequest(session = aiCurrentSession(), notify = true) {
 async function executeAiPlan(messageId, automatic = false, reviewed = false) {
   const session = aiCurrentSession(), message = session?.messages.find((m) => m.id === messageId);
   syncPinnedAuto(session);
-  if (!session || !aiTabIsActive(session) || session.permissionMode === 'read-only' || !message?.plan || message.planState !== 'pending' || session.requestId || aiAnyExecution()) return;
+  const pageRead = message?.plan?.actions?.every((action) => action.kind === 'browser_read');
+  if (!session || !aiTabIsActive(session) || (session.permissionMode === 'read-only' && !pageRead) || !message?.plan || message.planState !== 'pending' || session.requestId || aiAnyExecution()) return;
   if (expireAiPlan(session, message)) return;
   if (message.plan.actions.some(a => a.kind === 'edit_text') && !reviewed) return;
   if (!reviewed && (automatic ? session.permissionMode !== 'auto' : !aiPanel.querySelector(`[data-ai-confirm="${messageId}"]`)?.checked)) return;
@@ -912,7 +951,7 @@ async function executeAiPlan(messageId, automatic = false, reviewed = false) {
     const outcome = result.stopped ? (locale === 'zh' ? '已停止后续步骤。' : 'Remaining steps stopped.') : editFailure?.message || aiText(result.completed ? 'done' : 'partial');
     const warning = result.journalWarning ? (locale === 'zh' ? '磁盘记录未完整写入，请核对文件。' : 'The on-disk record is incomplete. Check the files.') + ' ' + result.journalWarning : '';
     addAiMessage(session, 'notice', [outcome, warning].filter(Boolean).join('\n'), { results: result.results, error: !result.completed || !!warning });
-    if (!isTermTab(curTab()) && aiTabIsActive(session)) await refresh(true);
+    if (!plan.actions.every((action) => String(action.kind || '').startsWith('browser_')) && !isTermTab(curTab()) && aiTabIsActive(session)) await refresh(true);
   } catch (error) {
     message.planState = 'discarded'; addAiMessage(session, 'notice', String(error), { error: true, omitHistory: true });
   } finally {

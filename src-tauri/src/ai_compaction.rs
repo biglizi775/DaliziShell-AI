@@ -111,6 +111,7 @@ pub async fn ai_compact(request: CompactRequest) -> Result<CompactResponse, Stri
         use_memory: false,
         learn_memory: false,
         permission_mode: PermissionMode::ReadOnly,
+        browser_tab: None,
     };
     validate_conversation(&request)?;
     validate_reasoning(&request)?;
