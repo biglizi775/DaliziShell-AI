@@ -304,7 +304,7 @@ pub(crate) fn with_policy<T>(f: impl FnOnce(Option<&Policy>) -> T) -> T {
 
 #[tauri::command]
 pub async fn index_locations_get(view: tauri::Webview) -> Result<Policy, String> {
-    crate::ai::harness_tasks::local(&view)?;
+    crate::workspace_identity::local(&view)?;
     tauri::async_runtime::spawn_blocking(|| {
         with_policy(|p| p.cloned()).ok_or_else(|| "Index settings unavailable".to_string())
     })
@@ -314,7 +314,7 @@ pub async fn index_locations_get(view: tauri::Webview) -> Result<Policy, String>
 
 #[tauri::command]
 pub async fn index_locations_pick(view: tauri::Webview) -> Result<Option<String>, String> {
-    crate::ai::harness_tasks::local(&view)?;
+    crate::workspace_identity::local(&view)?;
     tauri::async_runtime::spawn_blocking(|| {
         rfd::FileDialog::new()
             .set_title("选择索引目录 / Select index folder")
@@ -331,7 +331,7 @@ pub async fn index_locations_save(
     app: tauri::AppHandle,
     settings: Settings,
 ) -> Result<Policy, String> {
-    crate::ai::harness_tasks::local(&view)?;
+    crate::workspace_identity::local(&view)?;
     tauri::async_runtime::spawn_blocking(move || {
         let store = STORE.get().ok_or("Index settings unavailable")?;
         let fixed = crate::fixed_drive_roots();

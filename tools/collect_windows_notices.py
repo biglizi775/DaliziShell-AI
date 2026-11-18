@@ -49,7 +49,7 @@ def collect(dest, target=WIN):
             out.mkdir(parents=True)
             source_dir = Path(p['manifest_path']).parent
             notes = []
-            if p['source'] is None and p['name'] in ('dalizi-files', 'dalizi-harness-client'):
+            if p['source'] is None and p['name'] == 'dalizi-files':
                 shutil.copyfile(ROOT / 'LICENSE', out / 'LICENSE')
                 notes.append('LICENSE')
             elif key == ('portable-pty', '0.9.0') and source_dir == ROOT / 'src-tauri/vendor/portable-pty':

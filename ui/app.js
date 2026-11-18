@@ -458,7 +458,6 @@ function renderDirectoryRefresh() {
   renderStatus();
   renderPreview();
   $('pageSubtitle').textContent = `${u('filesCount').replace('{n}', state.view.length.toLocaleString())}  ·  ${u('selectHint')}`;
-  if (typeof renderAiSelection === 'function') renderAiSelection();
 }
 
 function sizePathKey(path) { return path.replace(/\//g, '\\').replace(/\\+$/, '').toLowerCase(); }
@@ -648,18 +647,8 @@ function closeTab(i) {
   if (state.tabs.length <= 1 || i < 0 || i >= state.tabs.length) return;
   const active = curTab();
   const killed = state.tabs[i];
-  if (typeof aiTabArchiveNeedsFlush === 'function' && aiTabArchiveNeedsFlush(killed)) {
-    return flushAiTabArchives(killed).then(ok => {
-      const index = state.tabs.indexOf(killed);
-      if (ok && index >= 0) return closeTab(index);
-    }).finally(() => {
-      // A later session in this tab may have blocked the close. No earlier discard survives that action.
-      for (const s of aiSessions.values()) if (s.tab === killed) clearAiArchiveDismissal(s);
-    });
-  }
   if (killed?.connection === 'ssh' && typeof disconnectSshTab === 'function' && (!killed.exited || killed.startPromise)) return closeSshTabSafely(killed);
   if (typeof rememberClosedTab === 'function') rememberClosedTab(killed);
-  if (typeof disposeAiTab === 'function') disposeAiTab(killed);
   if (isTermTab(killed)) killTerm(killed);
   if (killed?.kind === 'browser' && typeof closeBrowserTab === 'function') closeBrowserTab(killed);
   state.tabs.splice(i, 1);
@@ -675,24 +664,19 @@ function closeOtherTabs(i) {
   const keep = state.tabs[i];
   if (!keep) return;
   const others = state.tabs.filter((tb) => tb !== keep);
-  if (others.some((tb) => (tb.connection === 'ssh' && typeof disconnectSshTab === 'function' && (!tb.exited || tb.startPromise)) || (typeof aiTabArchiveNeedsFlush === 'function' && aiTabArchiveNeedsFlush(tb)))) {
+  if (others.some((tb) => tb.connection === 'ssh' && typeof disconnectSshTab === 'function' && (!tb.exited || tb.startPromise))) {
     switchTab(i);
     return (async () => {
       for (const tb of others) {
         if (!state.tabs.includes(keep)) return;
         const index = state.tabs.indexOf(tb);
-        if (index >= 0) {
-          const protectsChat = typeof aiTabArchiveNeedsFlush === 'function' && aiTabArchiveNeedsFlush(tb);
-          await closeTab(index);
-          if (protectsChat && state.tabs.includes(tb)) return;
-        }
+        if (index >= 0) await closeTab(index);
       }
     })();
   }
   state.navToken++;
   for (const tb of state.tabs) if (tb !== state.tabs[i]) {
     if (typeof rememberClosedTab === 'function') rememberClosedTab(tb);
-    if (typeof disposeAiTab === 'function') disposeAiTab(tb);
     if (isTermTab(tb)) killTerm(tb);
     if (tb?.kind === 'browser' && typeof closeBrowserTab === 'function') closeBrowserTab(tb);
   }
@@ -721,7 +705,7 @@ async function newTermTab(cwd, sshConfig, owner = null, profileId = null) {
   state.navToken++;
   invoke('dir_sizes', { gen: state.gen, paths: [] }).catch(() => {});
   const base = tabLocalFolder(curTab());
-  // Keep a local tab's Agent binding. A remote login gets a fresh transport owner
+  // Keep a local tab's identity. A remote login gets a fresh transport owner
   // so a failed attempt can return to the same untouched sign-in tab.
   const tb = Object.assign((!sshConfig && owner) || {}, { kind: 'term', key: crypto.randomUUID(), termId: null, cwd: sshConfig ? null : cwd !== undefined ? cwd : base,
     connection: sshConfig ? 'ssh' : 'local', sshConfig: sshConfig ? { host: sshConfig.host, port: sshConfig.port, user: sshConfig.user, identityFile: sshConfig.identityFile || '', infoMode: sshConfig.infoMode || 'posix', label: sshConfig.label || '' } : null,
@@ -1407,7 +1391,6 @@ function applySelectionDom() {
     el.classList.toggle('cut', cut.has(e.name));
   });
   renderPreview();
-  if (typeof renderAiSelection === 'function') renderAiSelection();
 }
 
 function selectAt(i, ev) {
@@ -1632,10 +1615,6 @@ function itemMenu(i, x, y) {
   const items = [
     { id: 'open', label: t('open'), ic: IC.openIc, fn: openSelected },
   ];
-  if (!many && !e.isDir && !e.isReparse && /\.(md|txt)$/i.test(e.name)) {
-    items.push({id:'agent-edit', label:locale === 'zh' ? '让 Agent 修改…' : 'Edit with Agent…', ic:IC.fileS, fn:()=>startDocumentEdit(p)});
-    items.push({id:'agent-undo', label:locale === 'zh' ? '撤销上次 Agent 修改' : 'Undo last agent edit', fn:()=>undoProjectDocument(p)});
-  }
   if (!e.isDir && !many) items.push({ id: 'ow', label: t('openWith'), fn: () => invoke('open_with', { path: p }).catch((err) => toast(String(err), true)) });
   items.push(
     { id: 'exp', label: t('openInExplorer'), fn: () => invoke('reveal', { path: p }).catch((err) => toast(String(err), true)) },
@@ -1857,7 +1836,6 @@ els.menuLayer.addEventListener('pointerdown', (ev) => { if (ev.target === els.me
 els.menuLayer.addEventListener('contextmenu', (ev) => ev.preventDefault());
 
 document.addEventListener('keydown', (ev) => {
-  if (ev.target.closest?.('#aiPanel')) return;
   if (document.querySelector('dialog[open]')) return;
   if (ev.ctrlKey && ev.key.toLowerCase() === 'k') { ev.preventDefault(); openCommands(); return; }
   if (menuOpen) { if (ev.key === 'Escape') closeMenu(); return; }

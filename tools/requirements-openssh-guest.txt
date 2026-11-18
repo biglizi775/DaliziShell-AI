@@ -1,6 +1,0 @@
-# Test-only packages for a standalone QCOW2 disk and NoCloud seed; never shipped.
-pycdlib==1.22.0
-dissect.hypervisor==3.21
-dissect.cstruct==4.7
-dissect.util==3.24
-defusedxml==0.7.1

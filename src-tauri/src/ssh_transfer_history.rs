@@ -1,9 +1,9 @@
 //! Per-transfer receipts on the local machine. Both workspace indexes address
 //! the same file. A pending receipt is never an instruction to retry a transfer.
-use super::tasks::{workspace, Host};
-use crate::agent_profile::lock_memory_directory;
+use super::peer::{workspace, Host};
+use crate::workspace_identity::lock_directory;
 use crate::task_journal::{line, new_id, read_journal, remove_journal, valid_id};
-use dalizi_harness_client::snapshot::{identify, pin_workspace, Workspace};
+use crate::workspace_identity::{identify, pin_workspace, Workspace};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
@@ -137,7 +137,7 @@ fn open_dir(path: &Path, create: bool) -> Result<Option<File>, String> {
             Err(e.to_string())
         };
     }
-    lock_memory_directory(path).map(Some)
+    lock_directory(path).map(Some)
 }
 impl Start {
     pub(super) fn new(
@@ -196,7 +196,7 @@ impl Journal {
         let parent = base.parent().ok_or(INVALID)?;
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
         let mut guards = vec![
-            lock_memory_directory(parent)?,
+            lock_directory(parent)?,
             open_dir(base, true)?.ok_or(INVALID)?,
         ];
         if let Some(workspace) = &start.local_workspace {
@@ -351,7 +351,7 @@ pub async fn ssh_history_list(
     remote_workspace: Option<String>,
     before: Option<String>,
 ) -> Result<Page, String> {
-    crate::ai::harness_tasks::local(&view)?;
+    crate::workspace_identity::local(&view)?;
     let base = storage(&app)?;
     tauri::async_runtime::spawn_blocking(move || {
         list(
@@ -373,7 +373,7 @@ pub async fn ssh_history_remove(
     id: String,
     revision: String,
 ) -> Result<(), String> {
-    crate::ai::harness_tasks::local(&view)?;
+    crate::workspace_identity::local(&view)?;
     let base = storage(&app)?;
     tauri::async_runtime::spawn_blocking(move || {
         let scope = Scope::new(root, remote_workspace)?;

@@ -1,20 +1,18 @@
 # 呆梨文件 / Dalizi Files
 
-面向 Windows 的文件资源管理器与智能体工作台，基于 **Rust + Tauri 2 + 原生 HTML/CSS/JavaScript**。在同一窗口中浏览文件、阅读文档、使用 PowerShell/SSH、打开网页，并围绕当前目录与 AI 协作。
+面向 Windows 的一体化工作台，基于 **Rust + Tauri 2 + 原生 HTML/CSS/JavaScript**。在同一窗口中浏览和整理文件、阅读文档、使用 PowerShell/SSH 管理服务器、打开网页，少在多个程序之间切换和复制。
 
 当前版本为 **0.5.1**（2026-11-03），目标平台是 Windows 10 / 11 x64。已实现功能与后续规划分别列出，不将规划能力作为现有功能宣传。
 
-[使用手册](docs/USER_GUIDE.md) · [本版说明](docs/RELEASE_0.5.1.md) · [历史更新纪要](#历史功能更新纪要) · [完整更新记录](docs/CHANGELOG.md) · [开发指南](docs/DEVELOPMENT.md) · [开发规划](docs/AGENT_WORKBENCH_DEVELOPMENT.md) · [发布指南](docs/RELEASING.md)
+[使用手册](docs/USER_GUIDE.md) · [本版说明](docs/RELEASE_0.5.1.md) · [历史更新纪要](#历史功能更新纪要) · [完整更新记录](docs/CHANGELOG.md) · [开发指南](docs/DEVELOPMENT.md) · [发布指南](docs/RELEASING.md)
 
 [GitHub 仓库](https://github.com/biglizi775/DaliziShell-AI) · [下载最新版](https://github.com/biglizi775/DaliziShell-AI/releases/latest) · [全部发行版本](https://github.com/biglizi775/DaliziShell-AI/releases)
 
-开发构建或 [M5 本地候选包](docs/HARNESS_M5.md)在「设置 → Agent 引擎」启用后可试用 [Harness 只读文件任务](docs/HARNESS_M1.md)、[审阅写入](docs/HARNESS_M2.md)和[网页引用](docs/HARNESS_M3.md)。在网页上选中一段正文，可以先预览，再指定由哪个本地项目保存问答。文件修改须核对差异后才会写入，已写入的任务可以撤销。分期规划见 [Harness 集成开发文档](docs/HARNESS_WORKBENCH_DEVELOPMENT.md)。
-
-在内置 SSH 的文件面板，也可以[就所选远程文件提问](docs/HARNESS_M4.md)。回答留在原服务器的目录，即使两台服务器的路径同名或生成时已断线，也不会串到当前聊天。
+当前开发版已经移除内置 AI 助手（对话面板、技能、记忆、角色和 Harness 任务），专注于文件、终端/SSH 和网页三块。0.5.1 及更早的发行版仍包含这些功能；它们写在工作目录 `.dalizi/` 里的聊天档案和记忆，新版本既不读取也不删除。
 
 ## Studio 界面风格
 
-当前源码新增 Studio 默认风格：暖白、墨黑、金色与低饱和绿色，统一文件工作区、Agent、双面板与 SSH 的视觉。可在“设置 → 界面与浏览 → 界面风格”切回经典；风格与浅色/深色主题独立保存，也支持便携配置。文件与远程操作逻辑保持原有行为。
+当前源码新增 Studio 默认风格：暖白、墨黑、金色与低饱和绿色，统一文件工作区、双面板与 SSH 的视觉。可在“设置 → 界面与浏览 → 界面风格”切回经典；风格与浅色/深色主题独立保存，也支持便携配置。文件与远程操作逻辑保持原有行为。
 
 [宣传片源码与制作说明](promo-film/README.md) · 本地预览：`npm run promo`。影片使用应用的实际前端与演示数据生成。
 
@@ -38,12 +36,9 @@
 | 本地与远程终端 | PowerShell 多标签；内置 SSH 与 OpenSSH 兼容模式、主机指纹核对、成功登录后记住凭据、中断与重新登录 |
 | 远程资源与文件 | 登录后自动显示终端、目录与 Linux / Windows 资源概况；可调分屏、目录筛选/跳转/复制路径；SFTP 多选、批量与递归上传/下载、集中传输任务、暂停/取消/重试、同次运行内校验续传 |
 | 浏览器标签 | WebView2 网页、路径与 URL 历史、下载入口、浏览器设置、解压扩展管理。开发版支持工作台内的登录弹窗和 Windows 客户端传入的 HTTP/HTTPS 链接 |
-| AI 对话 | 独立右侧面板、三种 API 格式、连接测试、自定义模型接口、推理强度、三种权限；目录级保存/恢复、可选自动保存、Markdown 导出 |
-| 技能与记忆 | 9 项内置文本技能、自定义 SKILL.md 导入、当前目录的本地记忆与确认保存的学习建议 |
 | 系统托盘 | 最小化后驻留通知区域、单击恢复窗口、右键显示/收起/退出；保留当前标签与会话 |
 | 收藏与恢复 | 文件夹/网址收藏及排序；[开发预览](docs/PREVIEW_terminal-restore.md)可恢复最多 50 个混合标签，保留选中位置，网页按需加载，PowerShell 和 SSH 可在原标签手动启动或登录 |
 | 标签管理 | 滚轮/滚动条访问溢出标签、固定新建按钮、拖动/右键/键盘排序、恢复本次运行最近关闭的文件夹与网页，排序保留当前终端与网页会话 |
-| 记忆整理 | 聊天上下文统计与自动摘要、目录记忆统计与无损去重、整理前完整备份 |
 
 目录枚举使用 Win32，文件列表使用虚拟化渲染。前端资源随程序打包，日常运行无需 Node.js、Python 或在线 CDN。
 
@@ -51,7 +46,7 @@
 
 无需开发环境：下载 [dalizi-files-0.5.1-windows-x64.zip](https://github.com/biglizi775/DaliziShell-AI/releases/download/v0.5.1/dalizi-files-0.5.1-windows-x64.zip)，完整解压后运行 `DaliziFiles.exe`。压缩包包含许可证、使用说明和历史更新记录；发行版尚未签名。
 
-升级前退出旧程序，将新版文件解压到原软件目录，保留原有 `DaliziData/` 个人配置，以及工作目录中的 `.dalizi/` 记忆和聊天档案。启动后确认左下角为 **v0.5.1**；源码 ZIP 用于开发，不能直接运行。
+升级前退出旧程序，将新版文件解压到原软件目录，保留原有 `DaliziData/` 个人配置。启动后确认左下角为 **v0.5.1**；源码 ZIP 用于开发，不能直接运行。
 
 运行环境：Windows 10 1809+ / Windows 11 x64、Microsoft Edge WebView2 Runtime。PowerShell 使用系统安装；内置 SSH 无需另装客户端，OpenSSH 兼容模式需要 Windows OpenSSH Client。不同 Windows/WebView2 版本仍需分别验证。
 
@@ -83,9 +78,7 @@ Node 依赖仅用于测试。UI 与文档预览集成检查、可选 Cargo 镜�
 ## 需要了解的边界
 
 - **预览**：Word/表格以正文和单元格值为主，不还原完整 Office 排版。旧 `.doc/.xls/.ods` 需转换格式。PDF/表格最多 32 MiB、Word 最多 16 MiB；大表格分段显示并提示截断。
-- **Agent（开发版）** 默认支持写作、问答和开发讨论。 三种 API 格式的普通对话均支持逐段显示，模型设置中可关闭。右侧「项目」可以跟随当前目录、创建命名项目或选择已有目录。固定项目后切换文件标签仍可继续同一对话。勾选「项目工具」后模型可以分步列目录、读取 UTF-8 文本，并在既有权限下提出文件操作。 普通回复可直接存为项目中的 Markdown 或纯文本文档。Agent 也可提交新建文档的计划，确认时可查看完整正文。
-- **对话与记忆** 新对话默认自动保存到工作目录的 `.dalizi/chat-history.json`，长期偏好保存在 `.dalizi/agent-memory.json`。打开独立项目时自动接续最近的文字记录，可在「对话历史」切换。每目录最多 30 条对话，每条保留最近 60 条消息及摘要。
-- **配置迁移** 本机记住的模型密钥保存在 Windows 凭据管理器。便携配置 `DaliziData/preferences.json` 可以携带接口参数、网页收藏和历史。迁移到新电脑后首次使用时填写密钥。
+- **配置迁移** 便携配置 `DaliziData/preferences.json` 可以携带界面偏好、浏览器设置、网页收藏和历史。SSH 密码保存在当前 Windows 用户的凭据管理器，不随配置迁移。
 - **浏览器**：采用 WebView2，不等同于完整 Chrome；支持的扩展 API 取决于运行时，暂不支持商店一键安装或 Chrome 账户同步。
 - **搜索**：基于普通权限的枚举与本地索引，首次建库需要时间；尚未实现 MFT/USN 服务。
   - 当前目录、含子目录、全部位置均支持 `*.pdf|*.docx !草稿`、`ext:xlsx;csv size:>10mb`、`dm:7days`、`path:"D:\资料"` 等常用条件；输入框旁“?”可查看示例。支持 Everything 常用语法子集，暂不支持 `regex:`、`content:` 等扩展函数。结果的文件夹按钮在应用内新建标签并选中目标。
@@ -114,16 +107,16 @@ Node 依赖仅用于测试。UI 与文档预览集成检查、可选 Cargo 镜�
 .github/              GitHub CI、Issue 与 PR 模板
 ui/                   原生前端，vendor/ 为离线第三方资源
 src-tauri/            Rust 后端、Tauri 配置、图标和锁定依赖
-resources/            随程序内置的技能正文
+resources/            发行包使用的第三方许可文本
 tests/               前端单元与行为回归测试
 tools/               开发检查、样本生成、集成测试和打包工具
 docs/                使用、开发、发布与后续规划文档
 ```
 
-`src-tauri/target/`、`dist/`、下载缓存、用户记忆和本机配置均不进入版本控制。`Cargo.lock`、`package-lock.json` 及运行必需的 `ui/vendor/` 资源应提交。完整说明见 [目录与模块](docs/DEVELOPMENT.md#目录与模块)。
+`src-tauri/target/`、`dist/`、下载缓存和本机配置均不进入版本控制。`Cargo.lock`、`package-lock.json` 及运行必需的 `ui/vendor/` 资源应提交。完整说明见 [目录与模块](docs/DEVELOPMENT.md#目录与模块)。
 
 ## 参与与许可
 
-欢迎提交可复现的问题和围绕具体场景的改进建议；请先阅读 [贡献指南](CONTRIBUTING.md)。电脑/浏览器 Agent、终端与任务恢复、本地/远端联合面板和完整便携模式等方向见 [开发规划](docs/AGENT_WORKBENCH_DEVELOPMENT.md)。
+欢迎提交可复现的问题和围绕具体场景的改进建议；请先阅读 [贡献指南](CONTRIBUTING.md)。
 
 项目代码使用 [MIT License](LICENSE)。随仓库分发的第三方组件保留各自许可证，详见 [第三方声明](THIRD_PARTY_NOTICES.md)。

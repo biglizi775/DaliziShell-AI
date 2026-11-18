@@ -11,35 +11,15 @@ import subprocess
 import zipfile
 from tempfile import TemporaryDirectory
 from collect_windows_notices import windows_tree
-from package_harness_component import ID, SPEC
-from windows_qa_release import CURRENT
 from windows_architecture import executable_architecture, TARGETS
 from package_winpty import stage_winpty, VERSION as WINPTY_VERSION
 
-CANDIDATE = 'M5 ' + CURRENT.upper()
 if not __debug__:
     raise RuntimeError('Run the packager without -O so that release gates are enforced')
-
-def verify_component(path):
-    pin = (SPEC / 'component.sha256').read_text().strip()
-    assert path.name == ID + '.zip', 'Unexpected component filename'
-    with zipfile.ZipFile(path) as z:
-        manifest = z.read('manifest.json')
-        assert hashlib.sha256(manifest).hexdigest() == pin, 'Manifest differs from desktop pin'
-        payload = json.loads(manifest)
-        assert payload['schema'] == 1 and payload['component'] == ID
-        files = payload['files']
-        assert len(z.infolist()) == len(files) + 1 and set(z.namelist()) == set(files) | {'manifest.json'}
-        for name, (size, sha) in files.items():
-            assert z.getinfo(name).file_size == size, name
-            with z.open(name) as f:
-                assert hashlib.file_digest(f, 'sha256').hexdigest() == sha, name
-    return dict(id=ID, manifestSha256=pin, zipSha256=hashlib.sha256(path.read_bytes()).hexdigest())
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--licenses', required=True, type=Path, help='Verified licenses directory from this dependency set')
 parser.add_argument('--exe', type=Path, help='Production release executable, including a custom Cargo target directory')
-parser.add_argument('--component', type=Path, help='Build a local Harness integration package with this pinned component')
 parser.add_argument('--winpty-archive', type=Path, help='Local pinned WinPTY ZIP for an offline build')
 parser.add_argument('--output-dir', type=Path, help='Output directory; defaults to dist. Existing packages are never overwritten.')
 parser.add_argument('--preview', help='Development preview name, with notes in docs/PREVIEW_<name>.md; separate from the frozen release')
@@ -50,12 +30,9 @@ exe = args.exe.resolve() if args.exe else root / 'src-tauri/target/release/daliz
 assert exe.is_file(), 'Build the release executable first'
 architecture = executable_architecture(exe)
 target = TARGETS[architecture]
-if architecture != 'x64' and args.component:
-    parser.error('The pinned Harness component requires a Windows x64 desktop package')
-component = verify_component(args.component) if args.component else None
 if args.preview:
-    if (architecture == 'x64' and not component) or not re.fullmatch(r'[a-z0-9]+(?:-[a-z0-9]+)*', args.preview) or len(args.preview)>48:
-        parser.error('Use a short preview name and include the verified component for x64')
+    if not re.fullmatch(r'[a-z0-9]+(?:-[a-z0-9]+)*', args.preview) or len(args.preview)>48:
+        parser.error('Use a short preview name')
     preview_notes=root/'docs'/f'PREVIEW_{args.preview}.md'
     if not preview_notes.is_file(): parser.error('Missing preview notes')
 binary = exe.read_bytes()
@@ -70,13 +47,11 @@ if info_format.encode() in binary or architecture == 'x86':
     if info.get('format') == info_format:
         assert info.get('winpty') == WINPTY_VERSION, 'WinPTY version mismatch'
         winpty = WINPTY_VERSION
-elif args.preview or component:
+elif args.preview:
     assert (b'com.dalizi.files' in binary and b'com.dalizi.files.index-scope-test-' not in binary
-            and b'com.dalizi.harness-release-test-' not in binary), 'Build the production desktop host'
+            and b'com.dalizi.files.workspace-test' not in binary), 'Build the production desktop host'
 if not winpty and (args.winpty_archive or args.preview == 'legacy-terminal'):
     parser.error('The supplied desktop executable does not declare WinPTY support')
-if component:
-    assert component['manifestSha256'].encode() in binary, 'Desktop component pin mismatch'
 command = "$ProgressPreference='SilentlyContinue'; (Get-Item -LiteralPath '" + str(exe).replace("'", "''") + "').VersionInfo.FileVersion"
 pe_version = subprocess.check_output(['powershell', '-NoProfile', '-EncodedCommand',
     base64.b64encode(command.encode('utf-16-le')).decode()], text=True).strip()
@@ -93,8 +68,6 @@ for file in args.licenses.rglob('*'):
 prefix = f'dalizi-files-{version}-windows-{architecture}'
 if args.preview:
     prefix += '-preview-'+args.preview+'-'+hashlib.sha256(binary).hexdigest()[:12]
-elif component:
-    prefix += '-harness-integration-' + hashlib.sha256(binary).hexdigest()[:12]
 output = args.output_dir.resolve() if args.output_dir else root / 'dist'
 
 def assemble(stage, archive):
@@ -106,12 +79,6 @@ def assemble(stage, archive):
     shutil.copy2(root / 'tools/check_windows_runtime.ps1', stage / 'Check-Windows.ps1')
     shutil.copy2(root / 'THIRD_PARTY_NOTICES.md', stage / 'THIRD_PARTY_NOTICES.txt')
     shutil.copytree(args.licenses, stage / 'licenses')
-    if component:
-        (stage / 'components').mkdir()
-        shutil.copyfile(args.component, stage / 'components' / (ID + '.zip'))
-        shutil.copyfile(root / 'docs/HARNESS_M5.md', stage / 'Harness-使用与验收.txt')
-        (stage / 'qa').mkdir()
-        shutil.copyfile(root / 'tools/windows_acceptance_model.ps1', stage / 'qa/windows_acceptance_model.ps1')
     shutil.copy2(root / f'docs/RELEASE_{version}.md', stage / '更新说明.txt')
     shutil.copy2(root / 'docs/CHANGELOG.md', stage / '更新历史.txt')
     (stage / '使用说明.txt').write_text(f'''呆梨文件 Dalizi Files {version}
@@ -121,11 +88,11 @@ Windows 桌面程序架构为 {architecture}，需要 Microsoft Edge WebView2 Ru
 解压完整压缩包后运行 DaliziFiles.exe；无需安装 Node.js、Python 或 7-Zip。
 本程序未签名。内置 SSH 无需系统 OpenSSH；兼容模式需要 OpenSSH Client。
 
-升级：先退出旧程序，将完整压缩包解压到新目录。保留旧程序目录和 DaliziData/ 个人配置，
-不要删除工作目录中的 .dalizi/ 记忆与聊天档案。此发行包不包含个人数据。
+升级：先退出旧程序，将完整压缩包解压到新目录。保留旧程序目录和 DaliziData/ 个人配置。
+此发行包不包含个人数据。
 
 双面板：文件标签点击“双面板”，两侧独立浏览，箭头按钮选择复制或移动；
-“设为工作目录”切换左侧目录。已经提交的 Harness 任务始终属于提交时确认的目标。
+“设为工作目录”切换左侧目录。
 SSH：内置模式登录后自动显示服务器概况、终端和远程目录。拖动分隔条调整
 高度，或在工具栏选择分屏、文件、终端。目录支持筛选、跳转和复制路径。
 SFTP：远程文件支持批量与文件夹上传/下载，任务面板提供暂停、取消、重试。
@@ -133,27 +100,22 @@ SFTP：远程文件支持批量与文件夹上传/下载，任务面板提供暂
 或使用“清理续传临时文件”。异常退出可能留下 .dalizi-*.part，请核对后清理。
 目录最多展开 2000 项/32 层，不跟随链接；同名文件不覆盖，取消不回滚成功项。
 
-此版还包含便携偏好、搜索语法/应用内定位、7z/ZIP 密码压缩、目录聊天档案、
+此版还包含便携偏好、搜索语法/应用内定位、7z/ZIP 密码压缩、
 标签排序/恢复以及窗口、预览刷新稳定性修复，详见更新说明。
 许可证见 LICENSE、THIRD_PARTY_NOTICES.txt 和 licenses/。
 完整手册：https://github.com/biglizi775/DaliziShell-AI/blob/main/docs/USER_GUIDE.md
 下载：https://github.com/biglizi775/DaliziShell-AI/releases
 ''', encoding='utf-8')
-    if component or args.preview or architecture == 'x86':
-        intro = ('本地集成构建。Harness 默认关闭。打开设置 → Agent 引擎，检查并启用。\n保留 components/ 下的 ZIP 原样，不要解压内层组件。\n'
-                 if component else '32 位桌面使用原有聊天引擎。独立 Harness 任务需要 x64 版及其配套组件。\n')
-        if args.preview:
-            intro = f'本地开发预览 {args.preview}。参见 预览说明.txt。\n' + intro
-            shutil.copyfile(preview_notes,stage/'预览说明.txt')
+    if args.preview:
+        shutil.copyfile(preview_notes,stage/'预览说明.txt')
         guide = stage / '使用说明.txt'
-        guide.write_text(intro + guide.read_text(encoding='utf-8'), encoding='utf-8')
+        guide.write_text(f'本地开发预览 {args.preview}。参见 预览说明.txt。\n' + guide.read_text(encoding='utf-8'), encoding='utf-8')
     digest = lambda data: hashlib.sha256(data).hexdigest().upper()
     commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=root, text=True, encoding='utf-8').strip()
     dirty = bool(subprocess.check_output(['git', 'status', '--porcelain', '--untracked-files=normal'], cwd=root, text=True, encoding='utf-8').strip())
     (stage / 'BUILDINFO.json').write_text(json.dumps({'version': version, 'commit': commit,
-        'dirty': dirty, 'component': component, 'candidate': None,
-        **({'kind':'integration'} if component and not args.preview else {}),
-        **({'preview':args.preview,'baseline':CANDIDATE} if args.preview else {}),
+        'dirty': dirty, 'candidate': None,
+        **({'preview':args.preview} if args.preview else {}),
         'target': target, **({'winpty':winpty} if winpty else {}), 'exeSha256': digest(exe.read_bytes()),
         'lockSha256': digest((root / 'src-tauri/Cargo.lock').read_bytes())}, indent=2) + '\n', encoding='utf-8')
     files = sorted(p for p in stage.rglob('*') if p.is_file())

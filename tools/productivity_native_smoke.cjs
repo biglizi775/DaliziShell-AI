@@ -7,9 +7,9 @@ const { spawn, execFileSync } = require('node:child_process');
 const { chromium } = require('playwright');
 const root = path.resolve(__dirname, '..');
 const output = fs.mkdtempSync(path.join(root, 'src-tauri/target/productivity-native-'));
-const exe = path.join(output, 'DaliziFiles.exe'), work = path.join(output, '对话工作区'), copied = path.join(output, '迁移后的工作区');
+const exe = path.join(output, 'DaliziFiles.exe'), work = path.join(output, '标签工作区');
 fs.copyFileSync(process.env.DALIZI_EXE || path.join(root, 'src-tauri/target/release/dalizi-files.exe'), exe);
-fs.mkdirSync(work); fs.mkdirSync(copied); fs.writeFileSync(path.join(work, '说明.txt'), 'Local fixture only');
+fs.mkdirSync(work); fs.writeFileSync(path.join(work, '说明.txt'), 'Local fixture only');
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 let app, browser; const errors = [];
 async function stop() {
@@ -32,35 +32,13 @@ async function launch(profile) {
 }
 (async () => {
   try {
-    let page = await launch('first-profile');
+    const page = await launch('first-profile');
     let metrics;
     try { metrics = await require('./productivity_checks.cjs')(page, { folder: work, output, native: true }); }
     catch (error) { await page.screenshot({ path: path.join(output, 'failure.png') }); console.log(output); console.log(await page.evaluate(() => ({ errors: state.error, tabs: state.tabs.map((t) => ({ kind: t.kind, path: t.path })), loading: state.loading, visibility: document.visibilityState, dialogs: [...document.querySelectorAll('dialog[open]')].map((d) => d.id) }))); throw error; }
-    const file = path.join(work, '.dalizi/chat-history.json'), bytes = fs.readFileSync(file, 'utf8');
-    const data = JSON.parse(bytes); assert.equal(data.conversations.length, 2);
-    assert.doesNotMatch(bytes, /fixture-key-never-archive|historical-fixture|permissionMode/);
-    assert.ok(data.conversations.some((c) => c.snapshot.summary.includes('尚未执行')));
-    assert.equal(fs.existsSync(path.join(work, '不得自动创建')), false);
-    await stop();
-    // Folder archives travel with the workspace, independently of browser/localStorage state.
-    fs.mkdirSync(path.join(copied, '.dalizi')); fs.copyFileSync(file, path.join(copied, '.dalizi/chat-history.json'));
-    page = await launch('fresh-profile');
-    await page.evaluate(async (folder) => { await navigate(folder); openAiAssistant(); }, copied);
-    assert.equal(await page.evaluate(() => aiCurrentSession().messages.length), 0, 'history is not injected until selected');
-    await page.locator('[data-chat-open]').click(); await page.waitForSelector('[data-chat-item]');
-    assert.equal(await page.locator('[data-chat-item]').count(), 2);
-    await page.locator('[data-chat-item]').first().click(); await page.locator('#chatContinue').click();
-    await page.waitForFunction(() => !document.getElementById('chatHistoryDialog'));
-    assert.equal(await page.evaluate(() => aiCurrentSession().permissionMode), 'confirm');
-    assert.equal(await page.evaluate(() => aiCurrentSession().archive.auto), false);
-    assert.equal(await page.evaluate(() => aiCurrentSession().root), copied);
-    assert.equal(await page.evaluate(() => aiSessionKey), '');
-    assert.equal(await page.evaluate(() => aiCurrentSession().messages.some((m) => m.plan)), false);
-    assert.equal(fs.existsSync(path.join(copied, '不得自动创建')), false);
-    await page.screenshot({ path: path.join(output, 'restored-after-restart.png') });
     assert.deepEqual(errors, []);
-    fs.writeFileSync(path.join(output, 'results.json'), JSON.stringify({ metrics, freshProfileRestore: true, copiedFolderRestore: true, errors }, null, 2));
-    console.log('Native conversation/tab checks passed: actual JSON writes, versioned saves/deletion, drag ordering, restart and folder migration, confirm-only text restoration with no plan replay.');
+    fs.writeFileSync(path.join(output, 'results.json'), JSON.stringify({ metrics, errors }, null, 2));
+    console.log('Native tab checks passed: drag ordering keeps the active tab, reopen creates a fresh tab, keyboard reordering.');
     console.log(output);
   } finally { await stop(); }
 })().catch((error) => { console.error(error); process.exitCode = 1; });

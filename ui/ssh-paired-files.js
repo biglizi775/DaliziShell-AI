@@ -41,7 +41,7 @@ function mountSshLocalPane(tb) {
   const more=document.createElement('details'); more.className='ssh-paired-more'; more.hidden=true;
   more.innerHTML=`<summary>${T('更多','More')}</summary><div></div>`;
   remote.querySelector('.ssh-files-heading').append(more);
-  const extraControls=[...remote.querySelectorAll('[data-tasks], [data-remote-history], [data-remote-ask], [data-root], [data-home], [data-remote-copy], [data-select-files]')].map(control=>{
+  const extraControls=[...remote.querySelectorAll('[data-tasks], [data-remote-history], [data-root], [data-home], [data-remote-copy], [data-select-files]')].map(control=>{
     const place=document.createComment('remote control'); control.before(place); return [control,place];
   });
   more.addEventListener('click',e=>{if(e.target.closest('button')) more.open=false;});
@@ -51,7 +51,7 @@ function mountSshLocalPane(tb) {
   local.previews = {local:mountSshPanePreview(tb,panel,'local'),remote:mountSshPanePreview(tb,remote,'remote')};
   const folderTab=document.createElement('button'); folderTab.type='button'; folderTab.dataset.localWorkspace='';
   folderTab.textContent=T('文件标签 ↗','Folder tab ↗');
-  folderTab.title=T('在独立文件标签打开此目录，可在该目录使用 Agent','Open a local file tab to work with Agent in this folder');
+  folderTab.title=T('在独立文件标签打开此本地目录','Open this local folder in its own file tab');
   folderTab.onclick=()=>{if(local.ready && !local.loading) newTab(local.path);};
   find('.ssh-files-actions').append(folderTab);
   find('form').onsubmit = e => {e.preventDefault(); void loadSshLocalFolder(tb,find('[data-local-path]').value);};

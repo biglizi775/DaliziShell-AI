@@ -718,7 +718,7 @@ pub async fn folder_size_details(
     view: tauri::Webview,
     paths: Vec<String>,
 ) -> Result<Vec<Option<SizeReading>>, String> {
-    crate::ai::harness_tasks::local(&view)?;
+    crate::workspace_identity::local(&view)?;
     tauri::async_runtime::spawn_blocking(move || cached_size_readings(&paths))
         .await
         .map_err(|e| e.to_string())
@@ -740,7 +740,7 @@ pub async fn search_files(
     paginate: Option<bool>,
     kind: Option<SearchKind>,
 ) -> Result<SearchResponse, String> {
-    crate::ai::harness_tasks::local(&view)?;
+    crate::workspace_identity::local(&view)?;
     let generation = search::query_generation();
     tauri::async_runtime::spawn_blocking(move || {
         let options = search::SearchOptions {
@@ -765,14 +765,14 @@ pub async fn search_page(
     snapshot_id: u64,
     page: usize,
 ) -> Result<SearchResponse, String> {
-    crate::ai::harness_tasks::local(&view)?;
+    crate::workspace_identity::local(&view)?;
     tauri::async_runtime::spawn_blocking(move || search::names().page(snapshot_id, page))
         .await
         .map_err(|e| e.to_string())?
 }
 #[tauri::command]
 pub async fn search_release(view: tauri::Webview, snapshot_id: u64) -> Result<(), String> {
-    crate::ai::harness_tasks::local(&view)?;
+    crate::workspace_identity::local(&view)?;
     tauri::async_runtime::spawn_blocking(move || search::names().release_pages(snapshot_id))
         .await
         .map_err(|e| e.to_string())

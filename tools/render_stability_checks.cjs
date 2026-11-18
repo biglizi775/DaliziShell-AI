@@ -5,7 +5,7 @@ const path = require('node:path');
 module.exports = async function checkRenderStability(page, { folder, output, resize }) {
   await page.waitForFunction(() => typeof workspaceSessionReady !== 'undefined' && workspaceSessionReady && !state.loading);
   await page.evaluate(async (folder) => {
-    setLocale('zh'); closeAiAssistant(); previewOpen = false;
+    setLocale('zh'); previewOpen = false;
     await navigate(folder); setWorkspaceSearchMode('local');
     state.sortKey = 'name'; state.sortDir = 1; state.viewMode = 'details';
     renderAll(); await applyWorkspaceTheme('dark');

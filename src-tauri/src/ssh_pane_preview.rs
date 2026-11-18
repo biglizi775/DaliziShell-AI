@@ -12,7 +12,7 @@ pub async fn ssh_pane_preview(
     directory: String,
     name: String,
 ) -> Result<Preview, String> {
-    crate::ai::harness_tasks::local(&view)?;
+    crate::workspace_identity::local(&view)?;
     leaf(&name)?;
     let session = get(id)?;
     let limit = TEXT_LIMIT as u64 + 1;

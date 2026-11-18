@@ -76,15 +76,6 @@ async function stopApp() {
       return;
     }
     if (process.argv.includes('--x86-desktop')) {
-      const report = await page.evaluate(() => invoke('harness_engine_status'));
-      assert.equal(report.source, 'unsupported-architecture');
-      assert.equal(report.enabled, false);
-      assert.equal(report.component, '');
-      await assert.rejects(page.evaluate(() => invoke('harness_engine_set', {enabled:true})), /x64/);
-      await page.evaluate(() => openHarnessEngine());
-      assert.ok(await page.locator('#harnessEngineDialog [data-toggle]').isDisabled());
-      assert.ok(await page.locator('#harnessEngineDialog [data-check]').isDisabled());
-      await page.locator('#harnessEngineDialog [data-close]').click();
       const fixture = http.createServer((_req, res) => {
         res.writeHead(200, {'Content-Type':'text/html; charset=utf-8'});
         res.end('<!doctype html><title>Dalizi x86 browser</title>');
@@ -107,7 +98,7 @@ async function stopApp() {
         fixture.closeAllConnections();
         await new Promise(resolve => fixture.close(resolve));
       }
-      console.log('x86 desktop: real loopback browser title and close, Harness availability and enable rejection verified.');
+      console.log('x86 desktop: real loopback browser title and close verified.');
     }
     if (process.argv.includes('--older-js')) {
       const errors = [];

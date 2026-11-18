@@ -140,44 +140,6 @@ fn select_fields(input: &Value, bools: &[&str], strings: &[(&str, &[&str])]) -> 
     }
     Value::Object(out)
 }
-fn model(input: &Value) -> Result<Value, String> {
-    let mut out = select_fields(
-        input,
-        &[],
-        &[
-            (
-                "apiFormat",
-                &[
-                    "openai-completions",
-                    "openai-responses",
-                    "anthropic-messages",
-                ],
-            ),
-            ("apiDialect", &["generic", "openai", "deepseek"]),
-            (
-                "reasoningEffort",
-                &[
-                    "default", "none", "minimal", "low", "medium", "high", "xhigh", "max",
-                ],
-            ),
-        ],
-    );
-    let endpoint = input["endpoint"].as_str().unwrap_or("").trim();
-    if !endpoint.is_empty() {
-        let parsed =
-            url::Url::parse(endpoint).map_err(|_| "AI 接口地址无效 / Invalid AI endpoint")?;
-        if web_url(&json!(endpoint), false).is_none()
-            || parsed.query().is_some()
-            || parsed.fragment().is_some()
-        {
-            return Err("便携 AI 接口地址不能包含账号、密码或查询参数 / Portable AI endpoint cannot contain credentials or query parameters".into());
-        }
-    }
-    out["endpoint"] = json!(endpoint);
-    out["model"] = json!(label(&input["model"], 256));
-    Ok(out)
-}
-
 /// Reconstruct every nested object; unknown fields (including secrets) never survive.
 fn sanitize(input: &Value) -> Result<Value, String> {
     let source = input
@@ -192,12 +154,8 @@ fn sanitize(input: &Value) -> Result<Value, String> {
             "viewMode" if matches!(value.as_str(), Some("details" | "grid")) => value.clone(),
             "sortKey" if value.as_str().is_some_and(|v| COLUMNS.contains(&v)) => value.clone(),
             "sortDir" if matches!(value.as_i64(), Some(-1 | 1)) => value.clone(),
-            "showHidden" | "previewOpen" | "aiPanelOpen" | "agentFloating" if value.is_boolean() => value.clone(),
-            "aiPanelWidth" if value.as_f64().is_some_and(|v| (280.0..=1600.0).contains(&v)) => value.clone(),
+            "showHidden" | "previewOpen" if value.is_boolean() => value.clone(),
             "workspacePreferences" => select_fields(value, &["favoritesBar", "rememberSession", "restoreOnStartup"], &[]),
-            "aiMemoryPreferences" => select_fields(value, &["autoCompact", "autoDeduplicate"], &[]),
-            "aiSettings" => model(value)?,
-            "aiModelPresets" => Value::Array(value.as_array().ok_or("Invalid model presets")?.iter().take(12).map(model).collect::<Result<_, _>>()?),
             "browserSettings" => {
                 let mut settings = select_fields(value, &["recordHistory", "restoreSession", "allowNewWindows", "javascriptEnabled", "contextMenusEnabled", "devToolsEnabled", "autofillEnabled", "passwordAutosaveEnabled"], &[("newTabPage", &["home", "blank"]), ("searchEngine", &["google", "bing", "baidu", "duckduckgo"]), ("colorScheme", &["system", "light", "dark"])]);
                 if let Some(url) = web_url(&value["homeUrl"], true) { settings["homeUrl"] = json!(url); }
@@ -422,10 +380,13 @@ mod tests {
         assert!(!text.contains("private"));
         assert_eq!(clean["favorites"]["items"].as_array().unwrap().len(), 1);
         assert_eq!(clean["urlHistory"].as_array().unwrap().len(), 1);
-        assert!(
-            sanitize(&json!({"aiSettings":{"endpoint":"https://api.example/v1?key=secret"}}))
-                .is_err()
-        );
+    }
+    #[test]
+    fn settings_from_versions_with_the_ai_panel_still_load_without_ai_fields() {
+        let clean = sanitize(&json!({"theme":"dark", "aiPanelOpen":true, "aiPanelWidth":420, "agentFloating":false,
+            "aiMemoryPreferences":{"autoCompact":true}, "aiSettings":{"endpoint":"https://api.example/v1?key=secret"},
+            "aiModelPresets":"not a list"})).unwrap();
+        assert_eq!(clean, json!({"theme":"dark"}));
     }
     #[test]
     fn persistence_reload_backup_conflict_and_corruption() {

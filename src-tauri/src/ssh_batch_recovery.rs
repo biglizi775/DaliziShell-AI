@@ -1,8 +1,8 @@
 //! Reviewed queues survive process exit. The synced cursor advances before each dispatch.
-use super::{batch::BatchFile, tasks::Host, Session};
-use crate::agent_profile::lock_memory_directory;
+use super::{batch::BatchFile, peer::Host, Session};
+use crate::workspace_identity::lock_directory;
 use crate::task_journal::{line, new_id, read_bounded, remove_bounded, valid_id};
-use dalizi_harness_client::snapshot::{identify, pin_workspace, Workspace};
+use crate::workspace_identity::{identify, pin_workspace, Workspace};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
@@ -143,7 +143,7 @@ fn storage(app: &AppHandle, create: bool) -> Result<Option<(PathBuf, Vec<File>)>
     } else if !parent.try_exists().map_err(|e| e.to_string())? {
         return Ok(None);
     }
-    let p = lock_memory_directory(&parent)?;
+    let p = lock_directory(&parent)?;
     if create {
         if let Err(e) = fs::create_dir(&dir) {
             if e.kind() != ErrorKind::AlreadyExists {
@@ -153,7 +153,7 @@ fn storage(app: &AppHandle, create: bool) -> Result<Option<(PathBuf, Vec<File>)>
     } else if !dir.try_exists().map_err(|e| e.to_string())? {
         return Ok(None);
     }
-    let d = lock_memory_directory(&dir)?;
+    let d = lock_directory(&dir)?;
     Ok(Some((dir, vec![p, d])))
 }
 fn path_for(dir: &Path, id: &str) -> Result<PathBuf, String> {
@@ -259,7 +259,7 @@ pub(super) fn dispatch(
     // a file without leaving the user a durable receipt for that attempt.
     let receipt = super::history::begin(
         app,
-        &session.task_host.host,
+        &session.peer.host,
         local,
         remote,
         direction,
@@ -284,11 +284,11 @@ pub async fn ssh_batch_create(
     stop_on_error: Option<bool>,
     resumable: Option<bool>,
 ) -> Result<String, String> {
-    crate::ai::harness_tasks::local(&view)?;
+    crate::workspace_identity::local(&view)?;
     let session = super::get(id)?;
-    session.task_host.trusted()?;
+    session.peer.trusted()?;
     let mut manifest = Manifest::new(
-        session.task_host.host.clone(),
+        session.peer.host.clone(),
         direction,
         destination,
         files,
@@ -357,7 +357,7 @@ pub async fn ssh_batch_list(
     app: AppHandle,
     before: Option<String>,
 ) -> Result<Page, String> {
-    crate::ai::harness_tasks::local(&view)?;
+    crate::workspace_identity::local(&view)?;
     let mut page = Page {
         rows: vec![],
         next: None,
@@ -426,7 +426,7 @@ pub async fn ssh_batch_review(
     batch_id: String,
     revision: String,
 ) -> Result<Review, String> {
-    crate::ai::harness_tasks::local(&view)?;
+    crate::workspace_identity::local(&view)?;
     let (dir, _guards) = storage(&app, false)?.ok_or(CHANGED)?;
     let file = open(&path_for(&dir, &batch_id)?, false, false).map_err(|e| e.to_string())?;
     let (h, start) = reviewed(&file, &revision)?;
@@ -456,14 +456,14 @@ pub async fn ssh_batch_claim(
     stop_on_error: Option<bool>,
     resumable: Option<bool>,
 ) -> Result<(), String> {
-    crate::ai::harness_tasks::local(&view)?;
+    crate::workspace_identity::local(&view)?;
     let session = super::get(id)?;
-    session.task_host.trusted()?;
+    session.peer.trusted()?;
     let (dir, guards) = storage(&app, false)?.ok_or(CHANGED)?;
     let path = path_for(&dir, &batch_id)?;
     let mut writer = open(&path, false, true).map_err(|e| format!("{CHANGED}: {e}"))?;
     let (mut manifest, next) = reviewed(&writer, &revision)?;
-    if manifest.peer != session.task_host.host {
+    if manifest.peer != session.peer.host {
         return Err(CHANGED.into());
     }
     let mut roots = BTreeSet::new();
@@ -503,7 +503,7 @@ pub async fn ssh_batch_end(
     batch_id: String,
     discard: bool,
 ) -> Result<(), String> {
-    crate::ai::harness_tasks::local(&view)?;
+    crate::workspace_identity::local(&view)?;
     let mut leases = LEASES.lock().map_err(|_| INVALID)?;
     let Some(lease) = leases.get_mut(&batch_id) else {
         return Ok(());
@@ -528,7 +528,7 @@ pub async fn ssh_batch_forget(
     batch_id: String,
     revision: String,
 ) -> Result<(), String> {
-    crate::ai::harness_tasks::local(&view)?;
+    crate::workspace_identity::local(&view)?;
     let (dir, _guards) = storage(&app, false)?.ok_or(CHANGED)?;
     remove_bounded(&path_for(&dir, &batch_id)?, &revision, LIMIT)
 }

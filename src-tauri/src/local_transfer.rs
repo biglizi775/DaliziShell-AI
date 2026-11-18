@@ -119,7 +119,7 @@ pub async fn local_transfer_inspect(
     sources: Vec<String>,
     dest: String,
 ) -> Result<Inspection, String> {
-    crate::ai::harness_tasks::local(&view)?;
+    crate::workspace_identity::local(&view)?;
     tauri::async_runtime::spawn_blocking(move || {
         let ready = ready_indexes(&kind, &sources, &dest)?;
         let destination_key = identity(&dest, true);
@@ -388,7 +388,7 @@ pub async fn local_transfer_item(
     dest: String,
     expected: Option<Expected>,
 ) -> Result<Receipt, String> {
-    crate::ai::harness_tasks::local(&view)?;
+    crate::workspace_identity::local(&view)?;
     // A fresh STA keeps Explorer UI off the runtime and avoids an existing MTA.
     tauri::async_runtime::spawn_blocking(move || {
         std::thread::spawn(move || {

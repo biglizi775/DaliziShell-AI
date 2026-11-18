@@ -21,7 +21,6 @@
 #searchIcon { margin-left: 7px; }
 #searchIcon svg { width: 12px; height: 12px; }
 #search { font-size: 11px; padding-left: 7px; }
-@media (max-width: 1120px) { body.agent-docked #sidebarShell #settingsLabel { display: none; } }
 .portable-path { overflow-wrap: anywhere; user-select: text; font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
 .portable-status { overflow-wrap: anywhere; line-height: 1.6; }
 .portable-status.is-error { color: #d34848; }

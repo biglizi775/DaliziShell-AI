@@ -253,11 +253,8 @@ function toggleSshFiles(tb) {
   panel.querySelector('[data-close]').onclick = () => toggleSshFiles(tb);
   panel.querySelector('[data-tasks]').onclick = () => openSshTaskCenter();
   const history = document.createElement('button'); history.type='button'; history.dataset.remoteHistory='';
-  history.textContent=ms('工作区历史','Workspace history'); history.hidden=true;
-  history.onclick=()=>openFileHistory(null,tb); panel.querySelector('[data-tasks]').after(history);
-  const ask = document.createElement('button'); ask.type='button'; ask.dataset.remoteAsk=''; ask.hidden=true;
-  ask.textContent=ms('在此远程目录提问','Ask in this remote folder');
-  ask.onclick=()=>openHarnessTasks(tb);panel.querySelector('.ssh-files-actions').append(ask);
+  history.textContent=ms('传输记录','Transfer history'); history.hidden=true;
+  history.onclick=()=>openTransferHistory(tb); panel.querySelector('[data-tasks]').after(history);
   panel.querySelector('[data-upload]').onclick = () => typeof beginSshBatch === 'function' ? beginSshBatch(tb, 'upload') : startSshFileTransfer(tb, 'upload');
   const uploadFolder = document.createElement('button'); uploadFolder.textContent = ms('上传文件夹', 'Upload folder'); uploadFolder.dataset.uploadFolder = ''; panel.querySelector('[data-upload]').after(uploadFolder); uploadFolder.onclick = () => beginSshBatch(tb, 'upload', true);
   panel.querySelector('[data-download]').onclick = () => typeof beginSshBatch === 'function' ? beginSshBatch(tb, 'download') : startSshFileTransfer(tb, 'download');
@@ -281,12 +278,11 @@ async function loadSshFiles(tb, path, { preserveSelection = false } = {}) {
   const generation = ++view.generation, key = tb.key, id = tb.termId;
   view.busy = true; view.ready = false; renderSshFiles(tb, ms('正在读取远程目录…', 'Loading remote directory…'));
   try {
-    const result = await invoke('ssh_files_list', { id, path, bindTasks:true });
+    const result = await invoke('ssh_files_list', { id, path });
     if (tb.disposed || tb.exited || tb.sshDisconnectRequested || tb.key !== key || tb.sshFiles !== view || view.generation !== generation) return;
     if (view.path !== result.path) { view.filter = ''; const filter = tb.sshFilesPanel?.querySelector('[data-remote-filter]'); if(filter)filter.value=''; }
     view.home ||= result.path;
-    view.taskBinding = result.taskBinding || null;
-    view.historyWorkspace = result.historyWorkspace || view.taskBinding?.workspace || null;
+    view.historyWorkspace = result.historyWorkspace || null;
     view.path = result.path; view.entries = Array.isArray(result.entries) ? result.entries : []; view.selected = -1; view.busy = false; view.ready = true;
     view.selection = new Set(view.entries.map((entry, index) => selectedNames.has(entry.name) ? index : -1).filter((i) => i >= 0)); view.anchor = -1;
     renderSshFiles(tb, result.truncated ? ms('目录过大，仅显示前 5000 项或已达到文本上限。', 'Large directory: limited to 5000 entries or the text budget.') : `${view.entries.length} ${ms('项', 'items')}`);
@@ -331,12 +327,9 @@ function updateSshTransferControls(tb) {
   const panel = tb.sshFilesPanel, view = tb.sshFiles; if (!panel || !view) return;
   const queue = typeof beginSshBatch === 'function';
   const disconnected = tb.exited || tb.disposed || tb.sshDisconnectRequested || !tb.sshAuthenticated;
-  const ask = panel.querySelector('[data-remote-ask]');
-  if(ask){ask.hidden=!view.taskBinding;ask.disabled=view.busy || !view.ready || disconnected;}
   const history=panel.querySelector('[data-remote-history]');
   if(history){history.hidden=!view.historyWorkspace;history.disabled=view.busy || !view.ready || disconnected;}
-  if(typeof syncFileHistoryScope==='function') syncFileHistoryScope();
-  if(tb===curTab() && typeof syncHarnessUnread==='function')syncHarnessUnread();
+  if(typeof syncTransferHistoryScope==='function') syncTransferHistoryScope();
   const busy = view.busy || view.ready === false || (queue ? tb.sshBatchPicking : transferActive(tb)) || disconnected;
   for (const control of panel.querySelectorAll('[data-up], [data-go], [data-refresh], [data-path], [data-root], [data-home], [data-remote-copy]')) control.disabled = view.busy || disconnected;
   const select = panel.querySelector('[data-select-files]'); if (select) select.disabled = view.busy || view.ready === false || disconnected;

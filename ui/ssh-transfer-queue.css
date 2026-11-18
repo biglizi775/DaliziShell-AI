@@ -32,3 +32,16 @@
 #sshBatchRecovery [data-list] { display: grid; gap: .4rem; }
 #sshBatchRecovery [data-list] button { text-align: left; overflow-wrap: anywhere; }
 #sshBatchRecovery [data-detail] button { margin: .35rem .5rem .35rem 0; }
+
+.chat-history-dialog { width: min(760px, calc(100vw - 36px)); }
+.chat-history-dialog .file-settings-body { max-height: 67vh; overflow: auto; }
+.chat-history-dialog button { cursor: pointer; }
+.chat-root { overflow-wrap: anywhere; font-weight: 600; }
+.chat-note { color: var(--txt3); font-size: 12px; line-height: 1.65; }
+.chat-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.chat-actions button { padding: 7px 12px; border: 1px solid var(--border); background: var(--bg); border-radius: 7px; color: var(--txt); }
+.chat-actions button:hover { background: var(--bg2); }
+.file-history-list { display: grid; gap: 6px; }
+.file-history-list button { display: grid; gap: 4px; text-align: left; overflow-wrap: anywhere; padding: 9px 12px; background: var(--bg2); border: 1px solid var(--border); border-radius: 7px; color: var(--txt); }
+.file-history-list small, .file-history-detail small { color: var(--txt3); }
+.file-history-detail code { display: block; user-select: text; color: var(--txt2); }

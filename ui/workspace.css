@@ -4,7 +4,4 @@
 .page-actions #btnSsh { margin-left: -1px; border-top-left-radius: 0; border-bottom-left-radius: 0; }
 .terminal-actions button:hover, .terminal-actions button:focus-visible { position: relative; z-index: 1; }
 @media (max-width: 1120px) {
-  body.agent-docked .page-actions { gap: 3px; }
-  body.agent-docked .page-actions #btnSsh { gap: 5px; }
-  body.agent-docked #pageTitle { font-size: 19px; }
 }

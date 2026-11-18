@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const execFile = require('node:util').promisify(require('node:child_process').execFile);
-const { startSshFixture } = require('./harness_m4_checks.cjs');
+const { startSshFixture } = require('./ssh_test_server.cjs');
 
 module.exports = async function checkTerminalRestore({ getPage, launch, close, app, dir, a, until }) {
   const server = await startSshFixture(path.join(dir, 'restore-ssh'));
@@ -17,7 +17,7 @@ module.exports = async function checkTerminalRestore({ getPage, launch, close, a
     await page.locator('#sshPassword').fill(password);
     await page.locator('#sshRememberSecret').uncheck();
     await page.locator('#sshConnect').click();
-    await page.waitForFunction(() => curTab()?.sshAuthenticated && curTab().sshFiles?.taskBinding);
+    await page.waitForFunction(() => curTab()?.sshAuthenticated && curTab().sshFiles?.historyWorkspace);
   };
   try {
     await fs.mkdir(shellDirectory);

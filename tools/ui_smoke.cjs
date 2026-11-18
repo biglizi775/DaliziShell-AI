@@ -8,9 +8,7 @@ const ui = path.resolve(__dirname, '../ui');
 const output = path.resolve(__dirname, '../src-tauri/target/ui-smoke');
 const browserStartupOnly = process.argv.includes('--browser-startup');
 const sshRecoveryOnly = process.argv.includes('--ssh-recovery');
-const builtinSkillsOnly = process.argv.includes('--builtin-skills');
 const copyPathsOnly = process.argv.includes('--copy-paths');
-const aiApiOnly = process.argv.includes('--ai-api');
 const workbenchOnly = process.argv.includes('--workbench');
 const archiveOnly = process.argv.includes('--archive');
 const stabilityOnly = process.argv.includes('--render-stability');
@@ -19,20 +17,6 @@ const tabsOnly = process.argv.includes('--tabs');
 const panesOnly = process.argv.includes('--panes');
 const transfersOnly = process.argv.includes('--transfers');
 const sshFilesOnly = process.argv.includes('--ssh-files');
-function makeBuiltinSkills() {
-  return [
-    ['file-organize', '文件整理'], ['task-planning', '任务拆解'], ['product-design', '产品与交互设计'],
-    ['ui-design-review', '界面设计评审'], ['software-development', '软件开发建议'], ['debug-and-test', '调试与测试建议'],
-    ['code-review', '代码审查建议'], ['documentation', '文档编写'], ['terminal-diagnostics', '终端与 SSH 诊断'],
-  ].map(([slug, name]) => {
-    const text = fs.readFileSync(path.resolve(__dirname, '../resources/builtin-skills', slug, 'SKILL.md'), 'utf8');
-    const frontmatter = text.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n/);
-    assert.ok(frontmatter, `builtin skill has frontmatter: ${slug}`);
-    const description = frontmatter[1].match(/^description:\s*(.+)$/m)?.[1].trim().replace(/^['"]|['"]$/g, '');
-    assert.ok(description, `builtin skill has a description: ${slug}`);
-    return { id: `builtin.${slug}`, path: `builtin://${slug}/SKILL.md`, name, description, body: text.slice(frontmatter[0].length).trim(), source: 'builtin', version: '1.0.0', availability: slug === 'file-organize' ? 'file-actions' : 'advice', enabled: false };
-  });
-}
 function makePreviewPdf() {
   const content = (text, r, g, b) => `${r} ${g} ${b} rg 30 120 240 70 re f\n0 0 0 rg BT /F1 18 Tf 30 230 Td (${text}) Tj ET\n`;
   const a = content('Local PDF preview - page one', 0.1, 0.5, 0.9), b = content('Page two - navigation works', 0.2, 0.8, 0.4);
@@ -65,7 +49,7 @@ const server = http.createServer((req, res) => {
   const errors = [];
   page.on('pageerror', (error) => errors.push(error.stack || error.message));
   try {
-    await page.addInitScript(({ pdf, startupOnly, sshRecovery, builtinMode, builtinSkills, copyPaths }) => {
+    await page.addInitScript(({ pdf, startupOnly, sshRecovery, copyPaths }) => {
       localStorage.setItem('df.lastPath', JSON.stringify('C:\\Projects'));
       if (startupOnly) {
         localStorage.setItem('df.browserSettings', JSON.stringify({ restoreSession: true, recordHistory: true, homeUrl: 'https://startup-click.example/' }));
@@ -87,12 +71,6 @@ const server = http.createServer((req, res) => {
       window.mockExtensions = [{ id: 'sample-extension', name: '阅读助手 <script>', enabled: true }];
       window.emitMockEvent = (name, payload) => (window.mockListeners[name] || []).forEach((fn) => fn({ payload }));
       let sshSequence = 200;
-      const profile = JSON.parse(localStorage.getItem('mock.agentProfile') || 'null') || { skills: builtinMode ? [{ id: 'legacy-user', path: 'C:\\Skills\\existing\\SKILL.md', name: '既有命名规范 <script>', description: '原来已启用的用户技能，目录上线后仍需保留。', body: '# Existing user skill\nPreserve meaningful project names.', enabled: true }] : [], builtinEnabled: [], memories: [], memoryEnabled: true, learningEnabled: false, storagePath: 'C:\\Demo\\agent-profile-v1.json' };
-      profile.builtinEnabled ||= [];
-      const saveProfile = () => localStorage.setItem('mock.agentProfile', JSON.stringify(profile));
-      const mergedSkills = () => [...builtinSkills.map((skill) => ({ ...skill, enabled: profile.builtinEnabled.includes(skill.id) })), ...profile.skills.map((skill) => ({ ...skill, source: 'user', version: '', availability: 'advice' }))];
-      const profileAt = (root) => ({ ...profile, skills: mergedSkills(), memories: profile.memories.filter((memory) => memory.scope === 'folder' && memory.root?.toLowerCase() === root?.toLowerCase()), memoryStoragePath: root ? root + '\\.dalizi\\agent-memory.json' : null, legacyMemories: [] });
-      if (builtinMode) saveProfile();
       const entries = [
         { name: '设计资源', isDir: true, dirSize: 12582912, size: 0, mtime: 1792800000000, ext: '', hidden: false },
         { name: '项目文档', isDir: true, dirSize: 5242880, size: 0, mtime: 1792800000000, ext: '', hidden: false },
@@ -142,11 +120,6 @@ const server = http.createServer((req, res) => {
             const saved = { path: 'C:\\Demo\\DaliziData\\preferences.json', enabled: args.enabled, updatedAt: Date.now(), settings: args.settings, error: null };
             localStorage.setItem('mock.portableSettings', JSON.stringify(saved)); return { ...saved, settings: null };
           }
-          if (cmd === 'ai_test_connection') {
-            if (window.mockApiTestDeferred) await new Promise(resolve => { window.resolveMockApiTest = resolve; });
-            if (window.mockApiTestFailure) throw new Error('HTTP 401 · Invalid API key');
-            return { elapsedMs: 42, model: args.request.model, apiFormat: args.request.apiFormat || 'openai-completions', requestUrl: 'https://fixture.example/verified' };
-          }
           if (cmd === 'term_write' && window.mockTermWriteFailure) throw new Error('Term write unavailable');
           if (cmd === 'term_kill' && window.mockTermKillFailure) throw new Error('Term kill unavailable');
           if (cmd === 'term_interrupt' && window.mockTermInterruptFailure) throw new Error('Term interrupt unavailable');
@@ -182,53 +155,6 @@ const server = http.createServer((req, res) => {
           if (cmd === 'list_dir') {
             if (window.mockListDeferred) await new Promise((resolve) => { window.resolveMockList = resolve; });
             return window.mockEntries || entries;
-          }
-          if (cmd === 'agent_profile') return structuredClone(profileAt(args.root));
-          if (cmd.startsWith('agent_chat_')) {
-            const all = JSON.parse(localStorage.getItem('fixture.chatArchives') || '{}');
-            const chats = all[args.root] ||= [];
-            if (cmd === 'agent_chat_list') return chats.map((chat) => ({ ...chat, ...chat.snapshot, messageCount: chat.snapshot.messages.length }));
-            if (cmd === 'agent_chat_read') { const chat = chats.find((c) => c.snapshot.id === args.id); if (!chat) throw new Error('Conversation missing'); return structuredClone(chat); }
-            if (cmd === 'agent_chat_export') return 'C:\\fixture-export.md';
-            if (cmd === 'agent_chat_save') {
-              const index = chats.findIndex((c) => c.snapshot.id === args.snapshot.id), current = chats[index];
-              if ((current?.revision || 0) !== args.expectedRevision) throw new Error('Conversation changed');
-              const chat = { snapshot: structuredClone(args.snapshot), revision: args.expectedRevision + 1, createdAt: current?.createdAt || Date.now(), updatedAt: Date.now() };
-              if (index < 0) chats.push(chat); else chats[index] = chat;
-              localStorage.setItem('fixture.chatArchives', JSON.stringify(all)); return chat;
-            }
-            if (cmd === 'agent_chat_delete') {
-              const index = chats.findIndex((c) => c.snapshot.id === args.id && c.revision === args.expectedRevision);
-              if (index < 0) throw new Error('Conversation changed'); chats.splice(index, 1);
-              localStorage.setItem('fixture.chatArchives', JSON.stringify(all)); return null;
-            }
-          }
-          if (cmd === 'agent_pick_skill') return 'C:\\Skills\\project-organizer\\SKILL.md';
-          if (cmd === 'agent_skill_import') {
-            const previous = profile.skills.find((skill) => skill.path === args.path);
-            const skill = { id: previous?.id || 'organize', path: args.path, name: '项目归档规范', description: '按项目和日期整理资料，保留原始文件名。', body: '# 项目归档\n先分析目录，再提出计划。\n命名统一使用 YYYY-MM-DD。', enabled: previous?.enabled || false, source: 'user', version: '', availability: 'advice' };
-            profile.skills = profile.skills.filter((item) => item.id !== skill.id); profile.skills.push(skill); saveProfile(); return skill;
-          }
-          if (cmd === 'agent_skill_set') {
-            const skill = mergedSkills().find((item) => item.id === args.id);
-            if (!skill) throw new Error('Skill missing');
-            if (args.enabled && !skill.enabled && mergedSkills().filter((item) => item.enabled).length >= 4) throw new Error('最多保存 32 个自定义技能，同时启用 4 个内置或自定义技能 / Up to 32 user skills and 4 enabled skills in total');
-            if (window.mockSkillSetFailure) throw new Error('Skill configuration unavailable');
-            if (skill.source === 'builtin') profile.builtinEnabled = [...profile.builtinEnabled.filter((id) => id !== args.id), ...(args.enabled ? [args.id] : [])];
-            else profile.skills.find((item) => item.id === args.id).enabled = args.enabled;
-            saveProfile(); return null;
-          }
-          if (cmd === 'agent_skill_remove') { if (args.id.startsWith('builtin.')) throw new Error('Built-in skills cannot be removed'); profile.skills = profile.skills.filter((skill) => skill.id !== args.id); saveProfile(); return null; }
-          if (cmd === 'agent_preferences_set') { Object.assign(profile, args); saveProfile(); return null; }
-          if (cmd === 'agent_memory_save') { const memory = { ...args.memory, id: args.memory.id || crypto.randomUUID(), updatedAt: Date.now() }; profile.memories = profile.memories.filter((item) => item.id !== memory.id); profile.memories.push(memory); saveProfile(); return memory; }
-          if (cmd === 'agent_memory_delete') { profile.memories = profile.memories.filter((memory) => memory.id !== args.id); saveProfile(); return null; }
-          if (cmd === 'agent_memory_import') {
-            let added = 0;
-            for (const content of args.contents) {
-              if (profile.memories.some((item) => item.root === args.root && item.content === content)) continue;
-              profile.memories.push({ id: crypto.randomUUID(), root: args.root, scope: 'folder', content, enabled: false, updatedAt: Date.now() }); added++;
-            }
-            saveProfile(); return added;
           }
           if (cmd === 'term_start') return 101;
           if (cmd === 'ssh_managed_start') {
@@ -269,13 +195,10 @@ const server = http.createServer((req, res) => {
             return { ready: args.sources.map((_, i) => i), sourceKeys: args.sources.map(p => p), destinationKey: args.dest };
           }
           if (cmd === 'local_transfer_item') return { status: 'complete', target: args.dest + '\\' + args.source.split('\\').pop() };
-          if (cmd === 'ai_compact') { if (window.mockCompactionFailure) throw new Error('Summary service unavailable'); return { summary: '用户希望按日期归档文件。之前的方案尚未执行，下一步需要核对。', beforeCharacters: JSON.stringify(args.request.history).length, afterCharacters: 34 }; }
-          if (cmd === 'ai_plan') return { id: 'mock-plan', root: args.request.root, permissionMode: args.request.permissionMode, summary: args.request.prompt.includes('概括') || args.request.permissionMode === 'read-only' ? '这个文件夹包含设计资源、项目文档和 30 份 Markdown 笔记。可以按项目或用途整理。' : '创建“归档”文件夹，把选中的项目笔记移动到其中。执行前可以检查下面的路径。', contextCount: 35, contextTruncated: false, appliedSkills: mergedSkills().filter((skill) => args.request.skillIds?.includes(skill.id)).map(({ id, name }) => ({ id, name })), memoryCount: args.request.useMemory ? profileAt(args.request.root).memories.filter((memory) => memory.enabled).length : 0, memorySuggestions: args.request.learnMemory && args.request.prompt.includes('概括') ? ['归档目录使用日期命名。'] : [], actions: args.request.prompt.includes('概括') || args.request.permissionMode === 'read-only' ? [] : [{ kind: 'mkdir', target: 'C:\\Projects\\归档' }, { kind: 'move', source: 'C:\\Projects\\Project-notes-1.md', target: 'C:\\Projects\\归档\\Project-notes-1.md' }] };
-          if (cmd === 'ai_execute') return { completed: true, results: [{ kind: 'mkdir', target: 'C:\\Projects\\归档', status: 'success', message: '' }] };
           return null;
         } },
       };
-    }, { pdf: makePreviewPdf(), startupOnly: browserStartupOnly, sshRecovery: sshRecoveryOnly, builtinMode: builtinSkillsOnly, builtinSkills: makeBuiltinSkills(), copyPaths: copyPathsOnly });
+    }, { pdf: makePreviewPdf(), startupOnly: browserStartupOnly, sshRecovery: sshRecoveryOnly, copyPaths: copyPathsOnly });
     await page.goto(`http://127.0.0.1:${server.address().port}`);
     if (sshFilesOnly) { await require('./ssh_files_access_checks.cjs')(page, output); assert.deepEqual(errors, []); console.log('SSH file access UI passed.'); return; }
     if (tabsOnly) { await require('./tab_overflow_checks.cjs')(page, {output}); assert.deepEqual(errors, []); console.log('Tab overflow checks passed.'); return; }
@@ -287,7 +210,7 @@ const server = http.createServer((req, res) => {
     if (productivityOnly) {
       await require('./productivity_checks.cjs')(page, { folder: 'C:\\Projects', output });
       assert.deepEqual(errors, []);
-      console.log('Conversation archive and tab productivity UI checks passed.'); return;
+      console.log('Tab productivity UI checks passed.'); return;
     }
     if (stabilityOnly) {
       await require('./render_stability_checks.cjs')(page, { folder: 'C:\\Projects', output, resize: (width, height) => page.setViewportSize({ width, height }) });
@@ -411,79 +334,8 @@ const server = http.createServer((req, res) => {
       await page.locator('[data-place-restore]').click();
       await page.waitForFunction(() => state.tabs.length >= 3 && !state.loading);
       assert.equal(await page.locator('[data-place-restore]').isDisabled(), true);
-      await page.evaluate(async () => {
-        await navigate('C:\\Projects'); openAiAssistant();
-        applyAiRuntimeSettings({ endpoint: 'https://fixture.example/v1', model: 'fixture' }, 'fixture-only');
-        setAiPermissionMode('read-only');
-        for (let i = 0; i < 14; i++) addAiMessage(aiCurrentSession(), i % 2 ? 'assistant' : 'user', `第 ${i} 条：` + '文件夹命名应包含日期，已提出的方案尚未执行。'.repeat(8));
-        renderAiConversation(); updateAiComposer();
-      });
-      await page.locator('#aiPrompt').fill('概括之前的需求');
-      await page.locator('#aiPrompt').press('Enter');
-      await page.waitForFunction(() => aiCurrentSession().compactionCount > 0 && !aiCurrentSession().requestId);
-      assert.equal(await page.evaluate(() => mockCalls.filter(c => c.cmd === 'ai_compact').length), 1);
-      assert.match(await page.evaluate(() => mockCalls.findLast(c => c.cmd === 'ai_plan').args.request.conversationSummary), /尚未执行/);
-      assert.equal(await page.evaluate(() => aiCurrentSession().messages.length), 16, 'original visible transcript is retained');
-      await page.locator('#aiContextMeter summary').click();
-      await page.screenshot({ path: path.join(output, 'workbench-context-summary.png') });
-      await page.evaluate(() => {
-        window.mockCompactionFailure = true;
-        for (let i = 0; i < 8; i++) addAiMessage(aiCurrentSession(), i % 2 ? 'assistant' : 'user', '继续讨论命名规则，尚未执行。'.repeat(30));
-      });
-      await page.locator('#aiPrompt').fill('概括并继续'); await page.locator('#aiPrompt').press('Enter');
-      await page.waitForFunction(() => aiCurrentSession().memoryWarning && !aiCurrentSession().requestId);
-      assert.match(await page.locator('#aiContextMeter').textContent(), /Summary service unavailable/);
-      assert.equal(await page.evaluate(() => aiCurrentSession().compactionCount), 1);
-      await page.locator('[data-agent-open=memories]').click();
-      await page.locator('.memory-statistics').waitFor();
-      await page.locator('[data-memory-pref=autoCompact]').uncheck();
-      assert.equal(await page.evaluate(() => aiMemoryPreferences().autoCompact), false);
-      await page.screenshot({ path: path.join(output, 'workbench-memory-manager.png') });
-      await page.locator('[data-agent-action=close]').last().click();
-      await page.setViewportSize({ width: 960, height: 560 });
-      await page.evaluate(() => { document.documentElement.dataset.theme = 'dark'; });
-      const composer = await page.locator('.ai-composer').boundingBox();
-      const messages = await page.locator('#aiMessages').boundingBox();
-      assert.ok(composer.y + composer.height <= 561 && messages.height > 20, 'small window keeps composer and conversation accessible');
-      await page.screenshot({ path: path.join(output, 'workbench-small-dark.png') });
       assert.deepEqual(errors, []);
-      console.log('Workbench UI passed: folder/URL favorites, edit/escape, show/hide settings, mixed lazy restore, manual restore, automatic summary, retained transcript, failure fallback, memory statistics/preferences and small dark layout.');
-      return;
-    }
-    if (aiApiOnly) {
-      await page.locator('.row').first().waitFor();
-      await page.evaluate(() => { setLocale('zh'); openAiAssistant(); toggleAiSettings(true); });
-      await page.locator('#aiEndpoint').fill('https://example.test/v1');
-      await page.locator('#aiModel').fill('fixture-model'); await page.locator('#aiKey').fill('fixture-only-key');
-      for (const [format, suffix] of [['openai-completions','chat/completions'], ['openai-responses','responses'], ['anthropic-messages','messages']]) {
-        await page.locator('#aiApiFormat').selectOption(format);
-        assert.equal(await page.locator('#aiRequestUrl').textContent(), 'https://example.test/v1/' + suffix);
-        await page.locator('[data-ai-action="test-api"]').click();
-        await page.waitForFunction(() => $('aiApiTestStatus').textContent.includes('测试成功'));
-        assert.equal(await page.evaluate(() => store.get('aiSettings', null)), null, 'Testing does not save settings');
-        const request = await page.evaluate(() => mockCalls.findLast(c => c.cmd === 'ai_test_connection').args.request);
-        assert.equal(request.apiFormat || 'openai-completions', format); assert.equal(request.root, undefined);
-      }
-      await page.evaluate(() => { mockApiTestFailure = true; });
-      await page.locator('[data-ai-action="test-api"]').click();
-      await page.waitForFunction(() => $('aiApiTestStatus').textContent.includes('HTTP 401'));
-      await page.evaluate(() => { mockApiTestFailure = false; mockApiTestDeferred = true; });
-      await page.locator('[data-ai-action="test-api"]').click();
-      await page.waitForFunction(() => typeof resolveMockApiTest === 'function');
-      await page.locator('#aiModel').fill('new-model');
-      await page.evaluate(() => { resolveMockApiTest(); mockApiTestDeferred = false; });
-      assert.equal(await page.locator('#aiApiTestStatus').textContent(), '');
-      await page.locator('#aiApiFormat').selectOption('openai-responses');
-      await page.locator('[data-ai-action="test-api"]').click();
-      await page.waitForFunction(() => $('aiApiTestStatus').textContent.includes('测试成功'));
-      await page.screenshot({ path: path.join(output, 'ai-api-settings.png') });
-      await page.locator('[data-ai-action="save-settings"]').click();
-      await page.locator('#aiPrompt').fill('概括目录'); await page.locator('#aiPrompt').press('Enter');
-      await page.waitForFunction(() => mockCalls.some(c => c.cmd === 'ai_plan'));
-      assert.equal(await page.evaluate(() => mockCalls.findLast(c => c.cmd === 'ai_plan').args.request.apiFormat), 'openai-responses');
-      assert.equal(await page.evaluate(() => JSON.stringify(localStorage).includes('fixture-only-key')), false);
-      assert.deepEqual(errors, []);
-      console.log('API settings UI passed: three formats, resolved URL, draft-only tests, errors/retry, stale results, saving and chat format propagation.');
+      console.log('Workbench UI passed: folder/URL favorites, edit/escape, show/hide settings, mixed lazy restore and manual restore.');
       return;
     }
     if (copyPathsOnly) {
@@ -567,116 +419,6 @@ const server = http.createServer((req, res) => {
       await page.screenshot({ path: path.join(output, 'browser-startup-races.png') });
       assert.deepEqual(errors, [], 'startup and queued navigation have no browser script errors');
       console.log('Browser startup smoke passed: slow roots preserve user tabs, saved tabs stay lazy, and late creation / superseded B-C navigation events preserve the latest page and session URLs.');
-      return;
-    }
-    if (builtinSkillsOnly) {
-      await page.locator('.row').first().waitFor();
-      if (await page.evaluate(() => locale) !== 'zh') await page.locator('#btnLang').click();
-      const builtinGroup = page.locator('[data-agent-skill-group="builtin"]');
-      const userGroup = page.locator('[data-agent-skill-group="user"]');
-      const skillCheckbox = (id) => page.locator(`[data-agent-skill="${id}"]`);
-      const skillCard = (id) => page.locator(`[data-agent-skill-id="${id}"]`);
-      const enabledIds = () => page.evaluate(() => currentAgentProfile(agentManagerRoot).skills.filter((skill) => skill.enabled).map((skill) => skill.id).sort());
-      const closeSkillManager = () => page.locator('.agent-profile-footer [data-agent-action="close"]').click();
-      await page.locator('[data-agent-open="skills"]').click();
-      await builtinGroup.locator('[data-agent-skill]').last().waitFor();
-      assert.equal(await builtinGroup.locator('[data-agent-skill]').count(), 9, 'all nine built-in skills appear in their own catalog group');
-      assert.equal(await builtinGroup.locator('.agent-skill-badge.is-builtin').count(), 9);
-      assert.equal(await builtinGroup.locator('[data-agent-skill-availability="file-actions"]').count(), 1);
-      assert.equal(await builtinGroup.locator('[data-agent-skill-availability="advice"]').count(), 8);
-      for (const skill of makeBuiltinSkills()) assert.ok((await skillCard(skill.id).locator('.agent-skill-version').textContent()).includes(skill.version));
-      assert.equal(await userGroup.locator('[data-agent-skill]').count(), 1, 'existing user skills remain in a separate group');
-      assert.deepEqual(await enabledIds(), ['legacy-user'], 'installing the built-in catalog never silently enables it or disables existing user configuration');
-      assert.equal(await skillCheckbox('legacy-user').isChecked(), true);
-      assert.ok((await skillCard('legacy-user').textContent()).includes('<script>'));
-      assert.equal(await page.locator('#agentProfileDialog script').count(), 0, 'custom skill names remain inert text');
-      assert.equal(await builtinGroup.locator('[data-agent-action="remove-skill"]').count(), 0, 'built-ins cannot be removed from the UI');
-      assert.equal(await userGroup.locator('[data-agent-action="remove-skill"]').count(), 1);
-      assert.ok((await skillCard('builtin.file-organize').textContent()).includes('支持文件整理'));
-      for (const skill of makeBuiltinSkills().filter((item) => item.availability === 'advice')) assert.ok((await skillCard(skill.id).textContent()).includes('分析与建议（未接入执行工具）'), `${skill.id} does not claim an execution tool`);
-      await page.screenshot({ path: path.join(output, 'builtin-skills-catalog.png') });
-      await skillCard('builtin.file-organize').locator('[data-agent-action="view-skill"]').click();
-      assert.equal((await skillCard('builtin.file-organize').locator('.agent-skill-source').textContent()).trim(), makeBuiltinSkills()[0].body, 'the built-in instructions are readable before enabling them');
-      await skillCard('builtin.file-organize').locator('[data-agent-action="view-skill"]').click();
-      const enabledBuiltins = ['builtin.file-organize', 'builtin.task-planning', 'builtin.terminal-diagnostics'];
-      for (const id of enabledBuiltins) {
-        await skillCheckbox(id).check();
-        await page.waitForFunction((key) => !agentProfileBusy && currentAgentProfile(agentManagerRoot).skills.find((skill) => skill.id === key)?.enabled, id);
-      }
-      const expectedEnabled = ['legacy-user', ...enabledBuiltins].sort();
-      assert.deepEqual(await enabledIds(), expectedEnabled);
-      assert.ok((await page.locator('#agentSkillEnabledCount').textContent()).includes('4'));
-      const setsBeforeLimit = await page.evaluate(() => window.mockCalls.filter((call) => call.cmd === 'agent_skill_set').length);
-      await skillCheckbox('builtin.code-review').click();
-      assert.equal(await skillCheckbox('builtin.code-review').isChecked(), false, 'the fifth mixed skill is rejected');
-      assert.deepEqual(await enabledIds(), expectedEnabled, 'the four existing selections are not silently replaced');
-      assert.equal(await page.evaluate(() => window.mockCalls.filter((call) => call.cmd === 'agent_skill_set').length), setsBeforeLimit, 'the UI rejects an already-known capacity violation before mutation');
-      assert.ok((await page.locator('#agentProfileStatus').textContent()).includes('4'));
-      await page.evaluate(() => { window.mockSkillSetFailure = true; });
-      await skillCheckbox('builtin.file-organize').click();
-      await page.waitForFunction(() => !agentProfileBusy && document.getElementById('agentProfileStatus').textContent.includes('Skill configuration unavailable'));
-      assert.equal(await skillCheckbox('builtin.file-organize').isChecked(), true, 'a failed save restores the actual enabled state');
-      assert.deepEqual(await enabledIds(), expectedEnabled);
-      await page.evaluate(() => { window.mockSkillSetFailure = false; });
-      await page.locator('[data-agent-action="refresh"]').click();
-      await page.waitForFunction(() => !agentProfileBusy);
-      await userGroup.scrollIntoViewIfNeeded();
-      await page.screenshot({ path: path.join(output, 'builtin-skills-enabled.png') });
-      await page.locator('[data-agent-action="browse"]').click();
-      await page.locator('[data-agent-action="import"]').click();
-      await skillCheckbox('organize').waitFor();
-      assert.equal(await userGroup.locator('[data-agent-skill]').count(), 2, 'importing a skill appends to existing user skills');
-      assert.equal(await skillCheckbox('organize').isChecked(), false, 'imported user skills also start disabled');
-      assert.deepEqual(await enabledIds(), expectedEnabled);
-      assert.equal(await builtinGroup.locator('[data-agent-skill]').count(), 9, 'importing user skills preserves the built-in catalog');
-      await skillCard('organize').locator('[data-agent-action="remove-skill"]').click();
-      await skillCheckbox('organize').waitFor({ state: 'detached' });
-      assert.equal(await userGroup.locator('[data-agent-skill]').count(), 1, 'custom skills remain removable');
-      assert.deepEqual(await enabledIds(), expectedEnabled);
-      await closeSkillManager();
-      await page.locator('.ai-chat-header [data-ai-action="settings"]').click();
-      await page.locator('#aiEndpoint').fill('https://example.invalid/v1');
-      await page.locator('#aiModel').fill('builtin-skill-test-model');
-      await page.locator('#aiKey').fill('dummy-session-key');
-      await page.locator('[data-ai-action="save-settings"]').click();
-      await page.locator('#aiProjectTools').check();
-      await page.locator('#aiPermissionMode').selectOption('read-only');
-      await page.locator('#aiPrompt').fill('概括当前目录，只给出建议。');
-      await page.locator('#aiPrompt').press('Enter');
-      await page.waitForFunction(() => window.mockCalls.some((call) => call.cmd === 'ai_plan') && !aiCurrentSession().requestId);
-      const skillRequest = await page.evaluate(() => window.mockCalls.filter((call) => call.cmd === 'ai_plan').at(-1).args.request);
-      assert.deepEqual([...skillRequest.skillIds].sort(), expectedEnabled, 'enabled built-ins and user skills are sent through the real AI request assembly');
-      assert.equal(skillRequest.root, 'C:\\Projects');
-      assert.equal(skillRequest.permissionMode, 'read-only', 'selecting built-ins does not elevate the permission mode');
-      assert.equal(await page.evaluate(() => window.mockCalls.filter((call) => call.cmd === 'ai_execute').length), 0, 'skills do not execute files or tools on their own');
-      await page.locator('#btnLang').click();
-      assert.equal(await page.evaluate(() => locale), 'en');
-      await page.locator('[data-agent-open="skills"]').click();
-      await builtinGroup.locator('[data-agent-skill]').last().waitFor();
-      assert.equal(await page.locator('#agentProfileTitle').textContent(), 'Agent workspace');
-      for (const skill of makeBuiltinSkills()) assert.equal(/[\u3400-\u9fff]/.test(await skillCard(skill.id).locator('strong').first().textContent()), false, `${skill.id} has an English display name`);
-      assert.equal((await skillCard('builtin.file-organize').locator('.agent-skill-capability').textContent()).trim(), 'File organization supported');
-      assert.equal((await skillCard('builtin.code-review').locator('.agent-skill-capability').textContent()).trim(), 'Analysis and advice (execution tools not connected)');
-      await page.setViewportSize({ width: 960, height: 560 });
-      await userGroup.scrollIntoViewIfNeeded();
-      const compactSkills = await page.locator('#agentProfileDialog').evaluate((dialog) => {
-        const rect = (node) => { const { left, top, right, bottom } = node.getBoundingClientRect(); return { left, top, right, bottom }; };
-        return { dialog: rect(dialog), footer: rect(dialog.querySelector('footer')), close: rect(dialog.querySelector('footer [data-agent-action=close]')), width: innerWidth, height: innerHeight, scroll: document.getElementById('agentProfileBody').scrollTop };
-      });
-      for (const name of ['dialog', 'footer', 'close']) { const box = compactSkills[name]; assert.ok(box.left >= 0 && box.top >= 0 && box.right <= compactSkills.width + 1 && box.bottom <= compactSkills.height + 1, `${name} remains inside the compact skills viewport`); }
-      assert.ok(compactSkills.scroll > 0, 'the catalog scrolls to custom skills without hiding the footer');
-      await page.screenshot({ path: path.join(output, 'builtin-skills-compact.png') });
-      await closeSkillManager();
-      await page.setViewportSize({ width: 1280, height: 800 });
-      await page.reload();
-      await page.locator('.row').first().waitFor();
-      await page.locator('[data-agent-open="skills"]').click();
-      await builtinGroup.locator('[data-agent-skill]').last().waitFor();
-      assert.deepEqual(await enabledIds(), expectedEnabled, 'built-in selection and existing user configuration survive reload');
-      assert.equal(await builtinGroup.locator('[data-agent-skill]').count(), 9);
-      assert.equal(await userGroup.locator('[data-agent-skill]').count(), 1);
-      assert.deepEqual(errors, [], 'built-in skills have no browser script errors');
-      console.log('Built-in skills smoke passed: nine built-ins, preserved user skills, honest availability, mixed enable cap/save recovery, user import/removal, real AI skillIds, persistence and compact English UI.');
       return;
     }
     if (sshRecoveryOnly) {
@@ -824,10 +566,7 @@ const server = http.createServer((req, res) => {
       return;
     }
     await page.locator('.row').first().waitFor();
-    await page.locator('#aiPanel').waitFor({ state: 'visible' });
-    assert.equal(await page.locator('#bodyRow #aiPanel').count(), 0, 'Agent is outside the terminal/preview workspace');
-    assert.equal(await page.locator('#agentDock #aiPanel').count(), 1);
-    assert.equal(await page.locator('dialog[open]').count(), 0, 'assistant is a docked panel');
+    assert.equal(await page.locator('dialog[open]').count(), 0, 'no dialog opens at startup');
     assert.equal(await page.locator('#dhead .h').count(), 4);
     const beforeWidth = await page.locator('.h[data-k="name"]').evaluate((el) => el.getBoundingClientRect().width);
     const handle = await page.locator('[data-resize="name"]').boundingBox();
@@ -931,118 +670,6 @@ const server = http.createServer((req, res) => {
     await page.waitForFunction(() => !state.loading && !fileOpBusy);
     const reviewedDest = await page.evaluate(() => dropFixtureTarget);
     assert.deepEqual(await page.evaluate(() => window.mockCalls.filter((c) => c.cmd === 'local_transfer_item').at(-1).args), { kind: 'move', source: 'C:\\Downloads\\fixture.txt', dest: reviewedDest, expected: { sourceKey: 'C:\\Downloads\\fixture.txt', destinationKey: reviewedDest } });
-    await page.evaluate(() => openAiAssistant());
-    await page.locator('[data-agent-open="skills"]').click();
-    await page.locator('[data-agent-skill-group="builtin"] [data-agent-skill]').last().waitFor();
-    assert.equal(await page.locator('[data-agent-skill-group="builtin"] [data-agent-skill]').count(), 9);
-    assert.equal(await page.locator('[data-agent-skill]:checked').count(), 0, 'a fresh profile starts with every built-in skill disabled');
-    await page.locator('[data-agent-action="browse"]').click();
-    assert.match(await page.locator('#agentSkillPath').inputValue(), /SKILL\.md$/);
-    await page.locator('[data-agent-action="import"]').click();
-    await page.locator('[data-agent-skill="organize"]').waitFor();
-    assert.equal(await page.locator('[data-agent-skill="organize"]').isChecked(), false, 'import does not implicitly activate a skill');
-    await page.locator('[data-agent-skill="organize"]').check();
-    await page.locator('[data-agent-action="view-skill"][data-id="organize"]').click();
-    await page.locator('.agent-skill-source').waitFor();
-    await page.screenshot({ path: path.join(output, 'agent-skills.png') });
-    await page.locator('[data-agent-tab="memories"]').click();
-    for (const content of ['请使用中文回答。', '这个项目保留原始文件名。']) {
-      await page.locator('[data-agent-action="add-memory"]').click();
-      assert.equal(await page.locator('#agentMemoryScope').count(), 0);
-      assert.ok((await page.locator('#agentMemoryFile').textContent()).includes('.dalizi'));
-      await page.locator('#agentMemoryContent').fill(content);
-      await page.locator('#agentMemoryForm button[type="submit"]').click();
-      await page.locator('#agentMemoryDialog').waitFor({ state: 'detached' });
-    }
-    await page.screenshot({ path: path.join(output, 'agent-memories.png') });
-    await page.locator('[data-agent-tab="learning"]').click();
-    assert.equal(await page.locator('#agentLearnMemories').isChecked(), false);
-    await page.locator('#agentLearnMemories').check();
-    await page.screenshot({ path: path.join(output, 'agent-learning.png') });
-    await page.keyboard.press('Escape');
-    await page.locator('.ai-chat-header [data-ai-action="settings"]').click();
-    await page.locator('#aiEndpoint').fill('http://remote.example/v1');
-    await page.locator('#aiModel').fill('custom-model');
-    await page.locator('[data-ai-action="save-settings"]').click();
-    assert.equal(await page.locator('#aiSettingsPanel').isVisible(), true, 'invalid endpoint keeps settings open');
-    assert.equal(await page.locator('#aiEndpoint').getAttribute('aria-invalid'), 'true');
-    await page.locator('#aiEndpoint').fill('https://example.invalid/v1');
-    await page.locator('#aiModel').fill('custom-model');
-    await page.locator('#aiKey').fill('dummy-session-key');
-    await page.locator('#aiApiDialect').selectOption('openai');
-    await page.locator('#aiReasoningEffort').selectOption('high');
-    await page.screenshot({ path: path.join(output, 'settings.png') });
-    await page.locator('[data-ai-action="save-settings"]').click();
-    await page.locator('.row').filter({ hasText: 'Project-notes-1.md' }).first().click();
-    await page.locator('#aiProjectTools').check();
-    await page.locator('#aiPrompt').fill('帮我概括这个文件夹。我偏好归档目录使用日期命名。');
-    await page.locator('#aiPrompt').dispatchEvent('keydown', { key: 'Enter', isComposing: true });
-    assert.equal(await page.evaluate(() => window.mockCalls.filter((c) => c.cmd === 'ai_plan').length), 0, 'IME confirmation never sends a message');
-    await page.locator('#aiPrompt').press('Enter');
-    await page.waitForFunction(() => document.querySelectorAll('.ai-message.assistant').length === 1);
-    const firstRequest = await page.evaluate(() => window.mockCalls.find((call) => call.cmd === 'ai_plan').args.request);
-    assert.equal(firstRequest.apiDialect, 'openai'); assert.equal(firstRequest.reasoningEffort, 'high');
-    assert.deepEqual(firstRequest.skillIds, ['organize']); assert.equal(firstRequest.useMemory, true); assert.equal(firstRequest.learnMemory, true);
-    assert.equal(await page.evaluate(() => window.mockCalls.filter((call) => call.cmd === 'agent_memory_save').length), 2, 'suggestions are not automatically persisted');
-    await page.locator('[data-ai-action="memory-save"]').click();
-    assert.equal(await page.locator('#agentMemoryContent').inputValue(), '归档目录使用日期命名。');
-    await page.locator('#agentMemoryForm button[type="submit"]').click();
-    await page.locator('#agentMemoryDialog').waitFor({ state: 'detached' });
-    await page.waitForFunction(() => document.querySelector('.ai-memory-suggestion')?.textContent.includes('已保存到记忆'));
-    assert.equal(await page.locator('[data-ai-action="execute"]').count(), 0, 'a question can produce a normal chat reply');
-    await page.locator('#aiPrompt').fill('新建归档文件夹并移动选中的项目笔记');
-    await page.locator('#aiPrompt').press('Control+Shift+f');
-    assert.equal(await page.locator('dialog[open]').count(), 0, 'chat shortcuts do not leak into file navigation');
-    await page.locator('[data-ai-action="send"]').click();
-    await page.locator('[data-ai-plan-details]').waitFor();
-    await page.screenshot({ path: path.join(output, 'ai-chat.png') });
-    await page.locator('[data-ai-plan-details] summary').click();
-    await page.locator('[data-ai-confirm]').waitFor();
-    const secondRequest = await page.evaluate(() => window.mockCalls.filter((c) => c.cmd === 'ai_plan')[1].args.request);
-    assert.equal(secondRequest.history.length, 2); assert.deepEqual(secondRequest.selection, ['Project-notes-1.md']);
-    assert.equal(await page.locator('[data-ai-action="execute"]').isDisabled(), true);
-    assert.equal(await page.evaluate(() => window.mockCalls.some((c) => c.cmd === 'ai_execute')), false);
-    assert.equal(await page.evaluate(() => JSON.stringify(localStorage).includes('dummy-session-key')), false);
-    await page.screenshot({ path: path.join(output, 'ai-plan.png') });
-    await page.locator('[data-ai-confirm]').check();
-    await page.locator('#aiPrompt').fill('稍后继续这个方案');
-    await page.evaluate(() => navigate('C:\\Projects\\设计资源'));
-    assert.equal(await page.locator('#aiPrompt').inputValue(), '');
-    assert.equal(await page.locator('.ai-message').count(), 0);
-    await page.locator('#aiPrompt').fill('另一个目录的草稿');
-    await page.evaluate(() => navigate('C:\\Projects'));
-    assert.equal(await page.locator('#aiPrompt').inputValue(), '稍后继续这个方案');
-    assert.equal(await page.locator('[data-ai-confirm]').isChecked(), false, 'returning to a folder requires a fresh plan confirmation');
-    assert.equal(await page.locator('[data-ai-action="pin"]').count(), 0, 'scope cannot be pinned away from the active tab');
-    await page.evaluate(() => navigate('C:\\Projects\\设计资源'));
-    assert.equal(await page.locator('#aiFolderPath').textContent(), 'C:\\Projects\\设计资源');
-    assert.equal(await page.locator('#aiPrompt').inputValue(), '另一个目录的草稿');
-    await page.evaluate(() => navigate('C:\\Projects'));
-    await page.locator('[data-ai-confirm]').check();
-    await page.locator('[data-ai-action="execute"]').click();
-    await page.waitForFunction(() => document.querySelector('#aiMessages').textContent.includes('操作已完成'));
-    assert.equal(await page.evaluate(() => window.mockCalls.filter((c) => c.cmd === 'ai_execute').length), 1);
-    assert.equal(await page.evaluate(() => window.mockCalls.find((c) => c.cmd === 'ai_execute').args.approved), true);
-    await page.locator('#aiPermissionMode').selectOption('read-only');
-    await page.locator('#aiPrompt').fill('帮我整理文件'); await page.locator('#aiPrompt').press('Enter');
-    await page.waitForFunction(() => window.mockCalls.filter((c) => c.cmd === 'ai_plan').at(-1)?.args.request.permissionMode === 'read-only' && !aiCurrentSession().requestId);
-    assert.equal(await page.evaluate(() => window.mockCalls.filter((c) => c.cmd === 'ai_execute').length), 1);
-    await page.locator('#aiPermissionMode').selectOption('auto');
-    await page.locator('#aiPrompt').fill('新建归档文件夹'); await page.locator('#aiPrompt').press('Enter');
-    await page.waitForFunction(() => window.mockCalls.filter((c) => c.cmd === 'ai_execute').length === 2 && !aiCurrentSession().running);
-    assert.equal(await page.evaluate(() => window.mockCalls.filter((c) => c.cmd === 'ai_execute').at(-1).args.approved), false);
-    await page.screenshot({ path: path.join(output, 'agent-permissions.png') });
-    const firstTabMessages = await page.locator('.ai-message').count();
-    await page.evaluate(() => newTab('C:\\Projects'));
-    await page.waitForFunction(() => aiCurrentSession()?.root === 'C:\\Projects' && aiCurrentSession().permissionMode === 'confirm');
-    assert.equal(await page.locator('.ai-message').count(), 0, 'same path in a second tab gets a separate conversation');
-    assert.equal(await page.locator('#aiPermissionMode').inputValue(), 'confirm');
-    await page.locator('#aiPrompt').fill('second tab draft');
-    await page.evaluate(() => switchTab(0));
-    assert.equal(await page.locator('.ai-message').count(), firstTabMessages);
-    assert.equal(await page.locator('#aiPermissionMode').inputValue(), 'auto');
-    await page.evaluate(() => closeTab(1));
-    await page.locator('#aiPermissionMode').selectOption('confirm');
     await page.locator('#btnSettings').click();
     await page.locator('#workspaceSettings').waitFor();
     await page.screenshot({ path: path.join(output, 'workspace-settings.png') });
@@ -1050,7 +677,6 @@ const server = http.createServer((req, res) => {
     await page.locator('#portableSettingsDialog[open]').waitFor();
     await page.locator('#portableToggle').click();
     await page.waitForFunction(() => portableStatus?.enabled && !portableTransition);
-    assert.equal(await page.evaluate(() => JSON.stringify(JSON.parse(localStorage.getItem('mock.portableSettings'))).includes('dummy-session-key')), false);
     await page.evaluate(() => toggleTheme());
     await page.waitForFunction(() => !portableWriter && JSON.parse(localStorage.getItem('mock.portableSettings')).settings.theme === store.get('theme', 'light'));
     await page.screenshot({ path: path.join(output, 'portable-settings.png') });
@@ -1068,40 +694,17 @@ const server = http.createServer((req, res) => {
     await page.locator('[data-settings-tool="commands"]').click();
     assert.equal(await page.locator('dialog[open]').count(), 1);
     await page.keyboard.press('Escape');
-    await page.locator('#aiPrompt').fill('x'); await page.locator('#aiPrompt').press('Delete');
-    assert.equal(await page.evaluate(() => window.mockCalls.some((c) => c.cmd === 'file_op')), false);
-    const separator = await page.locator('.ai-resize-handle').boundingBox();
-    const initialPanelWidth = await page.locator('#aiPanel').evaluate((el) => el.clientWidth);
-    await page.mouse.move(separator.x + 4, separator.y + 40); await page.mouse.down(); await page.mouse.move(separator.x - 36, separator.y + 40, { steps: 4 }); await page.mouse.up();
-    assert.ok(await page.locator('#aiPanel').evaluate((el) => el.clientWidth) > initialPanelWidth + 30);
     await page.setViewportSize({ width: 960, height: 640 });
-    const chatGeometry = await page.evaluate(() => ({ file: document.getElementById('content').clientWidth, panel: document.getElementById('aiPanel').getBoundingClientRect(), composer: document.querySelector('.ai-composer').getBoundingClientRect(), messages: document.getElementById('aiMessages').clientHeight }));
-    assert.ok(chatGeometry.file >= 200 && chatGeometry.messages >= 50, 'file list and chat remain usable at minimum size');
-    assert.ok(chatGeometry.composer.bottom <= chatGeometry.panel.bottom + 1, 'composer stays inside panel');
-    await page.screenshot({ path: path.join(output, 'ai-compact.png') });
     await page.locator('#btnPreview').click();
-    assert.equal(await page.locator('#aiPanel').isVisible(), true, 'preview does not close Agent');
     assert.equal(await page.locator('#previewPanel').isVisible(), true);
-    const compact = await page.evaluate(() => ({ files: document.getElementById('content').clientWidth, workspace: document.getElementById('workspace').getBoundingClientRect().right, agent: document.getElementById('agentDock').getBoundingClientRect().left }));
-    assert.ok(compact.files >= 200 && Math.abs(compact.workspace - compact.agent) < 2);
-    await page.screenshot({ path: path.join(output, 'agent-independent-compact.png') });
-    await page.evaluate(() => openAiAssistant());
-    assert.equal(await page.locator('#previewPanel').isVisible(), true, 'opening Agent preserves preview');
+    assert.ok(await page.evaluate(() => document.getElementById('content').clientWidth) >= 200, 'file list stays usable beside the preview');
+    await page.screenshot({ path: path.join(output, 'preview-compact.png') });
     await page.setViewportSize({ width: 1280, height: 800 });
-    await page.locator('[data-ai-action="float"]').click();
-    assert.equal(await page.locator('#agentDock.agent-floating').count(), 1);
-    const floatingBefore = await page.locator('#agentDock').boundingBox();
-    const floatHeader = await page.locator('.ai-chat-header').boundingBox();
-    await page.mouse.move(floatHeader.x + 75, floatHeader.y + 20); await page.mouse.down(); await page.mouse.move(floatHeader.x - 65, floatHeader.y + 95, { steps: 6 }); await page.mouse.up();
-    assert.ok((await page.locator('#agentDock').boundingBox()).x < floatingBefore.x - 100);
-    await page.screenshot({ path: path.join(output, 'agent-floating.png') });
-    await page.locator('[data-ai-action="float"]').click();
     assert.equal(await page.locator('#previewPanel').isVisible(), true);
     await page.locator('#btnTerminal').click();
     await page.locator('#termHost .xterm').waitFor();
-    assert.equal(await page.locator('#aiPanel').isVisible(), true, 'PowerShell keeps the Agent on its right');
     await page.evaluate(() => curTab().term.write('PS C:\\Projects> # terminal fixture\r\n'));
-    await page.screenshot({ path: path.join(output, 'agent-terminal.png') });
+    await page.screenshot({ path: path.join(output, 'terminal.png') });
     await page.evaluate(() => closeTab(state.tab));
     assert.equal(await page.locator('#previewPanel').isVisible(), true, 'returning to files restores the preview');
     await page.locator('#tabNewSsh').click();
@@ -1122,7 +725,6 @@ const server = http.createServer((req, res) => {
     await page.screenshot({ path: path.join(output, 'ssh-connect.png') });
     await page.locator('#sshConnect').click();
     await page.waitForFunction(() => curTab().sshInfo?.hostname === 'dev-server');
-    assert.equal(await page.locator('#aiPrompt').isDisabled(), true, 'SSH never reuses the last local folder as an AI workspace');
     assert.equal(await page.evaluate(() => curTab().cwd), null);
     assert.equal(await page.locator('#termHost .ssh-info-card').count(), 1);
     assert.ok((await page.locator('.ssh-info-card').textContent()).includes('192.0.2.10'));
@@ -1187,49 +789,9 @@ const server = http.createServer((req, res) => {
     await page.waitForFunction(() => document.querySelector('#previewContent')?.textContent.includes('旧版 .doc'));
     assert.equal(await page.locator('canvas').count(), 0, 'previous PDF resources and DOM are removed');
     await page.locator('#search').fill('');
-    await page.evaluate(() => openAiAssistant());
     await page.locator('#btnTheme').click();
     await page.screenshot({ path: path.join(output, 'dark.png') });
     await page.reload(); await page.locator('.row').first().waitFor();
-    await page.locator('[data-agent-open="memories"]').click();
-    await page.locator('.agent-memory-card').first().waitFor();
-    assert.equal(await page.locator('.agent-memory-card').count(), 3, 'reviewed memories survive reload');
-    await page.keyboard.press('Escape');
-    await page.evaluate(() => navigate('C:\\Projects\\设计资源'));
-    await page.locator('[data-agent-open="memories"]').click();
-    await page.waitForFunction(() => document.querySelectorAll('.agent-memory-card').length === 0);
-    assert.ok((await page.locator('#agentProfileDialog').textContent()).includes('设计资源'));
-    await page.keyboard.press('Escape');
-    await page.locator('[data-agent-open="memories"]').click();
-    const chooserPromise = page.waitForEvent('filechooser');
-    await page.locator('[data-agent-action="import-memory"]').click();
-    await (await chooserPromise).setFiles({ name: 'memory.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify({ format: 'dalizi-folder-memories', version: 1, memories: [{ content: '迁移后保留项目命名规范。' }] })) });
-    await page.locator('#agentMemoryImportDialog').waitFor();
-    assert.equal(await page.evaluate(() => window.mockCalls.filter((call) => call.cmd === 'agent_memory_import').length), 0);
-    await page.locator('[data-memory-import-all]').click();
-    await page.screenshot({ path: path.join(output, 'memory-import.png') });
-    await page.locator('#agentMemoryImportSave').click();
-    await page.locator('#agentMemoryImportDialog').waitFor({ state: 'detached' });
-    await page.locator('.agent-memory-card').waitFor();
-    assert.equal(await page.locator('.agent-memory-card input[type="checkbox"]').isChecked(), false, 'imported memories start disabled');
-    const downloadPromise = page.waitForEvent('download');
-    await page.locator('[data-agent-action="export-memory"]').click();
-    const download = await downloadPromise;
-    const backup = JSON.parse(fs.readFileSync(await download.path(), 'utf8'));
-    assert.deepEqual(backup.memories, [{ content: '迁移后保留项目命名规范。' }]);
-    assert.equal(JSON.stringify(backup).includes('C:\\'), false, 'memory backup has no folder binding');
-    await page.keyboard.press('Escape');
-    await page.locator('#aiQuickEffort').selectOption('medium');
-    assert.equal(await page.evaluate(() => store.get('aiSettings', {}).reasoningEffort), 'medium');
-    await page.locator('.ai-chat-header [data-ai-action="settings"]').click();
-    await page.locator('#aiModel').fill('second-model');
-    await page.locator('#aiApiDialect').selectOption('deepseek');
-    await page.locator('#aiReasoningEffort').selectOption('high');
-    await page.screenshot({ path: path.join(output, 'model-reasoning.png') });
-    await page.locator('[data-ai-action="save-settings"]').click();
-    await page.locator('#aiModelPreset').selectOption({ label: 'custom-model' });
-    assert.equal(await page.evaluate(() => aiSettings.model), 'custom-model');
-    assert.equal(await page.evaluate(() => aiSettings.apiDialect), 'openai');
     const openBrowserSettingsFromWorkspace = async () => {
       await page.locator('#btnSettings').click();
       await page.locator('[data-settings-tool="browser"]').click();
@@ -1564,7 +1126,7 @@ const server = http.createServer((req, res) => {
     assert.equal(await page.evaluate(() => state.tabs.filter(isBrowserTab).length), 0, 'disabling history clears session restoration on the next startup');
     assert.equal(await page.evaluate(() => window.mockCalls.filter((call) => call.cmd === 'browser_create').length), 0);
     assert.deepEqual(errors, [], 'no browser script errors');
-    console.log('UI smoke passed: browser lazy session restore/retry/close/privacy and native downloads/visibility/error feedback, settings/save recovery/search/blank tabs/history and category-specific data clearing, extensions, SSH profiles/multiple tabs/info/disconnect/reconnect, independent Agent/terminal/preview, floating layout, skills, portable folder memories, learning suggestions, columns, settings, PDF/Word, unified search and dark theme.');
+    console.log('UI smoke passed: browser lazy session restore/retry/close/privacy and native downloads/visibility/error feedback, settings/save recovery/search/blank tabs/history and category-specific data clearing, extensions, SSH profiles/multiple tabs/info/disconnect/reconnect, terminal/preview, columns, settings, portable settings, PDF/Word, unified search and dark theme.');
     console.log(`Screenshots: ${output}`);
   } catch (error) { await page.screenshot({ path: path.join(output, 'failure.png') }); throw error; }
   finally { await browser.close(); server.close(); }

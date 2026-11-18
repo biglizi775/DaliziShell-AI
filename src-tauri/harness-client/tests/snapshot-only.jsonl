@@ -1,9 +1,0 @@
-{"jsonrpc":"2.0","id":1,"result":{"serverInfo":{"name":"deepseek-harness-sdk-runtime","version":"0.0.1"}}}
-{"jsonrpc":"2.0","method":"session.event","params":{"sessionId":"session-A","event":{"type":"agent/inbox/spliced","data":{"inserted":[{"id":"message-A"}]}}}}
-{"jsonrpc":"2.0","id":2,"result":{"messageId":"message-A"}}
-{"jsonrpc":"2.0","method":"session.event","params":{"sessionId":"session-A","event":{"type":"assistant/message","data":{"message":{"content":[{"type":"text","text":"answer A"}]}}}}}
-{"jsonrpc":"2.0","method":"session.event","params":{"sessionId":"session-B","event":{"type":"assistant/message","data":{"message":{"content":[{"type":"text","text":"wrong answer B"}]}}}}}
-{"jsonrpc":"2.0","method":"session.event","params":{"sessionId":"session-A","event":{"type":"turn/end","data":{"reason":{"kind":"completed"}}}}}
-{"jsonrpc":"2.0","method":"session.status","params":{"sessionId":"session-A","status":"idle"}}
-{"jsonrpc":"2.0","id":3,"result":{}}
-{"jsonrpc":"2.0","id":4,"result":{}}

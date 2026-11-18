@@ -41,7 +41,6 @@ async function launch(dir, profile) {
     assert.equal(fs.existsSync(path.join(first, 'DaliziData')), false, 'default startup creates no portable data');
     await page.evaluate(async () => {
       setLocale('zh'); document.documentElement.dataset.theme = 'dark'; store.set('theme', 'dark');
-      applyAiRuntimeSettings({ endpoint: 'https://api.example.test/v1', model: 'migration-fixture', apiFormat: 'openai-responses' }, 'fixture-secret-never-export');
       store.set('pinned', ['C:\\FirstMachineOnly']);
       store.set('browserSettings', { homeUrl: 'about:blank', downloadDirectory: 'C:\\FirstMachineDownloads' });
       addFavorite({ kind: 'browser', url: 'https://bookmark.example.test/', name: '迁移书签' });
@@ -51,13 +50,13 @@ async function launch(dir, profile) {
     });
     const file = path.join(first, 'DaliziData/preferences.json');
     const bytes = fs.readFileSync(file, 'utf8'); const saved = JSON.parse(bytes);
-    assert.equal(saved.enabled, true); assert.equal(saved.settings.aiSettings.apiFormat, 'openai-responses');
-    assert.equal(bytes.includes('fixture-secret-never-export'), false); assert.equal(bytes.includes('FirstMachine'), false);
+    assert.equal(saved.enabled, true); assert.equal(saved.settings.aiSettings, undefined);
+    assert.equal(bytes.includes('FirstMachine'), false);
     await stop();
     fs.mkdirSync(path.join(second, 'DaliziData')); fs.copyFileSync(file, path.join(second, 'DaliziData/preferences.json'));
     page = await launch(second, 'second-profile');
-    assert.deepEqual(await page.evaluate(() => ({ theme: document.documentElement.dataset.theme, locale, model: aiSettings.model, format: aiSettings.apiFormat, key: aiSessionKey, favorites: readFavorites().map((v) => v.kind), history: store.get('urlHistory', []), pinned: state.pinned, downloads: browserSettings().downloadDirectory })), {
-      theme: 'dark', locale: 'zh', model: 'migration-fixture', format: 'openai-responses', key: '', favorites: ['browser'], history: [{ url: 'https://history.example.test/', title: '迁移历史', visitedAt: saved.settings.urlHistory[0].visitedAt }], pinned: [], downloads: '',
+    assert.deepEqual(await page.evaluate(() => ({ theme: document.documentElement.dataset.theme, locale, favorites: readFavorites().map((v) => v.kind), history: store.get('urlHistory', []), pinned: state.pinned, downloads: browserSettings().downloadDirectory })), {
+      theme: 'dark', locale: 'zh', favorites: ['browser'], history: [{ url: 'https://history.example.test/', title: '迁移历史', visitedAt: saved.settings.urlHistory[0].visitedAt }], pinned: [], downloads: '',
     });
     await page.evaluate(() => openPortableSettings());
     await page.screenshot({ path: path.join(output, 'migrated-settings.png') });
@@ -71,7 +70,6 @@ async function launch(dir, profile) {
     await page.evaluate(() => setPortableEnabled(false)); await stop();
     page = await launch(second, 'disabled-fresh-profile');
     assert.equal(await page.evaluate(() => portableStatus.enabled), false);
-    assert.equal(await page.evaluate(() => aiSettings.model || ''), '');
     assert.equal(await page.evaluate(() => readFavorites().length), 0);
     console.log('Native portable settings passed: opt-in, real JSON writes, copy to a second EXE directory and fresh profile, boot hydration, credentials/path exclusions, history clearing across restarts, disabled startup.');
     console.log('Artifacts: ' + output);

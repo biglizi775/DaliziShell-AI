@@ -31,7 +31,6 @@ module.exports = async function checkFileTabScope({getPage, dir, a, b, until, ap
   await openFileTab();
   await page.waitForFunction(() => !state.loading);
   assert.equal(await currentPath(), b, 'PowerShell owns its starting folder');
-  assert.equal(await page.evaluate(() => aiBrowsingFolder()), b);
   const missing = path.join(a, 'temporarily-absent');
   await page.evaluate(dir => navigate(dir), missing);
   assert.equal(await currentPath(), missing, 'failed folder keeps its address for retry');
@@ -68,9 +67,8 @@ module.exports = async function checkFileTabScope({getPage, dir, a, b, until, ap
   await fs.writeFile(path.join(absentRight, 'right-only.txt'), 'fixture');
   await right.locator('[data-refresh]').click();
   await right.locator('.pane-file').filter({hasText: 'right-only.txt'}).waitFor();
-  assert.equal(await page.evaluate(() => aiBrowsingFolder()), missing);
+  assert.equal(await currentPath(), missing, 'the companion pane does not move the main folder');
   await page.evaluate(() => openPendingTerminalTab({kind:'ssh', profileId:null}));
-  assert.equal(await page.evaluate(() => aiBrowsingFolder()), null);
   assert.match(await page.title(), /^SSH/);
   await openFileTab();
   await page.waitForFunction(() => !state.loading);
@@ -131,5 +129,5 @@ module.exports = async function checkFileTabScope({getPage, dir, a, b, until, ap
     try { process.kill(shellPid, 0); return false; }
     catch (error) { if (error.code === 'ESRCH') return true; throw error; }
   });
-  console.log('File tab scope OK: browser/SSH commands, PowerShell and Agent roots, context menus, normal restart and retry, companion isolation, forced host exit ended the shell while its independent child finished.');
+  console.log('File tab scope OK: browser/SSH commands, PowerShell roots, context menus, normal restart and retry, companion isolation, forced host exit ended the shell while its independent child finished.');
 };

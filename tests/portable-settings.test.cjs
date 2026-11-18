@@ -10,14 +10,13 @@ function harness(initial = {}, invoke = async () => null) {
   const storage = new Map(Object.entries(initial).map(([k, v]) => ['df.' + k, JSON.stringify(v)]));
   const notices = [], calls = [];
   const context = vm.createContext({ console, URL, Date, Map, Set, crypto: require('node:crypto').webcrypto,
-    locale: 'en', dfmt: null, previewOpen: false, agentFloating: false, aiPanelOpen: true, columnLayout: {}, aiSettings: {}, aiModelPresets: [], aiSessionKey: "", aiFormatOf: v => v.apiFormat || "openai-completions",
+    locale: 'en', dfmt: null, previewOpen: false, columnLayout: {},
     state: { viewMode: 'details', sortKey: 'name', sortDir: 1, showHidden: false }, PLACE_LIMIT: 100,
     document: { documentElement: { dataset: {} } },
     localStorage: { getItem: (key) => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value), removeItem: (key) => storage.delete(key) },
     store: { get: (k, d) => storage.has('df.' + k) ? JSON.parse(storage.get('df.' + k)) : d },
     $: () => null, toast: (...args) => notices.push(args), normalizeColumns: (v) => v,
-    aiPublicSettings: (v) => ({ endpoint: v.endpoint || '', model: v.model || '' }),
-    workspacePreferences: () => ({}), aiMemoryPreferences: () => ({}), browserSettings: () => ({}),
+    workspacePreferences: () => ({}), browserSettings: () => ({}),
     readFavorites: () => JSON.parse(storage.get('df.favorites') || '{"items":[]}').items,
     invoke: async (cmd, args) => { calls.push({ cmd, args: args && plain(args) }); return invoke(cmd, args); },
   });
@@ -31,7 +30,7 @@ test('startup loads portable values before hydration and preserves this computer
   const h = harness({ pinned: ['D:\\Local'], lastPath: 'D:\\Local', favorites: { version: 1, items: [folder] }, browserSettings: { downloadDirectory: 'D:\\Downloads', homeUrl: 'https://old.example/' } }, async () => ({ enabled: true, settings: { theme: 'dark', locale: 'zh', 'columns.v1': { order: ['size', 'name'] }, aiSettings: { endpoint: 'https://api.example/v1', model: 'fixture' }, browserSettings: { homeUrl: 'https://example.com/' }, favorites: { version: 1, items: [website] }, urlHistory: [] } }));
   await h.run('initPortableSettings()');
   assert.equal(h.context.locale, 'zh'); assert.equal(h.get('theme'), 'dark');
-  assert.equal(h.context.aiSettings.model, 'fixture');
+  assert.equal(h.get('aiSettings'), null);
   assert.equal(h.get('browserSettings').downloadDirectory, 'D:\\Downloads');
   assert.equal(h.get('lastPath'), 'D:\\Local');
   assert.deepEqual(h.get('favorites').items, [website, folder]);

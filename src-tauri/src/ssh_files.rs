@@ -5,8 +5,8 @@ pub mod batch;
 pub mod tree;
 #[path = "ssh_files_resume.rs"]
 pub mod resume;
-#[path = "ssh_task_snapshot.rs"]
-pub mod tasks;
+#[path = "ssh_peer.rs"]
+pub mod peer;
 #[path = "ssh_transfer_history.rs"]
 pub mod history;
 #[path = "ssh_batch_recovery.rs"]
@@ -53,13 +53,12 @@ async fn sftp(session: &Session) -> Result<Arc<SftpSession>, String> {
 #[serde(rename_all = "camelCase")]
 pub struct RemoteEntry { name: String, is_dir: bool, is_link: bool, size: Option<u64>, modified: Option<u32>, permissions: Option<u32> }
 #[derive(Serialize)]
-pub struct RemoteDirectory { path: String, entries: Vec<RemoteEntry>, truncated: bool, #[serde(rename="taskBinding",skip_serializing_if="Option::is_none")] task_binding: Option<tasks::Binding>,
-    #[serde(rename="historyWorkspace",skip_serializing_if="Option::is_none")] history_workspace: Option<dalizi_harness_client::snapshot::Workspace> }
+pub struct RemoteDirectory { path: String, entries: Vec<RemoteEntry>, truncated: bool,
+    #[serde(rename="historyWorkspace",skip_serializing_if="Option::is_none")] history_workspace: Option<crate::workspace_identity::Workspace> }
 #[tauri::command]
-pub async fn ssh_files_list(id: u32, path: String, bind_tasks: Option<bool>) -> Result<RemoteDirectory, String> {
+pub async fn ssh_files_list(id: u32, path: String) -> Result<RemoteDirectory, String> {
     remote_path(&path)?;
     let session = get(id)?;
-    let revision = (bind_tasks == Some(true)).then(|| tasks::begin(&session));
     let task = async {
         // Raw directory batches let us stop without materializing a huge folder.
         let raw = RawSftpSession::new(stream(&session).await?);
@@ -90,9 +89,8 @@ pub async fn ssh_files_list(id: u32, path: String, bind_tasks: Option<bool>) -> 
             let _ = raw.close(handle).await;
             listing?;
             entries.sort_by(|a, b| b.is_dir.cmp(&a.is_dir).then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase())));
-            let task_binding = revision.and_then(|v| tasks::publish(&session,v,&resolved,&entries));
-            let history_workspace=revision.map(|_|tasks::workspace(&session.task_host.host,&resolved));
-            Ok(RemoteDirectory { path: resolved, entries, truncated,task_binding,history_workspace })
+            let history_workspace=Some(peer::workspace(&session.peer.host,&resolved));
+            Ok(RemoteDirectory { path: resolved, entries, truncated, history_workspace })
         }.await;
         let _ = raw.close_session();
         operation
@@ -142,7 +140,7 @@ enum PartialFile { Local(PathBuf), Remote(String) }
 enum Commit { Directory, Local(PathBuf, PathBuf), Remote(Arc<SftpSession>, String, String) }
 #[tauri::command]
 pub async fn ssh_file_transfer(id: u32, direction: String, local_path: String, remote: String, request_id: Option<String>, entry_kind: Option<String>, resumable: Option<bool>, resume_id: Option<String>, reviewed_relative: Option<String>, batch_id: Option<String>, batch_index: Option<usize>, view: tauri::Webview, app: AppHandle) -> Result<String, String> {
-    crate::ai::harness_tasks::local(&view)?;
+    crate::workspace_identity::local(&view)?;
     if !matches!(direction.as_str(), "upload" | "download") { return Err("Invalid transfer direction".into()); }
     remote_path(&remote)?;
     let local = PathBuf::from(local_path);
@@ -180,7 +178,7 @@ pub async fn ssh_file_transfer(id: u32, direction: String, local_path: String, r
     let token = transfer_id.clone();
     tauri::async_runtime::spawn(async move {
         let mut progress = initial;
-        let (journal_app,host,path,endpoint,kind)=(app.clone(),session.task_host.host.clone(),local.clone(),remote.clone(),direction.clone());
+        let (journal_app,host,path,endpoint,kind)=(app.clone(),session.peer.host.clone(),local.clone(),remote.clone(),direction.clone());
         let (receipt, _reviewed_directory) = batch_receipt.unzip();
         let started=match receipt {
             Some(receipt) => Ok(receipt),

@@ -9,10 +9,7 @@
 <link rel="stylesheet" href="columns.css">
 <link rel="stylesheet" href="quick-search.css">
 <link rel="stylesheet" href="archive.css">
-<link rel="stylesheet" href="ai.css">
-<link rel="stylesheet" href="ai-conversations.css">
 <link rel="stylesheet" href="document-preview.css">
-<link rel="stylesheet" href="agent-profile.css">
 <link rel="stylesheet" href="workspace-settings.css">
 <link rel="stylesheet" href="browser-settings.css">
 <link rel="stylesheet" href="workspace.css">
@@ -31,7 +28,7 @@
   <aside id="sidebarShell">
     <a class="brand" href="#" id="brandHome"><span class="brand-mark">d<span>·</span></span><span>Dalizi <strong>Files</strong><small id="brandCaption">你的文件，自在有序</small></span></a>
     <nav id="side" aria-label="文件导航"></nav>
-    <div class="sidebar-bottom"><button id="btnSettings" class="command-trigger" aria-label="设置"><span aria-hidden="true">⚙</span><span id="settingsLabel">设置</span></button><small id="appVersion" title="Dalizi Files · Agent 执行记录试用版 · 20261109">v0.5.1-pre</small></div>
+    <div class="sidebar-bottom"><button id="btnSettings" class="command-trigger" aria-label="设置"><span aria-hidden="true">⚙</span><span id="settingsLabel">设置</span></button><small id="appVersion" title="Dalizi Files">v0.5.1-pre</small></div>
   </aside>
   <section id="workspace">
   <div id="tabbar"><div id="tabStrip"><div id="tabViewport" tabindex="0"></div><div id="tabScrollTrack" role="scrollbar" aria-orientation="horizontal" aria-controls="tabViewport" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0" tabindex="-1"><div id="tabScrollThumb" aria-hidden="true"></div></div></div><div id="tabActions"></div></div>
@@ -54,7 +51,7 @@
 
   <section id="pageHeader">
     <div class="page-heading"><h1 id="pageTitle"></h1><p id="pageSubtitle"></p></div>
-    <div class="page-actions"><button id="btnAiAssistant" class="tbtn"><span id="aiToggleLabel">AI 助手</span></button><div class="terminal-actions" role="group" aria-label="新建终端"><button id="btnTerminal" class="tbtn"></button><button id="btnSsh" class="tbtn">SSH</button></div><button id="btnPreview" class="ibtn"></button><button id="btnTheme" class="ibtn"></button></div>
+    <div class="page-actions"><div class="terminal-actions" role="group" aria-label="新建终端"><button id="btnTerminal" class="tbtn"></button><button id="btnSsh" class="tbtn">SSH</button></div><button id="btnPreview" class="ibtn"></button><button id="btnTheme" class="ibtn"></button></div>
   </section>
 
   <div id="bar2">
@@ -109,7 +106,6 @@
 
   <footer id="status"></footer>
   </section>
-  <aside id="agentDock" class="hidden" aria-label="Agent 对话区"></aside>
 </div>
 <dialog id="commandDialog" aria-label="快捷操作"><div class="command-search"><span>⌕</span><input id="commandInput" autocomplete="off" spellcheck="false"><kbd>Esc</kbd></div><div id="commandResults"></div><div class="command-footer" id="commandFooter"></div></dialog>
 <div id="menuLayer" class="hidden"></div>
@@ -136,27 +132,12 @@
 <script src="local-file-tasks.js"></script>
 <script src="dual-pane.js"></script>
 <script src="archive.js"></script>
-<script src="agent-layout.js"></script>
-<script src="agent-roles.js"></script>
-<script src="agent-profile.js"></script>
-<script src="agent-skill-editor.js"></script>
 <script src="ssh.js"></script>
 <script src="ssh-managed.js"></script>
 <script src="ssh-paired-files.js"></script>
 <script src="ssh-workspace.js"></script>
 <script src="ssh-transfer-queue.js"></script>
 <script src="ssh-batch-recovery.js"></script>
-<script src="ai.js"></script>
-<script src="ai-projects.js"></script>
-<script src="harness-unread.js"></script>
-<script src="harness-tasks.js"></script>
-<script src="harness-engine.js"></script>
-<script src="harness-review.js"></script>
-<script src="harness-web.js"></script>
-<script src="ai-document-review.js"></script>
-<script src="ai-memory.js"></script>
-<script src="ai-conversations.js"></script>
-<script src="ai-file-history.js"></script>
 <script src="workspace-history.js"></script>
 <script src="desktop-exit.js"></script>
 <script src="portable-settings.js"></script>

@@ -3,7 +3,6 @@ const path = require('node:path');
 module.exports = async (page, { folder = 'C:\\Projects', output, native = false, resize } = {}) => {
   await page.waitForFunction(() => workspaceSessionReady && !state.loading);
   await page.evaluate(async ({ folder, native }) => {
-    closeAiAssistant();
     state.tabs = Array.from({length:60}, (_, i) => ({ path: native ? folder : `${folder}\\文件夹_${String(i).padStart(2,'0')}`, history:[], hIdx:-1 }));
     state.tab = 59; await navigate(curTab().path, {push:false});
   }, {folder, native});
@@ -49,9 +48,9 @@ module.exports = async (page, { folder = 'C:\\Projects', output, native = false,
   assert.ok(await page.evaluate(()=>state.tabs.indexOf(overflowFirst))>0,'edge dragging actually changes tab order');
   await page.waitForFunction(()=>tabDragFrame===null&&!tabDrag);
   if (resize) await resize(960,560); else await page.setViewportSize({width:960,height:560});
-  await page.evaluate(()=>{openAiAssistant();applyWorkspaceTheme('dark');});await visibleActive();
+  await page.evaluate(()=>applyWorkspaceTheme('dark'));await visibleActive();
   assert.equal(await page.locator('#tabActions').evaluate(n=>{const r=n.getBoundingClientRect(),bar=$('tabbar').getBoundingClientRect();return r.left>=bar.left&&r.right<=bar.right+1;}),true);
   await page.screenshot({path:path.join(output,'tabs-overflow-dark.png'),animations:'disabled'});
-  await page.evaluate(async folder=>{closeAiAssistant();state.tabs=[{path:folder,history:[],hIdx:-1}];state.tab=0;await navigate(folder,{push:false});},folder);
+  await page.evaluate(async folder=>{state.tabs=[{path:folder,history:[],hIdx:-1}];state.tab=0;await navigate(folder,{push:false});},folder);
   assert.equal(await page.locator('#tabViewport').evaluate(v=>v.scrollLeft),0);
 };

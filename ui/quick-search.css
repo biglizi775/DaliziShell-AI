@@ -48,7 +48,6 @@
 .quick-empty strong { font-size: 13px; font-weight: 500; }
 .quick-empty small { font-size: 10px; overflow-wrap: anywhere; }
 .quick-status { min-height: 32px; flex: none; display: flex; align-items: center; padding: 8px 16px; background: var(--bg2); border-top: 1px solid var(--border); font-size: 10px; color: var(--txt2); }
-#btnAiAssistant { background: var(--accentDim); color: var(--accent); border-radius: 8px; }
 @media (max-width: 1000px) { .quick-result-info > span:last-child { display: none; } }
 .search-error { color: var(--txt2); max-width: 65%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #searchSyntaxHelp { flex: none; width: 23px; height: 26px; color: var(--txt3); border-radius: 5px; }

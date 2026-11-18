@@ -58,7 +58,7 @@ function initQuickSearch() {
   popup.addEventListener('dblclick', (event) => { const row = event.target.closest('[data-quick-result]'); if (row && !event.target.closest('button')) activateQuickResult(Number(row.dataset.quickResult), 'open'); });
   document.addEventListener('pointerdown', (event) => { if (quickState.open && !event.target.closest('#quickSearchPopover, #searchWrap')) closeQuickSearch(); });
   document.addEventListener('keydown', (event) => {
-    if (event.target.closest?.('#aiPanel') || document.querySelector('dialog[open]')) return;
+    if (document.querySelector('dialog[open]')) return;
     if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === 'f') { event.preventDefault(); event.stopImmediatePropagation(); openQuickSearch(); }
     else if (event.key === 'Escape' && quickState.open) { event.preventDefault(); event.stopImmediatePropagation(); closeQuickSearch(); }
   }, true);

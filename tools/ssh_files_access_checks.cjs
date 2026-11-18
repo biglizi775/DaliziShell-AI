@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 module.exports = async (page, output) => {
   await page.waitForFunction(() => workspaceSessionReady && !state.loading);
-  await page.evaluate(async () => { closeAiAssistant(); window.compatTab = await newSshTab({ host:'fixture.test', user:'tester', port:22, infoMode:'posix', managed:false }); });
+  await page.evaluate(async () => { window.compatTab = await newSshTab({ host:'fixture.test', user:'tester', port:22, infoMode:'posix', managed:false }); });
   assert.equal(await page.evaluate(()=>compatTab.sshConfig.managed),false,'live tabs retain an explicit compatibility choice');
   const active = page.locator('.term.ssh-terminal-host:visible');
   await active.locator('[data-ssh-files]').click();

@@ -2,8 +2,6 @@
 // Backend: Win32 directory enumeration, shell integration, IFileOperation.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-mod agent_profile;
-mod ai;
 mod archive;
 mod browser;
 mod browser_links;
@@ -20,6 +18,7 @@ mod ssh_managed;
 mod task_journal;
 mod term;
 mod tray;
+mod workspace_identity;
 
 use std::path::Path;
 use std::sync::Mutex;
@@ -523,9 +522,6 @@ fn desktop_builder() -> tauri::Builder<tauri::Wry> {
             let _ = tray::show_window(app);
         }))
         .manage(WatchState(Mutex::new(None)))
-        .manage(ai::harness_tasks::Tasks::default())
-        .manage(ai::harness_tasks::engine::Engine::default())
-        .manage(browser::reference::EngineRevision(ai::harness_tasks::engine::revision))
         .manage(browser::BrowserState::default())
         .manage(portable_settings::PortableState::default())
         .setup(|app| {
@@ -535,7 +531,6 @@ fn desktop_builder() -> tauri::Builder<tauri::Wry> {
             if let Err(error) = tray::install(app.handle()) {
                 eprintln!("System tray unavailable: {error}");
             }
-            agent_profile::init(app.handle());
             index::locations::init(app.handle())?;
             let handle = app.handle().clone();
             std::thread::spawn(move || index::startup(&handle));
@@ -573,62 +568,6 @@ fn desktop_builder() -> tauri::Builder<tauri::Wry> {
             index::locations::index_locations_get,
             index::locations::index_locations_pick,
             index::locations::index_locations_save,
-            ai::ai_save_key,
-            ai::harness_tasks::harness_prepare,
-            ai::harness_tasks::engine::harness_engine_status,
-            ai::harness_tasks::engine::harness_engine_check,
-            ai::harness_tasks::engine::harness_engine_set,
-            ai::harness_tasks::engine::harness_diag_preview,
-            ai::harness_tasks::engine::harness_diag_save,
-            ai::harness_tasks::harness_quote_preview,
-            ai::harness_tasks::harness_quote_discard,
-            ai::harness_tasks::harness_prepare_web,
-            ai::harness_tasks::harness_prepare_remote,
-            ai::harness_tasks::harness_discard_preview,
-            ai::harness_tasks::harness_submit,
-            ai::harness_tasks::harness_list,
-            ai::harness_tasks::harness_unread_count,
-            ai::harness_tasks::harness_mark_read,
-            ai::harness_tasks::harness_stop,
-            ai::harness_tasks::harness_forget,
-            ai::harness_tasks::history::harness_plan_cleanup,
-            ai::harness_tasks::history::harness_clear_workspace,
-            ai::harness_tasks::review::harness_get_review,
-            ai::harness_tasks::review::harness_apply_review,
-            ai::harness_tasks::review::harness_undo_review,
-            ai::harness_tasks::review::harness_set_edit_mode,
-            ai::agent_project_directory,
-            ai::agent_pick_project,
-            ai::document_edit::ai_undo_document,
-            ai::ai_save_reply,
-            ai::ai_plan,
-            ai::compaction::ai_compact,
-            ai::ai_test_connection,
-            ai::ai_cancel,
-            ai::ai_discard,
-            ai::ai_execute,
-            ai::ai_stop_file_execution,
-            ai::file_history::ai_file_history_list,
-            ai::file_history::ai_file_history_read,
-            ai::file_history::ai_file_history_remove,
-            agent_profile::agent_profile,
-            agent_profile::conversations::agent_chat_list,
-            agent_profile::conversations::agent_chat_prepare_rollback,
-            agent_profile::conversations::agent_chat_read,
-            agent_profile::conversations::agent_chat_save,
-            agent_profile::conversations::agent_chat_delete,
-            agent_profile::conversations::agent_chat_export,
-            agent_profile::agent_skill_import,
-            agent_profile::copies::agent_skill_save_copy,
-            agent_profile::agent_skill_set,
-            agent_profile::agent_skill_remove,
-            agent_profile::agent_memory_save,
-            agent_profile::agent_memory_delete,
-            agent_profile::agent_memory_migrate,
-            agent_profile::agent_memory_import,
-            agent_profile::maintenance::agent_memory_maintain,
-            agent_profile::agent_preferences_set,
-            agent_profile::agent_pick_skill,
             browser::browser_create,
             browser::browser_set_active,
             browser::browser_navigate,
@@ -707,10 +646,6 @@ fn main() {
         });
 }
 
-#[cfg(test)]
-mod native_webview_test;
-#[cfg(test)]
-mod harness_web_tests;
 #[cfg(test)]
 mod tests {
     use super::*;

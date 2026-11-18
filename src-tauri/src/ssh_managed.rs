@@ -87,8 +87,7 @@ pub fn ssh_forget_credential(config: SshConfig) -> Result<(), String> {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AuthInput { pub secret: Option<String>, #[serde(default)] pub remember: bool, #[serde(default)] pub use_saved: bool }
 pub(super) struct Session {
-    pub task_host: files::tasks::Peer,
-    pub task_listing: Mutex<files::tasks::ListingState>,
+    pub peer: files::peer::Peer,
     pub resume_identity: String,
     pub id: u32, pub key: String, pub handle: client::Handle<Verifier>,
     writer: OnceCell<russh::ChannelWriteHalf<client::Msg>>,
@@ -108,7 +107,7 @@ fn emit_state(app: &AppHandle, session: &Session, saved: bool, warning: Option<S
 }
 fn session_status(session: &Session) -> serde_json::Value {
     let state = match session.terminal_state.load(Ordering::Acquire) { 1 => "ready", 2 => "unavailable", 3 => "closed", _ => "starting" };
-    serde_json::json!({"id":session.id,"key":session.key,"authenticated":true,"fingerprint":session.task_host.host.fingerprint,"peer":session.task_host.host,"terminalState":state,"terminalMessage":*session.terminal_message.lock().unwrap()})
+    serde_json::json!({"id":session.id,"key":session.key,"authenticated":true,"fingerprint":session.peer.host.fingerprint,"peer":session.peer.host,"terminalState":state,"terminalMessage":*session.terminal_message.lock().unwrap()})
 }
 #[tauri::command]
 pub fn ssh_managed_status(id: u32) -> Result<serde_json::Value, String> { let session = get(id)?; Ok(session_status(&session)) }
@@ -125,7 +124,7 @@ pub async fn ssh_managed_start(key: String, config: SshConfig, auth: AuthInput, 
     };
     if secret.len() > 2048 || secret.contains('\0') { return Err("密码或口令过长 / Invalid password or passphrase".into()); }
     let task = async {
-        let peer = files::tasks::Peer::new(&host, &config, &expected, host_id(&config)?);
+        let peer = files::peer::Peer::new(&host, &config, &expected, host_id(&config)?);
         let mut handle = client::connect(client_config(), (host.as_str(), config.port), Verifier { expected: Some(expected), observed: Arc::new(Mutex::new(None)) }).await.map_err(|e| format!("SSH 握手失败，请检查主机指纹或网络 / SSH handshake failed: {e}"))?;
         let authenticated = if let Some(path) = identity {
             let pass = Zeroizing::new(secret.to_string());
@@ -140,7 +139,7 @@ pub async fn ssh_managed_start(key: String, config: SshConfig, auth: AuthInput, 
         let (stop, _) = watch::channel(false);
         let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
         if id < FIRST_ID { return Err("SSH session limit reached; restart the app".into()); }
-        let session = Arc::new(Session { id, key, handle, task_host: peer, task_listing: Mutex::default(), writer: OnceCell::new(), terminal_state: AtomicU8::new(0), terminal_message: Mutex::new(None), stop, sftp: OnceCell::new(), transfers: Mutex::new(HashMap::new()), mode: config.info_mode, resume_identity: credential_id.clone() });
+        let session = Arc::new(Session { id, key, handle, peer, writer: OnceCell::new(), terminal_state: AtomicU8::new(0), terminal_message: Mutex::new(None), stop, sftp: OnceCell::new(), transfers: Mutex::new(HashMap::new()), mode: config.info_mode, resume_identity: credential_id.clone() });
         sessions().lock().unwrap().insert(id, session.clone());
         spawn_connection_monitor(app.clone(), session.clone());
         let mut saved = false; let mut warning = None;

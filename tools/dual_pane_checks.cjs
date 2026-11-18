@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict');
 const path = require('node:path');
 module.exports = async (page, output) => {
-  await page.waitForFunction(() => typeof toggleDualPane === 'function' && typeof initAiAssistant === 'function');
+  await page.waitForFunction(() => typeof toggleDualPane === 'function');
   await page.evaluate(async () => { await navigate('C:\\Projects'); toggleDualPane(true); });
   await page.waitForFunction(() => companionFor()?.entries.length > 0 && !companionFor().loading);
   await page.evaluate(() => { window.mainSizeLookup=state.sizeEntries; });

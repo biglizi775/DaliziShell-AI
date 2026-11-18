@@ -3,7 +3,7 @@ const path = require('node:path');
 module.exports = async (page, output) => {
   await page.waitForFunction(() => workspaceSessionReady && !state.loading);
   await page.evaluate(async () => {
-    closeAiAssistant(); await ensureManagedSshEvents();
+    await ensureManagedSshEvents();
     window.mockTransferOwner = await newSshTab({ managed:true, host:'fixture.test', user:'tester', port:22, infoMode:'posix' });
   });
   await page.waitForFunction(()=>curTab()===mockTransferOwner && mockTransferOwner.sshFiles?.ready);

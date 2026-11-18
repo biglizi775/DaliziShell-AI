@@ -49,7 +49,6 @@ function initWorkspace() {
   if (typeof initQuickSearch === 'function') initQuickSearch();
   if (typeof initSearchSyntax === 'function') initSearchSyntax();
   if (typeof initExternalDrop === 'function') initExternalDrop();
-  if (typeof initAiAssistant === 'function') initAiAssistant();
   if (typeof initWorkspaceSettings === 'function') initWorkspaceSettings();
   if (typeof initSshTaskCenter === 'function') initSshTaskCenter();
   if (typeof initDualPane === 'function') initDualPane();
@@ -130,7 +129,6 @@ function renderWorkspace() {
   $('settingsLabel').textContent = locale === 'zh' ? '设置' : 'Settings';
   $('btnSettings').title = $('settingsLabel').textContent;
   $('btnSettings').setAttribute('aria-label', $('settingsLabel').textContent);
-  $('aiToggleLabel').textContent = locale === 'zh' ? 'AI 对话' : 'AI chat';
   $('typeFilters').innerHTML = state.path === null ? '' : ['all', 'folders', 'images', 'documents'].map((key) =>
     `<button class="filter-chip${state.typeFilter === key ? ' active' : ''}" data-filter="${key}" aria-pressed="${state.typeFilter === key}">${esc(u(key))}</button>`).join('');
   $('bar2').classList.toggle('home-toolbar', state.path === null && !browser);
@@ -143,7 +141,6 @@ function renderWorkspace() {
   if (typeof renderFavoritesBar === 'function') renderFavoritesBar();
   if (typeof syncQuickSearchWorkspace === 'function') syncQuickSearchWorkspace();
   if (typeof syncWorkspaceSettings === 'function') syncWorkspaceSettings();
-  if (typeof syncAiWorkspace === 'function') syncAiWorkspace();
   if (typeof syncSshWorkspace === 'function') syncSshWorkspace();
   if (typeof syncBrowserWorkspace === 'function') syncBrowserWorkspace();
 }
@@ -286,9 +283,8 @@ function openCommands() {
 }
 function renderCommands() {
   const actions = [
-    { title: locale === 'zh' ? '设置' : 'Settings', sub: locale === 'zh' ? '外观、预览与智能体' : 'Appearance, preview and agent tools', icon: SUN_ICON, run: () => openWorkspaceSettings() },
+    { title: locale === 'zh' ? '设置' : 'Settings', sub: locale === 'zh' ? '外观、预览与工具' : 'Appearance, preview and tools', icon: SUN_ICON, run: () => openWorkspaceSettings() },
     { title: locale === 'zh' ? '快速搜索' : 'Quick search', sub: locale === 'zh' ? '全局文件名索引' : 'Global filename index', key: 'Ctrl Shift F', icon: IC.search, run: () => openQuickSearch() },
-    { title: locale === 'zh' ? 'AI 文件助手' : 'AI file assistant', sub: locale === 'zh' ? '自定义接口 · 查看并确认操作计划' : 'Custom endpoint · Review a file operation plan', icon: IC.fileS, run: () => openAiAssistant() },
     { title: u('homeAction'), sub: 'Navigation', icon: IC.home, run: () => navigate(null) },
     { title: t('newTermTab'), sub: 'PowerShell', key: 'Ctrl Shift T', icon: IC.tconsole, run: () => newTermTab() },
     { title: locale === 'zh' ? '新建 SSH 连接' : 'New SSH connection', sub: locale === 'zh' ? '连接远程主机 · 管理已保存的连接' : 'Connect to a remote host · Manage saved connections', icon: IC.globe, run: () => openSshConnect() },

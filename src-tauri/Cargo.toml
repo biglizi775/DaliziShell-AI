@@ -2,7 +2,7 @@
 name = "dalizi-files"
 version = "0.5.1"
 edition = "2021"
-description = "A Windows file explorer and AI workbench built with Rust and Tauri"
+description = "A Windows workbench for files, SSH, and web browsing built with Rust and Tauri"
 license = "MIT"
 publish = false
 
@@ -10,7 +10,6 @@ publish = false
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-dalizi-harness-client = { path = "harness-client" }
 tempfile = "3"
 uuid = { version = "1", features = ["v4"] }
 tauri = { version = "2", features = ["unstable", "tray-icon"] }
@@ -40,6 +39,7 @@ rfd = { version = "0.17", default-features = false }
 sevenz-rust2 = { version = "=0.24.2", default-features = false, features = ["compress", "aes256"] }
 tauri-plugin-single-instance = "2"
 winreg = "0.56.0"
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Storage_FileSystem"] }
 
 [profile.release]
 opt-level = 2

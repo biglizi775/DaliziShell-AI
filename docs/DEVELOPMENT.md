@@ -1,12 +1,10 @@
 # 开发指南
 
-Harness 的协议诊断见 [M0](HARNESS_M0.md)，Windows 桌面的只读文件任务与隔离验证脚本见 [M1](HARNESS_M1.md)。
-
 ## 环境与首次运行
 
 原生后端面向 Windows x64。安装 Git、Rust MSVC 工具链、Visual Studio C++ 生成工具及 Windows SDK、WebView2 Runtime。Node.js 22+ 用于测试（CI 使用 24），Python 仅用于可选样本和工具。
 
-应用前端没有 npm 构建步骤。Tauri 直接嵌入 `ui/`，技能正文由 Rust 的 `include_str!` 从 `resources/` 引入，因此应保留完整仓库目录，不能只复制 `src-tauri/` 构建。
+应用前端没有 npm 构建步骤。Tauri 直接嵌入 `ui/`，因此应保留完整仓库目录，不能只复制 `src-tauri/` 构建。
 
 ```powershell
 npm ci
@@ -23,33 +21,31 @@ Pop-Location
 | --- | --- |
 | `src-tauri/src/main.rs` | Tauri 入口、Win32 文件枚举与 Shell 操作、命令注册 |
 | `src-tauri/src/tray.rs` | 原生托盘图标、最小化收起、窗口恢复与退出入口 |
-| `src-tauri/src/ai_compaction.rs`、`agent_memory_maintenance.rs` | 无工具的聊天摘要请求、目录记忆统计/备份/精确去重 |
+| `src-tauri/src/workspace_identity.rs` | 主窗口来源校验、短时目录锁、按卷与文件 ID 识别目录（SFTP 传输记录与续传共用） |
 | `src-tauri/src/index.rs`、`search.rs` | 文件名/目录大小索引与查询 |
 | `src-tauri/src/search_query.rs`、`ui/search-syntax.js` | 有界 Everything 语法解析、共享表达式与当前目录过滤 |
 | `src-tauri/src/external_drop.rs`、`ui/external-drop.js` | WebView 拖入坐标与目标、确认界面、路径校验和 Shell 移动/复制 |
 | `src-tauri/src/archive.rs`、`ui/archive.js` | Rust 7z/ZIP 创建、密码/文件名加密、任务状态/取消和压缩选项弹窗 |
 | `src-tauri/src/preview.rs`、`preview_sheets.rs` | 有界只读文档解析 |
 | `src-tauri/src/term.rs`、`ssh.rs` | ConPTY 生命周期、OpenSSH 与系统信息 |
-| `src-tauri/src/ssh_managed.rs`、`ssh_credentials.rs`、`ssh_files.rs` | 内置 SSH、Windows 凭据、Linux/Windows 资源查询与 SFTP |
+| `src-tauri/src/ssh_managed.rs`、`ssh_credentials.rs`、`ssh_files.rs`、`ssh_peer.rs` | 内置 SSH、Windows 凭据、Linux/Windows 资源查询、SFTP 与已核验的主机身份 |
 | `src-tauri/src/ssh_files_batch.rs`、`ui/ssh-transfer-queue.js` | 批量准备/文件名检查、按连接串行队列、状态补查、取消与复核重试、传输任务面板 |
 | `src-tauri/src/browser*.rs` | WebView2 标签、偏好、扩展和下载 |
-| `src-tauri/src/ai.rs`、`ai_protocol.rs`、`agent_profile.rs`、`agent_builtin_skills.rs` | 模型请求、权限、技能与目录记忆 |
 | `src-tauri/src/bin/` | 显式运行的原生诊断程序，不是应用入口 |
 | `src-tauri/capabilities/` | Tauri ACL 配置；新增命令/事件需核对权限 |
 | `ui/app.js`、`workspace*.js`、`columns.js` | 主界面、工作区、设置、列与属性 |
-| `ui/places.js`、`ai-memory.js` | 收藏、统一会话快照、自动摘要与统计界面 |
-| `ui/ai-conversations.js`、`src-tauri/src/agent_conversations.rs` | 目录级对话档案、串行/CAS 保存、历史恢复、原生 Markdown 导出 |
+| `ui/places.js` | 收藏与统一会话快照 |
 | `ui/tab-management.js` | 标签滚轮/滚动条、活动项定位、边缘连续滚动与排序、最近关闭标签及隐私清理 |
-| `ui/ai.js`、`agent-*.js` | 对话、布局、技能与记忆管理 |
+| `ui/workspace-history.js` | SSH 文件面板的 SFTP 传输记录 |
 | `ui/browser*.js`、`ssh*.js`、`document-preview.js` | 浏览器、SSH 与文档界面 |
 | `ui/ssh-workspace.js` | SSH 分屏工作区、拖动分隔条、目录筛选/跳转/复制路径 |
 | `ui/vendor/` | 运行必需的离线库、字体与解码资源，须提交 |
-| `resources/builtin-skills/` | 9 项内置技能的 SKILL.md 正文 |
+| `resources/release-notices/` | 发行包使用的第三方许可补充文本 |
 | `tests/` | Node 内置测试运行器，模拟 IPC 验证交互与状态 |
 | `tools/` | 检查、样本生成、UI 集成验证、图标与源码打包 |
 | `docs/` | 使用手册、开发指南、发布指南及后续规划 |
 
-`src-tauri/target/`、`src-tauri/gen/`、`node_modules/`、`tools/vendor-cache/`、`dist/` 为本地产物。目录记忆 `.dalizi/` 与本机 Cargo 配置也被忽略。提交应用的 `Cargo.lock` 和测试工具的 `package-lock.json`，以便通过 `--locked` / `npm ci` 复现依赖。
+`src-tauri/target/`、`src-tauri/gen/`、`node_modules/`、`tools/vendor-cache/`、`dist/` 为本地产物。本机 Cargo 配置也被忽略。提交应用的 `Cargo.lock` 和测试工具的 `package-lock.json`，以便通过 `--locked` / `npm ci` 复现依赖。
 
 ## 常规验证
 
@@ -70,10 +66,8 @@ npx playwright install chromium
 npm run test:ui
 # 可选专项
 node tools/ui_smoke.cjs --ssh-recovery
-node tools/ui_smoke.cjs --builtin-skills
 node tools/ui_smoke.cjs --browser-startup
 node tools/ui_smoke.cjs --copy-paths
-node tools/ui_smoke.cjs --ai-api
 node tools/ui_smoke.cjs --workbench
 npm run test:tabs
 npm run test:ssh-files
@@ -108,7 +102,7 @@ SSH 文件入口：`npm run test:ssh-files` 检查兼容模式的内置连接入
 
 SSH 工作区专项还验证默认终端/文件分屏、分隔条实际拖动、筛选后的全选、资源刷新保持筛选输入焦点，以及小窗口列表/终端可见。版本由 package.json、Cargo.toml/Cargo.lock、tauri.conf.json 与 UI 左下角标记同步维护，避免多个测试 EXE 无法区分。
 
-标签溢出：`npm run test:tabs` 使用 60 个标签检查双轴滚轮、显式滚动条拖动、固定新建按钮、活动项自动定位、刷新保留手动滚动位置、边缘停留排序以及窄窗口 AI 面板布局。构建 release 后运行 `npm run test:stability -- --tabs`，在独立 EXE/WebView2 配置与生成的目录中执行相同检查，通过 Win32 调整测试窗口；截图与结果保存在 `src-tauri/target/render-stability-*`。
+标签溢出：`npm run test:tabs` 使用 60 个标签检查双轴滚轮、显式滚动条拖动、固定新建按钮、活动项自动定位、刷新保留手动滚动位置、边缘停留排序以及窄窗口深色布局。构建 release 后运行 `npm run test:stability -- --tabs`，在独立 EXE/WebView2 配置与生成的目录中执行相同检查，通过 Win32 调整测试窗口；截图与结果保存在 `src-tauri/target/render-stability-*`。
 
 界面稳定性：`node tools/ui_smoke.cjs --render-stability` 检查重复刷新时行/表头节点保留、虚拟滚动复用、缩放期间重命名文本/焦点/光标、迟到刷新保持最新选择/滚动、编辑期间目录事件延迟应用、重命名所属目录校验、PDF 双缓冲以及重复浏览器 IPC 合并。它作为独立 UI 回归加入 CI。
 
@@ -126,9 +120,9 @@ SSH 工作区专项还验证默认终端/文件分屏、分隔条实际拖动、
 
 搜索解析位于 Rust：本地高级过滤调用 `search_parse` 得到表达式，索引查询直接使用同一解析器；普通名称分词有无 IPC 快速路径。日期使用本机时区，索引与 UI 时间均为毫秒。索引事件合并刷新，结果 DOM 按路径复用；新输入未返回时禁止激活过期条件的结果。外部拖入通过主 WebView 监听，物理坐标按 `devicePixelRatio` 转为 CSS 坐标；Rust 在执行前重新校验绝对路径和祖先关系，再交给后台 STA 的 `IFileOperation`。该功能不启用远程网页的文件操作权限。
 
-0.4.0 工作台检查：构建 release 后运行 `node tools/ai_api_smoke.cjs --workbench`。除原有协议测试外，使用本机 HTTP 样本验证三种 API 的自动摘要、后续上下文复用及权限隔离；在生成的独立工作目录验证长期记忆去重、完整备份、启用状态、收藏与混合标签恢复。纯前端分支 `node tools/ui_smoke.cjs --workbench` 覆盖收藏编辑/转义、栏显示切换、自动/手动恢复、摘要失败回退及 960×560 深色布局。测试不使用云密钥或用户记忆文件。
+收藏与恢复检查：`node tools/ui_smoke.cjs --workbench` 覆盖收藏编辑/转义、栏显示切换、自动/手动恢复。
 
-AI 协议集成测试：构建 release 后，在项目根目录运行 `node tools/ai_api_smoke.cjs`。工具启动真实 EXE、独立 WebView2 配置和仅监听回环地址的 HTTP 样本服务，验证三种 API 的测试与实际对话、认证头、历史、错误响应、配置恢复和密钥不落盘。工作目录为生成的临时样本，不使用云服务密钥、不调用外部模型。可用 `DALIZI_EXE` 指定已构建程序，截图与测试配置位于忽略的 `src-tauri/target/ai-api-smoke-*`。这不替代具体云服务、真实密钥及所选模型参数的在线验收。
+工作区原生检查：`powershell -File tools/verify_workspace_desktop.ps1` 以独立应用标识 `com.dalizi.files.workspace-test` 构建测试 EXE，再用 `tools/workspace_native_smoke.cjs` 运行两组检查：从当前标签打开目录与目录重试（`--file-tab-scope`），以及混合标签和终端的重启恢复（`--terminal-restore`，需要 Python/Paramiko 的回环 SFTP 服务）。可用 `-Node` 指定 Node 程序。
 
 以下命令均在 `src-tauri/` 执行：
 
@@ -170,13 +164,13 @@ npm run test:ssh
 
 SFTP 队列专项：`npm run test:transfers` 运行真实 Chromium + 模拟 Tauri 的多选/批次确认、漏事件补查、失败项重试、暂停/取消、断线核对及小窗口深色布局检查。`npm run test:ssh` 已接入 `tools/ssh_transfer_queue_native.cjs`，在生成的回环 SSH/SFTP 服务上验证实际批量上传/下载、文件内容比对、不覆盖、重试仅失败项、丢失事件后查询恢复、重复传输标识拒绝和取消清理。文件/目录系统选择框由模拟测试返回路径，原生测试传入生成目录，不自动点击系统选择框。Rust 状态缓存最多 256 条，保留运行中的任务；前端任务最多 50 批、每批展开最多 2000 项，均不落盘、不含凭据配置。队列支持同次运行内、经过前缀内容校验的字节续传，不自动重新登录或恢复任务。
 
-对话与标签专项验证：`npm run test:productivity` 使用模拟 Tauri 的真实 Chromium 界面，检查手动/自动保存、摘要恢复、旧计划不可执行、删除/另存、导出调用、标签拖动/键盘/误关恢复、网页隐私和 960×560 深色布局。构建 release 后执行 `node tools/productivity_native_smoke.cjs`，以独立 EXE/WebView2 配置和生成目录验证实际 JSON、重启、复制工作目录后在全新配置中恢复，不调用云模型。原生系统保存对话框不由该脚本自动点击，需人工验收导出路径和取消。产物保存在忽略的 `src-tauri/target/productivity-native-*`。Rust 测试覆盖格式/容量、只读/文件占用、损坏保留、删除版本与旧写入拒绝。
+标签专项验证：`npm run test:productivity` 使用模拟 Tauri 的真实 Chromium 界面，检查标签拖动保留当前标签、误关后重新打开、键盘排序和网页恢复隐私。构建 release 后执行 `node tools/productivity_native_smoke.cjs`，以独立 EXE/WebView2 配置在生成目录中执行同样的标签检查。产物保存在忽略的 `src-tauri/target/productivity-native-*`。
 
 [Windows CI](../.github/workflows/ci.yml) 在 push、PR 或手动触发时运行仓库检查、前端测试、UI 检查、Rust 测试与 release 编译；不自动发布，也不运行需要交互环境的原生集成程序。Actions 使用 GitHub 官方 [checkout](https://github.com/actions/checkout) 与 [setup-node](https://github.com/actions/setup-node)。
 
-便携配置原生验证：构建 release 后运行 `npm run test:portable`（可通过 `DALIZI_EXE` 指定程序）。测试把 EXE 复制到两个隔离目录，以全新的 WebView2 配置模拟换电脑，检查真实 JSON 写入、启动加载、网页收藏/历史、密钥与本机路径排除、清空历史后的再次启动以及关闭便携配置。仅使用 `.test` 域名作为收藏数据，不访问这些网站。样本保留于忽略的 `src-tauri/target/portable-smoke-*`。Rust 测试另覆盖文件损坏、格式版本、原子替换失败、上一版本备份与并发修改冲突；这仍不能替代两台实际机器的跨系统验收。
+便携配置原生验证：构建 release 后运行 `npm run test:portable`（可通过 `DALIZI_EXE` 指定程序）。测试把 EXE 复制到两个隔离目录，以全新的 WebView2 配置模拟换电脑，检查真实 JSON 写入、启动加载、网页收藏/历史、本机路径排除、清空历史后的再次启动以及关闭便携配置。仅使用 `.test` 域名作为收藏数据，不访问这些网站。样本保留于忽略的 `src-tauri/target/portable-smoke-*`。Rust 测试另覆盖文件损坏、格式版本、原子替换失败、上一版本备份与并发修改冲突；这仍不能替代两台实际机器的跨系统验收。
 
 本地验证结果不能替代尚未在 GitHub 执行的 CI 结果。Windows 10/11、不同 WebView2 版本、文件权限与真实网络环境的发布验收见 [发布指南](RELEASING.md)。
 
 
-0.5.0 新增 `ui/dual-pane.js` 和 `src-tauri/src/ssh_files_tree.rs` / `ssh_files_resume.rs`。`npm run test:panes` 覆盖独立目录/选择、跨面板目标、AI 工作目录切换、虚拟列表和迟到请求；`tools/ssh_tree_resume_native.cjs` 由 `test:ssh` 驱动，验证真实 EXE 的递归目录、空目录、上传/下载续传以及临时内容损坏拒绝。续传记录最多 128 个，不落盘；绑定后端已验证的 host/account/key 身份，内容比较读取完整前缀。环境已有 Edge 时可设置 `DALIZI_BROWSER` 为 Edge 可执行文件，运行 UI 测试而无需再下载 Chromium。
+0.5.0 新增 `ui/dual-pane.js` 和 `src-tauri/src/ssh_files_tree.rs` / `ssh_files_resume.rs`。`npm run test:panes` 覆盖独立目录/选择、跨面板目标、工作目录切换、虚拟列表和迟到请求；`tools/ssh_tree_resume_native.cjs` 由 `test:ssh` 驱动，验证真实 EXE 的递归目录、空目录、上传/下载续传以及临时内容损坏拒绝。续传记录最多 128 个，不落盘；绑定后端已验证的 host/account/key 身份，内容比较读取完整前缀。环境已有 Edge 时可设置 `DALIZI_BROWSER` 为 Edge 可执行文件，运行 UI 测试而无需再下载 Chromium。
