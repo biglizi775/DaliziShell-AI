@@ -100,7 +100,8 @@ SFTP：远程文件支持批量与文件夹上传/下载，任务面板提供暂
 或使用“清理续传临时文件”。异常退出可能留下 .dalizi-*.part，请核对后清理。
 目录最多展开 2000 项/32 层，不跟随链接；同名文件不覆盖，取消不回滚成功项。
 
-此版还包含便携偏好、搜索语法/应用内定位、7z/ZIP 密码压缩、
+本版不含内置 AI 助手，工作台为文件、终端/SSH 和网页。
+还包含便携偏好、搜索语法/应用内定位、7z/ZIP 密码压缩、
 标签排序/恢复以及窗口、预览刷新稳定性修复，详见更新说明。
 许可证见 LICENSE、THIRD_PARTY_NOTICES.txt 和 licenses/。
 完整手册：https://github.com/biglizi775/DaliziShell-AI/blob/main/docs/USER_GUIDE.md

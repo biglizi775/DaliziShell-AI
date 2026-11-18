@@ -1,6 +1,6 @@
 [package]
 name = "dalizi-files"
-version = "0.5.1"
+version = "0.5.2"
 edition = "2021"
 description = "A Windows workbench for files, SSH, and web browsing built with Rust and Tauri"
 license = "MIT"

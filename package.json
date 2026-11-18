@@ -1,6 +1,6 @@
 {
   "name": "dalizi-files-dev",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "private": true,
   "description": "Development checks for Dalizi Files; the application frontend has no build step",
   "license": "MIT",

@@ -2,13 +2,13 @@
 
 面向 Windows 的一体化工作台，基于 **Rust + Tauri 2 + 原生 HTML/CSS/JavaScript**。在同一窗口中浏览和整理文件、阅读文档、使用 PowerShell/SSH 管理服务器、打开网页，少在多个程序之间切换和复制。
 
-当前版本为 **0.5.1**（2026-11-03），目标平台是 Windows 10 / 11 x64。已实现功能与后续规划分别列出，不将规划能力作为现有功能宣传。
+当前版本为 **0.5.2**（2026-11-18），目标平台是 Windows 10 / 11 x64。已实现功能与后续规划分别列出，不将规划能力作为现有功能宣传。
 
-[使用手册](docs/USER_GUIDE.md) · [本版说明](docs/RELEASE_0.5.1.md) · [历史更新纪要](#历史功能更新纪要) · [完整更新记录](docs/CHANGELOG.md) · [开发指南](docs/DEVELOPMENT.md) · [发布指南](docs/RELEASING.md)
+[使用手册](docs/USER_GUIDE.md) · [本版说明](docs/RELEASE_0.5.2.md) · [历史更新纪要](#历史功能更新纪要) · [完整更新记录](docs/CHANGELOG.md) · [开发指南](docs/DEVELOPMENT.md) · [发布指南](docs/RELEASING.md)
 
 [GitHub 仓库](https://github.com/biglizi775/DaliziShell-AI) · [下载最新版](https://github.com/biglizi775/DaliziShell-AI/releases/latest) · [全部发行版本](https://github.com/biglizi775/DaliziShell-AI/releases)
 
-当前开发版已经移除内置 AI 助手（对话面板、技能、记忆、角色和 Harness 任务），专注于文件、终端/SSH 和网页三块。0.5.1 及更早的发行版仍包含这些功能；它们写在工作目录 `.dalizi/` 里的聊天档案和记忆，新版本既不读取也不删除。
+0.5.2 起不再包含内置 AI 助手（对话面板、技能、记忆、角色和 Harness 任务），专注于文件、终端/SSH 和网页三块。0.5.1 及更早的发行版仍包含这些功能；它们写在工作目录 `.dalizi/` 里的聊天档案和记忆，新版本既不读取也不删除。
 
 ## Studio 界面风格
 
@@ -16,14 +16,14 @@
 
 [宣传片源码与制作说明](promo-film/README.md) · 本地预览：`npm run promo`。影片使用应用的实际前端与演示数据生成。
 
-## 0.5.1 更新重点
+## 0.5.2 更新重点
 
-- **SSH 登录即进入工作区**：默认同时显示服务器概况、交互终端和远程目录，直接上传/下载；拖动分隔条调整高度，也可切换仅文件或仅终端视图。
-- **远程目录更易使用**：主目录/根目录跳转、当前目录名称筛选、名称/大小/修改日期表头、复制远程路径；资源刷新不打断输入。
-- **终端异常保留文件连接**：修复通道消息被误判为拒绝终端，延长慢启动等待；PTY/Shell 被拒绝或退出时，SFTP 仍可使用。
-- **大量标签仍可访问**：鼠标滚轮、可拖动滚动条、拖动标签边缘滚动，固定新建按钮并自动显示当前标签。
+- **工作台收成三块**：去掉内置 AI 对话、技能、记忆、角色、网页助手和 Harness。文件、终端/SSH 和网页留在同一个窗口，少一次切换和复制。
+- **SSH 传输更直观**：远程文件面板的「传输记录」只显示当前连接和当前目录；可用双栏对照本地目录与远程目录。
+- **网页链接可交给本程序**：在浏览器设置里登记后，于 Windows 默认应用中为 HTTP 和 HTTPS 选择 Dalizi Files。需要手动选择，不关联本地网页文件。
+- **沿用原来的文件和终端**：从当前标签打开它所在的目录；旧的界面偏好、SSH 连接和 `DaliziData/` 配置可以继续使用。
 
-详见 [0.5.1 发布说明](docs/RELEASE_0.5.1.md)。应用左下角显示版本号，升级后可据此确认正在运行的程序。
+详见 [0.5.2 发布说明](docs/RELEASE_0.5.2.md)。应用左下角显示版本号，升级后可据此确认正在运行的程序。
 
 ## 主要功能
 
@@ -44,9 +44,9 @@
 
 ## 快速启动
 
-无需开发环境：下载 [dalizi-files-0.5.1-windows-x64.zip](https://github.com/biglizi775/DaliziShell-AI/releases/download/v0.5.1/dalizi-files-0.5.1-windows-x64.zip)，完整解压后运行 `DaliziFiles.exe`。压缩包包含许可证、使用说明和历史更新记录；发行版尚未签名。
+无需开发环境：下载 [dalizi-files-0.5.2-windows-x64.zip](https://github.com/biglizi775/DaliziShell-AI/releases/download/v0.5.2/dalizi-files-0.5.2-windows-x64.zip)，完整解压后运行 `DaliziFiles.exe`。压缩包包含许可证、使用说明和历史更新记录；发行版尚未签名。
 
-升级前退出旧程序，将新版文件解压到原软件目录，保留原有 `DaliziData/` 个人配置。启动后确认左下角为 **v0.5.1**；源码 ZIP 用于开发，不能直接运行。
+升级前退出旧程序，将新版文件解压到原软件目录，保留原有 `DaliziData/` 个人配置。启动后确认左下角为 **v0.5.2**；源码 ZIP 用于开发，不能直接运行。
 
 运行环境：Windows 10 1809+ / Windows 11 x64、Microsoft Edge WebView2 Runtime。PowerShell 使用系统安装；内置 SSH 无需另装客户端，OpenSSH 兼容模式需要 Windows OpenSSH Client。不同 Windows/WebView2 版本仍需分别验证。
 
@@ -91,6 +91,7 @@ Node 依赖仅用于测试。UI 与文档预览集成检查、可选 Cargo 镜�
 
 | 版本 | 主要变化 | 发行记录 |
 | --- | --- | --- |
+| [0.5.2](docs/CHANGELOG.md#v052) | 去掉内置 AI，保留文件、SSH 与网页；SSH 传输记录和双栏；可登记为 HTTP/HTTPS 处理程序 | [2026-11-18](https://github.com/biglizi775/DaliziShell-AI/releases/tag/v0.5.2) |
 | [0.5.1](docs/CHANGELOG.md#v051) | SSH 默认终端/文件分屏、主机信息侧栏、目录筛选与跳转、终端与 SFTP 解耦、标签溢出滚动 | [2026-11-03](https://github.com/biglizi775/DaliziShell-AI/releases/tag/v0.5.1) |
 | [0.5.0](docs/CHANGELOG.md#v050) | 本地双面板、SFTP 批量/目录/续传、便携配置、搜索与拖入、密码压缩、聊天档案、窗口稳定性 | [2026-11-02](https://github.com/biglizi775/DaliziShell-AI/releases/tag/v0.5.0) |
 | [0.4.0](docs/CHANGELOG.md#v040) | AI 上下文摘要、长期记忆整理、收藏夹栏、文件夹/网页标签恢复 | [2026-11-02 · 预览版](https://github.com/biglizi775/DaliziShell-AI/releases/tag/v0.4.0) |
