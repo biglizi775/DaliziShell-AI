@@ -50,7 +50,7 @@ function confirmManagedHost(config, probe) {
 async function submitManagedSsh(config, connect) {
   config = { ...config, managed: true };
   if (!connect) { saveSshProfile(config); renderSshSaved(); setSshDialogStatus(ms('连接已保存；密码仅在认证成功后保存。', 'Connection saved; passwords are saved only after successful authentication.')); return true; }
-  const rememberProfile = $('sshRemember').checked, profileId = sshSelectedProfile;
+  const rememberProfile = $('sshRemember').checked, profileId = sshSelectedProfile, owner = sshDialog.restoreOwner;
   const auth = { secret: $('sshPassword').value || null, remember: $('sshRememberSecret').checked, useSaved: true };
   $('sshPassword').value = '';
   setSshDialogBusy(true); setSshDialogStatus(ms('正在核对主机身份…', 'Checking host identity…'));
@@ -63,8 +63,18 @@ async function submitManagedSsh(config, connect) {
     if (!auth.secret && !config.identityFile && !probe.hasCredential) { setSshDialogStatus(ms('请输入密码。此主机身份与用户尚无已保存凭据。', 'Enter a password. No saved credentials match this host identity and user.'), true); return false; }
     await ensureManagedSshEvents();
     sshDialog.close();
-    const tab = await newSshTab(config, auth);
-    if (tab?.termId != null && !tab.exited && rememberProfile) { saveSshProfile(config, profileId); renderSshSaved(); }
+    const tab = await newSshTab(config, auth, owner, rememberProfile ? profileId : null);
+    if (owner?.pendingTerminal && curTab() === owner && tab?.sshError) {
+      openSshConnect({ ...config, id: profileId }, owner);
+      $('sshRemember').checked = rememberProfile;
+      $('sshRememberSecret').checked = auth.remember;
+      setSshDialogStatus(tab.sshError, true);
+      return false;
+    }
+    if (tab?.termId != null && !tab.exited && rememberProfile) {
+      tab.sshProfileId = saveSshProfile(config, profileId).id;
+      renderSshSaved(); persistWorkspaceSession();
+    }
     return tab?.termId != null && !tab.exited;
   } catch (error) { if (sshDialog.open) setSshDialogStatus(String(error), true); else toast(String(error), true); return false; }
   finally { auth.secret = null; setSshDialogBusy(false); }
@@ -88,8 +98,9 @@ function onManagedSshState(event) {
   const payload = event?.payload, tb = managedEventTab(payload);
   if (!tb || tb.exited || tb.sshDisconnectRequested) return;
   tb.termId = payload.id; tb.sshAuthenticated = payload.authenticated === true;
+  if (tb.sshAuthenticated && payload.fingerprint) tb.sshVerifiedPeer={id:payload.id,key:payload.key,fingerprint:payload.fingerprint,peer:payload.peer};
   const terminalOrder = { starting: 0, ready: 1, unavailable: 2, closed: 2 };
-  if (Object.hasOwn(terminalOrder, payload.terminalState) && terminalOrder[payload.terminalState] >= (terminalOrder[tb.sshTerminalState] ?? -1)) {
+  if (Object.prototype.hasOwnProperty.call(terminalOrder, payload.terminalState) && terminalOrder[payload.terminalState] >= (terminalOrder[tb.sshTerminalState] ?? -1)) {
     tb.sshTerminalState = payload.terminalState;
     tb.sshTerminalMessage = typeof payload.terminalMessage === 'string' ? payload.terminalMessage : '';
     if (['unavailable', 'closed'].includes(payload.terminalState)) { tb.input = ''; tb.sshTerminalVisible = false; }
@@ -128,6 +139,7 @@ async function toggleManagedTerminal(tb) {
   await refreshManagedTerminalState(tb);
   if (tb.sshTerminalState !== 'ready' || tb.disposed || tb.exited) return;
   tb.sshTerminalVisible = !tb.sshTerminalVisible;
+  if (tb.sshTerminalVisible && tb.sshFiles?.localPane?.open) setSshPairedLayout(tb,false);
   if (!tb.sshTerminalVisible && tb.sshFilesPanel?.hidden) toggleSshFiles(tb);
   syncSshInfo(tb); syncManagedTerminalUi(tb);
   if (tb.sshTerminalVisible && curTab() === tb) tb.term?.focus();
@@ -220,6 +232,7 @@ function toggleSshFiles(tb) {
   if (!tb.sshConfig?.managed || tb.disposed) return;
   if (tb.sshFilesPanel) {
     if (!tb.sshFilesPanel.hidden && tb.sshTerminalState && tb.sshTerminalState !== 'ready' && !tb.exited) return;
+    if (!tb.sshFilesPanel.hidden && tb.sshFiles?.localPane?.open) setSshPairedLayout(tb,false);
     tb.sshFilesPanel.hidden = !tb.sshFilesPanel.hidden;
     if (tb.sshFilesPanel.hidden && tb.sshTerminalState === 'ready') tb.sshTerminalVisible = true;
     tb.el.classList.toggle('ssh-files-open', !tb.sshFilesPanel.hidden); syncSshFileButton(tb); syncManagedTerminalUi(tb); return;
@@ -239,6 +252,12 @@ function toggleSshFiles(tb) {
   panel.querySelector('[data-up]').onclick = () => loadSshFiles(tb, tb.sshFiles.path.replace(/\/?[^/]+\/?$/, '') || '/');
   panel.querySelector('[data-close]').onclick = () => toggleSshFiles(tb);
   panel.querySelector('[data-tasks]').onclick = () => openSshTaskCenter();
+  const history = document.createElement('button'); history.type='button'; history.dataset.remoteHistory='';
+  history.textContent=ms('工作区历史','Workspace history'); history.hidden=true;
+  history.onclick=()=>openFileHistory(null,tb); panel.querySelector('[data-tasks]').after(history);
+  const ask = document.createElement('button'); ask.type='button'; ask.dataset.remoteAsk=''; ask.hidden=true;
+  ask.textContent=ms('在此远程目录提问','Ask in this remote folder');
+  ask.onclick=()=>openHarnessTasks(tb);panel.querySelector('.ssh-files-actions').append(ask);
   panel.querySelector('[data-upload]').onclick = () => typeof beginSshBatch === 'function' ? beginSshBatch(tb, 'upload') : startSshFileTransfer(tb, 'upload');
   const uploadFolder = document.createElement('button'); uploadFolder.textContent = ms('上传文件夹', 'Upload folder'); uploadFolder.dataset.uploadFolder = ''; panel.querySelector('[data-upload]').after(uploadFolder); uploadFolder.onclick = () => beginSshBatch(tb, 'upload', true);
   panel.querySelector('[data-download]').onclick = () => typeof beginSshBatch === 'function' ? beginSshBatch(tb, 'download') : startSshFileTransfer(tb, 'download');
@@ -262,10 +281,12 @@ async function loadSshFiles(tb, path, { preserveSelection = false } = {}) {
   const generation = ++view.generation, key = tb.key, id = tb.termId;
   view.busy = true; view.ready = false; renderSshFiles(tb, ms('正在读取远程目录…', 'Loading remote directory…'));
   try {
-    const result = await invoke('ssh_files_list', { id, path });
+    const result = await invoke('ssh_files_list', { id, path, bindTasks:true });
     if (tb.disposed || tb.exited || tb.sshDisconnectRequested || tb.key !== key || tb.sshFiles !== view || view.generation !== generation) return;
     if (view.path !== result.path) { view.filter = ''; const filter = tb.sshFilesPanel?.querySelector('[data-remote-filter]'); if(filter)filter.value=''; }
     view.home ||= result.path;
+    view.taskBinding = result.taskBinding || null;
+    view.historyWorkspace = result.historyWorkspace || view.taskBinding?.workspace || null;
     view.path = result.path; view.entries = Array.isArray(result.entries) ? result.entries : []; view.selected = -1; view.busy = false; view.ready = true;
     view.selection = new Set(view.entries.map((entry, index) => selectedNames.has(entry.name) ? index : -1).filter((i) => i >= 0)); view.anchor = -1;
     renderSshFiles(tb, result.truncated ? ms('目录过大，仅显示前 5000 项或已达到文本上限。', 'Large directory: limited to 5000 entries or the text budget.') : `${view.entries.length} ${ms('项', 'items')}`);
@@ -275,6 +296,7 @@ function renderSshFiles(tb, status, error = false) {
   const panel = tb.sshFilesPanel, view = tb.sshFiles; if (!panel || !view) return;
   view.lastStatus = status; view.lastError = error;
   panel.querySelector('[data-path]').value = view.path;
+  panel.querySelector('[data-path]').title = view.path;
   const note = panel.querySelector('.ssh-files-status'); note.textContent = status; note.classList.toggle('is-error', error);
   const list = panel.querySelector('.ssh-files-list'); list.replaceChildren();
   list.setAttribute('aria-busy', String(view.busy));
@@ -289,9 +311,8 @@ function renderSshFiles(tb, status, error = false) {
     row.onclick = (event) => {
       if (view.busy || view.ready === false || tb.exited || tb.sshDisconnectRequested) return;
       const selection = view.selection ||= new Set();
-      if (event.shiftKey && view.anchor >= 0) { if (!event.ctrlKey) selection.clear(); for (let i = Math.min(index, view.anchor); i <= Math.max(index, view.anchor); i++) selection.add(i); }
-      else if (event.ctrlKey) { if (selection.has(index)) selection.delete(index); else selection.add(index); view.anchor = index; }
-      else { selection.clear(); selection.add(index); view.anchor = index; }
+      const range = event.shiftKey ? visible.map(row => row.index) : [index];
+      view.anchor = selectSshRange(selection, range, index, view.anchor, event);
       view.selected = index; paintSshFileSelection(tb);
     };
     row.ondblclick = () => { if (view.busy || view.ready === false || tb.exited || tb.sshDisconnectRequested) return; view.selected = index; if (entry.isDir || entry.isLink) loadSshFiles(tb, remoteChild(view.path, entry.name)); else { view.selection = new Set([index]); paintSshFileSelection(tb); if (typeof beginSshBatch === 'function') void beginSshBatch(tb, 'download'); else startSshFileTransfer(tb, 'download'); } };
@@ -310,6 +331,12 @@ function updateSshTransferControls(tb) {
   const panel = tb.sshFilesPanel, view = tb.sshFiles; if (!panel || !view) return;
   const queue = typeof beginSshBatch === 'function';
   const disconnected = tb.exited || tb.disposed || tb.sshDisconnectRequested || !tb.sshAuthenticated;
+  const ask = panel.querySelector('[data-remote-ask]');
+  if(ask){ask.hidden=!view.taskBinding;ask.disabled=view.busy || !view.ready || disconnected;}
+  const history=panel.querySelector('[data-remote-history]');
+  if(history){history.hidden=!view.historyWorkspace;history.disabled=view.busy || !view.ready || disconnected;}
+  if(typeof syncFileHistoryScope==='function') syncFileHistoryScope();
+  if(tb===curTab() && typeof syncHarnessUnread==='function')syncHarnessUnread();
   const busy = view.busy || view.ready === false || (queue ? tb.sshBatchPicking : transferActive(tb)) || disconnected;
   for (const control of panel.querySelectorAll('[data-up], [data-go], [data-refresh], [data-path], [data-root], [data-home], [data-remote-copy]')) control.disabled = view.busy || disconnected;
   const select = panel.querySelector('[data-select-files]'); if (select) select.disabled = view.busy || view.ready === false || disconnected;
@@ -319,6 +346,7 @@ function updateSshTransferControls(tb) {
   const count = queue ? selectedSshFiles(view).length : selected && !selected.isDir && !selected.isLink ? 1 : 0;
   panel.querySelector('[data-download]').disabled = busy || !count;
   panel.querySelector('[data-download]').textContent = ms('下载', 'Download') + (count ? ` (${count})` : '');
+  if (view.localPane?.open) updateSshPairedControls(tb, busy, count);
 }
 async function startSshFileTransfer(tb, direction) {
   const view = tb.sshFiles; if (!view || view.busy || view.ready === false || transferActive(tb) || tb.exited || tb.disposed || !tb.sshAuthenticated || tb.sshDisconnectRequested) return;

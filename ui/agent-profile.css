@@ -3,6 +3,14 @@
 #aiAgentContext > button { display: inline-flex; align-items: center; gap: 5px; font-size: 10px; color: var(--txt2); min-height: 24px; padding: 3px 7px; border-radius: 6px; background: var(--bg2); border: 1px solid var(--border); }
 #aiAgentContext > button:hover { color: var(--accent); border-color: var(--accent); }
 #aiAgentContext b { color: var(--accent); font-weight: 600; }
+#aiRoleBar { display: flex; align-items: baseline; gap: 10px; padding: 5px 14px 0; color: var(--txt2); font-size: 12px; }
+#aiRoleBar[hidden] { display: none; }
+#aiRoleSelect { max-width: 50%; padding: 3px; border: 1px solid var(--border); border-radius: 5px; background: var(--bg2); color: var(--txt); font: inherit; }
+#aiRoleBar details { flex: 1; min-width: 0; }
+#aiRoleBar summary { cursor: pointer; }
+.ai-role-details { overflow-wrap: anywhere; }
+.ai-role-details p { margin: 5px 0; }
+.ai-role-details label { display: flex; align-items: center; gap: 5px; }
 #aiAgentContext .agent-learning-pill { color: var(--accent); background: var(--accentDim); border-color: transparent; }
 .agent-active-skills { display: flex; min-width: 0; flex: 1 0 100%; gap: 5px; overflow: hidden; }
 .agent-active-skills span { font-size: 9px; color: var(--txt3); max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -99,6 +107,9 @@
 .agent-memory-dialog { width: min(560px, calc(100vw - 44px)); }
 .agent-memory-dialog form { display: flex; flex-direction: column; min-height: 0; }
 .agent-memory-dialog .agent-profile-heading { border-bottom: 1px solid var(--border); }
+.agent-skill-fields label { display: grid; gap: 6px; margin-bottom: 12px; color: var(--txt2); }
+.agent-skill-fields textarea { width: 100%; box-sizing: border-box; resize: vertical; }
+.agent-skill-fields [name="body"] { font-family: Consolas, monospace; line-height: 1.55; }
 .agent-field-label { display: block; margin-bottom: 7px; font-size: 11px; font-weight: 600; }
 .agent-memory-file { padding: 11px 13px; background: var(--bg2); border: 1px solid var(--border); border-radius: 7px; margin-top: 13px; }
 .agent-memory-file > span { display: block; font-size: 10px; color: var(--txt3); }

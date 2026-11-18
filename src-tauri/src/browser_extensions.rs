@@ -10,7 +10,7 @@ use tokio::sync::oneshot;
 use webview2_com::{
     take_pwstr, BrowserExtensionEnableCompletedHandler, BrowserExtensionRemoveCompletedHandler,
     Microsoft::Web::WebView2::Win32::{
-        ICoreWebView2BrowserExtension, ICoreWebView2BrowserExtensionList, ICoreWebView2Profile7,
+        ICoreWebView2BrowserExtension, ICoreWebView2BrowserExtensionList, ICoreWebView2Controller, ICoreWebView2Profile7,
         ICoreWebView2_13,
     },
     ProfileAddBrowserExtensionCompletedHandler, ProfileGetBrowserExtensionsCompletedHandler,
@@ -23,6 +23,39 @@ pub struct BrowserExtension {
     pub id: String,
     pub name: String,
     pub enabled: bool,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RuntimeInfo {
+    pub version: String,
+    pub extensions_supported: bool,
+}
+
+unsafe fn extension_profile(controller: &ICoreWebView2Controller) -> windows_core::Result<ICoreWebView2Profile7> {
+    controller.CoreWebView2()?.cast::<ICoreWebView2_13>()?.Profile()?.cast()
+}
+
+pub async fn runtime_info(view: Webview<Wry>) -> Result<RuntimeInfo, String> {
+    let (sender, receiver) = oneshot::channel();
+    view.with_webview(move |native| {
+        let result = (|| unsafe {
+            let mut value = PWSTR::null();
+            let read = native.environment().BrowserVersionString(&mut value);
+            let version = take_pwstr(value);
+            read.map_err(native_error)?;
+            let extensions_supported = match extension_profile(&native.controller()) {
+                Ok(_) => true,
+                Err(error) if error.code() == windows_shell::Win32::Foundation::E_NOINTERFACE => false,
+                Err(error) => return Err(native_error(error)),
+            };
+            Ok(RuntimeInfo { version, extensions_supported })
+        })();
+        let _ = sender.send(result);
+    }).map_err(|e| e.to_string())?;
+    tokio::time::timeout(Duration::from_secs(30), receiver).await
+        .map_err(|_| "WebView2 runtime information timed out".to_string())?
+        .map_err(|_| "Browser closed while reading WebView2 information".to_string())?
 }
 
 type Reply<T> = Arc<Mutex<Option<oneshot::Sender<Result<T, String>>>>>;
@@ -47,10 +80,7 @@ where
     webview.with_webview(move |native| {
         // SAFETY: with_webview dispatches to the WebView2 UI apartment. The
         // callback interface and all COM reads remain in that same apartment.
-        let profile = unsafe {
-            native.controller().CoreWebView2().and_then(|view| view.cast::<ICoreWebView2_13>())
-                .and_then(|view| view.Profile()).and_then(|profile| profile.cast::<ICoreWebView2Profile7>())
-        };
+        let profile = unsafe { extension_profile(&native.controller()) };
         match profile {
             Ok(profile) => { if let Err(error) = operation(profile, reply.clone()) { finish(&reply, Err(error)); } },
             Err(error) => finish(&reply, Err(format!("当前 WebView2 运行时无法管理扩展，请更新 Microsoft Edge WebView2 Runtime 后重试 / Extension APIs unavailable: {error}"))),

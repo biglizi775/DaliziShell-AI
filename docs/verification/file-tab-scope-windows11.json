@@ -1,0 +1,42 @@
+{
+  "date": "2026-11-17",
+  "scope": "Windows 11 x64 build 26300, native desktop with a separate identifier, disposable directories, and loopback SSH/model services",
+  "before": [
+    "The previous native desktop offered the local New folder here command while a browser tab was selected after visiting a local folder.",
+    "Force-terminating the earlier fixture left its PowerShell and console host alive under the exited desktop PID; the console host still held its unique temporary working directory."
+  ],
+  "observations": [
+    "New local tabs from web/SSH opened This PC. Creating a folder tab from local PowerShell selected its starting directory and Agent followed that directory. Context menus on background tabs used the clicked tab.",
+    "A missing main directory survived a normal exit and restart with its address selected. Retry after creating the directory produced a readable listing and did not duplicate history. An actual New folder appeared only in that directory.",
+    "A missing companion directory cleared its previous rows and disabled transfers. Refresh of that pane opened the requested location after it became available; the Agent work directory stayed on the left.",
+    "Deferred create and directory-list tests moved the foreground before each completion and verified that the destination, search filter and inline rename did not move to the other tab.",
+    "The final fixture recorded the live PowerShell PID, started an independent marker writer, and received the system OpenSSH client's banner on a loopback socket. Forced desktop exit ended that exact shell PID and closed the socket. The independent program completed after the host exited."
+  ],
+  "tests": {
+    "frontendPassed": 301,
+    "pythonPassed": 11,
+    "rustDesktopDefaultPassed": 151,
+    "rustDesktopDefaultIgnored": 2,
+    "explicitIgnoredTestsPassed": ["real_openssh_conpty_loopback_auth_info_resize_and_exit", "native_web_quote"],
+    "nativeDesktop": "tools/verify_harness_desktop.ps1, including file tab scope, mixed restore, pinned projects, model switch, archive/exit recovery and M1 through M4",
+    "nativeModelWorkbench": "tools/ai_api_smoke.cjs --workbench, three API formats",
+    "edgeUiChecks": ["--panes", "--tabs", "--render-stability", "--productivity"],
+    "fixtureSha256": "dd41e45b6d70d2b5c05f5b614a7c4ff204aa1cc2da0e71a0398cfbf69b88678a"
+  },
+  "source": {
+    "archive": "dalizi-files-0.5.1-source-f74f5d2446a21b88.zip",
+    "filesVerifiedBeforeOfflineBuild": 550,
+    "sha256": "f74f5d2446a21b880e0cf044c368459ddd0dcc96a0909b61dc238aa7426ddb2a"
+  },
+  "preview": {
+    "archive": "dalizi-files-0.5.1-windows-x64-preview-file-tab-scope-c9af0c65e1e6.zip",
+    "bytes": 55012037,
+    "sha256": "0aaa2476ed80343b1d8d94bec709667eb45cdcbc68ac2c9f4f787c187f9351a3",
+    "exeSha256": "c9af0c65e1e606bb791992b69bebb704904dc4effd45474b336f7b637ddb9475",
+    "componentSha256": "576a0c64da03d892ea8ac94b7bfeda905dacd2ed7fb5f8d310fe75c46e069dc2",
+    "entries": 749,
+    "perFileHashesVerified": 748,
+    "candidate": null
+  },
+  "releaseGatesOutstanding": ["clean Windows 10", "clean Windows 11", "authenticated cloud turn"]
+}

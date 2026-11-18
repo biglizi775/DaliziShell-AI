@@ -47,6 +47,18 @@ test('failed or expanded summaries preserve original context and old summary for
     assert.equal(h.run('aiMemoryHistory(session).length'), 14);
   }
 });
+test('a cancelled summary finishing late preserves the replacement batch in progress',async () => {
+  const resumes=[];
+  const h=harness(()=>new Promise(resolve=>resumes.push(resolve)));
+  const old=h.run('prepareAiMemory(session,"request")');
+  h.session.requestId='retry';
+  const retry=h.run('prepareAiMemory(session,"retry")');
+  const result={summary:'Short summary',beforeCharacters:2000,afterCharacters:13};
+  resumes[0](result); await old;
+  assert.ok(h.session.compacting); assert.equal(h.session.conversationSummary,undefined);
+  resumes[1](result); await retry;
+  assert.equal(h.session.compacting,false); assert.equal(h.session.compactionCount,1);
+});
 test('context budget handles Unicode, execution results and long messages; notices omitted', async () => {
   const h = harness(); h.session.messages = Array.from({ length: 8 }, (_, i) => ({ id: `long${i}`, role: i % 2 ? 'assistant' : 'user', text: '中'.repeat(9000) }));
   h.session.messages[0].omitHistory = true;
@@ -63,4 +75,21 @@ test('auto compaction opt-out stops network calls; explicit compaction remains p
   await h.run('prepareAiMemory(session, "request")'); assert.equal(h.calls.length, 0);
   await h.run('prepareAiMemory(session, "request", session.messages, true)'); assert.equal(h.calls.length, 1);
   assert.equal(h.run('estimateAiTokens("中文abcd")'), 3);
+});
+test('every batch of a manually started compaction uses the original provider',async () => {
+  let resume;
+  const h=harness(async () => {
+    if (h.calls.length === 1) await new Promise(resolve=>{resume=resolve;});
+    return {summary:'Fixture summary',beforeCharacters:9000,afterCharacters:15};
+  });
+  h.session.messages=Array.from({length:8},(_,i)=>({id:'batch-'+i,role:'user',text:'a'.repeat(8000)}));
+  const job=h.run('prepareAiMemory(session,"request",session.messages,true)');
+  h.run("aiSettings={endpoint:'https://next.test/v1',model:'next'}; aiSessionKey='new-test-key'");
+  resume(); await job;
+  assert.ok(h.calls.length>=2);
+  for(const call of h.calls) {
+    assert.equal(call.args.request.endpoint,'https://example.org/v1');
+    assert.equal(call.args.request.model,'model');
+    assert.equal(call.args.request.apiKey,'session-secret');
+  }
 });

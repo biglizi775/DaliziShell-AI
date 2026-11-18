@@ -1,0 +1,200 @@
+{
+  "visualStyle": "studio",
+  "theme": "light",
+  "method": "Original application DOM/CSS/JS rendered by Edge using deterministic backend demo data. No imported screenshots or artwork.",
+  "captureViewport": [
+    1600,
+    740
+  ],
+  "deviceScaleFactor": 2,
+  "sources": [
+    {
+      "file": "ui/agent-layout.js",
+      "sha256": "a3583ec67c0f806a8dec51e3b05d6dd94d1725bb7eba6ca23864e0a13a6d1e9a"
+    },
+    {
+      "file": "ui/agent-profile.css",
+      "sha256": "6c830b3c2a355eb8f1cf99955879157887d9ef545f98b2d5f0dd69fbb4ed52bf"
+    },
+    {
+      "file": "ui/agent-profile.js",
+      "sha256": "1bcd0862286ae4c4a2b957ff681a1f9fd08f8c70ee840bd2d40dfd637204f7f2"
+    },
+    {
+      "file": "ui/ai-conversations.css",
+      "sha256": "296faaddc3d373b700c420e8a67d59124d52bfce3439741edb3aecc8d15a3993"
+    },
+    {
+      "file": "ui/ai-conversations.js",
+      "sha256": "66f5dcc93a9def461271eb77bfefa7310d63afb93f6d5e27c82b0bb237ee527e"
+    },
+    {
+      "file": "ui/ai-memory.js",
+      "sha256": "b0bbcc6c0f8946db6af5fe75c5d2b689278419a30401d0e2f65defca10a4c4c6"
+    },
+    {
+      "file": "ui/ai.css",
+      "sha256": "b40c3cb76c5510463ae8b33aed970080faef72345378e1bb2fdf05c857d909f2"
+    },
+    {
+      "file": "ui/ai.js",
+      "sha256": "e0b5ffe9026f34926d20163f9bcb51befb33f8974a1ba834eff71ee7a57d768a"
+    },
+    {
+      "file": "ui/app.js",
+      "sha256": "8da9a0750320efaeaf781bcacac45b9e09f1926b02e7c79df8ce830b05fed723"
+    },
+    {
+      "file": "ui/archive.css",
+      "sha256": "66362df012ed0623bc9cacbf0aa0b025800e5e43c3c322b18de1cc59e8d0de9f"
+    },
+    {
+      "file": "ui/archive.js",
+      "sha256": "4ab006cae389aa11b7bdd38bc18feaa4b1b7f1f7b96b6fe3fe8f7b3dbbacd199"
+    },
+    {
+      "file": "ui/browser-downloads.js",
+      "sha256": "7c63cb59106a4cc07dd607db0a400b6f80016a6d0c14fabea873140e20414057"
+    },
+    {
+      "file": "ui/browser-extensions.js",
+      "sha256": "5a7c8010e13f5233a130af7b8ca0e44d16c01b652740436b831fa712c9386280"
+    },
+    {
+      "file": "ui/browser-sessions.js",
+      "sha256": "0329731bb0a44a331dd76aa71d22676b0b300e2b062d4d7ae7314996f3799d91"
+    },
+    {
+      "file": "ui/browser-settings.css",
+      "sha256": "36a6975e32cae50a0b970dd5a9a643bf7b68080adea19f73fb5ad5d5e725d952"
+    },
+    {
+      "file": "ui/browser-settings.js",
+      "sha256": "e297623e83900fb4ee08ce6217066c1f3567741a3c6bc09cc12884a045fd4cd1"
+    },
+    {
+      "file": "ui/browser.js",
+      "sha256": "905e304daecff06cb92c2400aee48b6df972a5367d7c4ebf7c8ca0aadd0bd382"
+    },
+    {
+      "file": "ui/columns.css",
+      "sha256": "951af0b1ca342abca61ea91d069a8788e128a204559f121a73990f0673712bf8"
+    },
+    {
+      "file": "ui/columns.js",
+      "sha256": "7594216b028a12292059b8ca88fe26c19abfc24cd807e7961d033205513bd0c6"
+    },
+    {
+      "file": "ui/document-preview.css",
+      "sha256": "057a2b94745084256bf5a185a4d69a31a91c431c71016794d05f9f27a87eeb18"
+    },
+    {
+      "file": "ui/document-preview.js",
+      "sha256": "c89a0183908180da5fbc5896b37b6470cb6ae113380b5fe2bfede62221255098"
+    },
+    {
+      "file": "ui/dual-pane.css",
+      "sha256": "d5bd520d7d0c6304d73df843917446457b5bca81f6fabb8a6ec1040adf4b1ddc"
+    },
+    {
+      "file": "ui/dual-pane.js",
+      "sha256": "7192b9f6df95e2403ea2aa696e7e99281a2e654d8dd0e2be11f2736f1ab392d9"
+    },
+    {
+      "file": "ui/external-drop.js",
+      "sha256": "07db96d95de8b121aec168faad8ea232961db626175f2e7b5ff1760673b1c4ed"
+    },
+    {
+      "file": "ui/index.html",
+      "sha256": "6209303d846f2e8a8cee073a6027204d948532e564c0c6548e0cca15b86869a5"
+    },
+    {
+      "file": "ui/places.css",
+      "sha256": "574130934f6067fd22592a2dc00a625a366e81096b33fcea026b8ddffaf5ceef"
+    },
+    {
+      "file": "ui/places.js",
+      "sha256": "7d547ee8249236b72c68160689359c60e0840c01afd96cc160f5b2153d71f796"
+    },
+    {
+      "file": "ui/portable-settings.js",
+      "sha256": "9dfdbdb8a65d4c534e62fcd9bcf809ed45d3d0a3b5fd798bb030a72d1d5044cb"
+    },
+    {
+      "file": "ui/quick-search.css",
+      "sha256": "bf16ab2703db973270f145a17a8d9a781b6049aa7e84a60fc716cfb493c02130"
+    },
+    {
+      "file": "ui/quick-search.js",
+      "sha256": "f928aa35e9f20228f458764fa5ee112737d4f2328c30be787dfa13b38b6941a0"
+    },
+    {
+      "file": "ui/search-syntax.js",
+      "sha256": "685576b358fa34f28f6bd041cd701c490fdeebda6f38d3121775ef9eb3e69b64"
+    },
+    {
+      "file": "ui/ssh-managed.js",
+      "sha256": "43769ed7495e9703bc7d61adf50f39d77477616aa497e485c9f4f44a95cd9a54"
+    },
+    {
+      "file": "ui/ssh-transfer-queue.css",
+      "sha256": "4ef1b39623708d5d032af372477088e22a77e0ae3fa7d8221f22f4e84dc5fc1a"
+    },
+    {
+      "file": "ui/ssh-transfer-queue.js",
+      "sha256": "55a7ffe94b1ff32c05a4ab9cd5ace982e116f1b2d561e38b7178ee308d644f1e"
+    },
+    {
+      "file": "ui/ssh-workspace.js",
+      "sha256": "0a4230d0f8df24b4788f78e0dd876f93fef5516651140d9d9640cbac5eeabde4"
+    },
+    {
+      "file": "ui/ssh.css",
+      "sha256": "7b7ab2c093deac7aedbcc0a9e90201c20e32c7a24bc9854d93fb3edc7a40d133"
+    },
+    {
+      "file": "ui/ssh.js",
+      "sha256": "6d72d0841cd74f25e631ee09d450ed268575ee6ffacd9e2da231b7ca6a331ed5"
+    },
+    {
+      "file": "ui/studio-panels.css",
+      "sha256": "26d51d15701038ee45d610e2d9e48fe5dc8411aa1ec19dcc4642f86e089a0d76"
+    },
+    {
+      "file": "ui/studio-theme.css",
+      "sha256": "d82abf6bd629b6b7cb07776b43e6460f51401376cff496f971f700f8243e72cd"
+    },
+    {
+      "file": "ui/style.css",
+      "sha256": "6c4d46dd3ced3c70b58aa2e69e7ca026c509727b0a20d42d389230d355900fe6"
+    },
+    {
+      "file": "ui/tab-management.css",
+      "sha256": "3e1cff3ca878eedabfd0680d54e6ab86afa98f933076403d47b90878761a67bc"
+    },
+    {
+      "file": "ui/tab-management.js",
+      "sha256": "89e4555e07b60dc1cceb91286e4d1e4339ab0436287f6d1480b1bd9d0e107d8b"
+    },
+    {
+      "file": "ui/theme.js",
+      "sha256": "be75e9ecec24f7342409519f870e035f5ccb3906293f3fa63ee92bdae6eb9dcc"
+    },
+    {
+      "file": "ui/workspace-settings.css",
+      "sha256": "f212868b276cbf6f047bb694c95524f52f0d8e6f61a4b5e62d995017901062f1"
+    },
+    {
+      "file": "ui/workspace-settings.js",
+      "sha256": "a8a7081cca71a35f5e1dbc8b1357872f84fbacb38ee68d58056ab57786c26cc5"
+    },
+    {
+      "file": "ui/workspace.css",
+      "sha256": "997eb5305a769ed5882754d05a3d1ee9eeaf09783ed134155ff5850ba83361f0"
+    },
+    {
+      "file": "ui/workspace.js",
+      "sha256": "fa4dba2fecfc59acdb8caa851cc057f867f9b9579487126677237a574948c195"
+    }
+  ]
+}

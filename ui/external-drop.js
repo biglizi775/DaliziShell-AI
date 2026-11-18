@@ -6,7 +6,7 @@ function clearExternalDrop() {
   $('externalDropHint')?.remove(); externalDropTarget = null;
 }
 function externalDropDestination(position) {
-  if (isTermTab(curTab()) || isBrowserTab(curTab()) || !state.path || state.loading || state.error || fileOpBusy || document.querySelector('dialog[open]')) return null;
+  if (isTermTab(curTab()) || isBrowserTab(curTab()) || !state.path || state.loading || state.error || localTaskBusy() || document.querySelector('dialog[open]')) return null;
   if (!position || !Number.isFinite(position.x) || !Number.isFinite(position.y)) return null;
   const scale = window.devicePixelRatio || 1;
   const node = document.elementFromPoint(position.x / scale, position.y / scale);
@@ -45,27 +45,36 @@ function initExternalDrop() {
   // Prevent the native webview from navigating to a dropped file on fallback paths.
   for (const type of ['dragover', 'drop']) document.addEventListener(type, (event) => { if (event.dataTransfer?.types?.includes('Files')) event.preventDefault(); });
 }
-function openExternalDrop(paths, target) {
-  if ($('externalDropDialog')?.open || fileOpBusy) return;
+function openExternalDrop(paths, target, options = {}) {
+  if ($('externalDropDialog')?.open || localTaskBusy()) return;
   const T = dropText, dialog = document.createElement('dialog'); dialog.id = 'externalDropDialog'; dialog.className = 'file-settings-dialog'; dialog.setAttribute('aria-labelledby', 'externalDropTitle');
   dialog.innerHTML = `<header class="file-settings-head"><h2 id="externalDropTitle">${T('拖入文件', 'Dropped files')} · ${paths.length}</h2><button type="button" data-drop-close aria-label="${T('取消', 'Cancel')}">×</button></header><div class="file-settings-body"><p>${T('目标文件夹', 'Destination folder')}</p><p class="drop-destination">${esc(target.path)}</p><ul class="drop-files">${paths.slice(0, 12).map((path) => `<li title="${esc(path)}">${esc(path)}</li>`).join('')}${paths.length > 12 ? `<li>… +${paths.length - 12}</li>` : ''}</ul><p>${T('移动会将原文件移到目标位置；复制会保留原文件。同名项目由系统自动重命名，避免覆盖。', 'Move relocates the original files; copy keeps them. Windows renames colliding items to avoid overwriting.')}</p><p id="externalDropStatus" role="status"></p></div><footer class="file-settings-footer"><button type="button" data-drop-close>${T('取消', 'Cancel')}</button><span class="file-settings-spacer"></span><button type="button" data-drop-kind="copy">${T('复制到此处', 'Copy here')}</button><button type="button" data-drop-kind="move" class="file-settings-primary">${T('移动到此处', 'Move here')}</button></footer>`;
   document.body.appendChild(dialog); let running = false;
+  if (options.kind) {
+    $('externalDropTitle').textContent = T('重试未执行项', 'Retry unexecuted items') + ' · ' + paths.length;
+    dialog.querySelectorAll('[data-drop-kind]').forEach(b => { b.hidden = b.dataset.dropKind !== options.kind; });
+  }
+  if (options.retryItems) {
+    const list = dialog.querySelector('.drop-files');
+    list.innerHTML = paths.map((path, i) => `<li><label><input type="checkbox" data-retry-index="${i}" checked> ${esc(path)}</label></li>`).join('');
+    list.onchange = () => {
+      dialog.querySelector('[data-drop-kind="' + options.kind + '"]').disabled = !list.querySelector(':checked');
+    };
+  }
   dialog.querySelectorAll('[data-drop-close]').forEach((button) => button.addEventListener('click', () => { if (!running) dialog.close(); }));
   dialog.addEventListener('cancel', (event) => { if (running) event.preventDefault(); });
   dialog.querySelectorAll('[data-drop-kind]').forEach((button) => button.addEventListener('click', async () => {
-    if (running || fileOpBusy) return; running = true; fileOpBusy = true;
-    dialog.querySelectorAll('button').forEach((b) => { b.disabled = true; });
-    $('externalDropStatus').textContent = T('正在处理…需要取消时可使用系统文件操作进度窗口。', 'Working… Use the Windows file-operation progress window to cancel.');
+    if (running || localTaskBusy() || button.hidden) return; running = true;
+    dialog.querySelectorAll('button, input').forEach((b) => { b.disabled = true; });
+    $('externalDropStatus').textContent = T('正在检查源文件和目标目录…', 'Checking sources and destination…');
     try {
-      const result = await invoke('external_drop_transfer', { kind: button.dataset.dropKind, sources: paths, dest: target.path });
-      if (!result?.completed) { $('externalDropStatus').textContent = T('操作已取消或部分完成，请检查目标文件夹。', 'Cancelled or partially completed. Check the destination folder.'); }
-      else { dialog.close(); toast(result.processed ? T('文件已处理：', 'Transferred: ') + result.processed + (result.skipped ? T(' · 已跳过重复或原地项目 ', ' · Skipped duplicate or same-folder items: ') + result.skipped : '') : T('所有项目已在目标目录，未重复移动。', 'Items are already in the destination; nothing moved.')); }
+      const selected = options.retryItems && [...dialog.querySelectorAll('[data-retry-index]:checked')].map(box => options.retryItems[Number(box.dataset.retryIndex)]);
+      const batch = await queueLocalTransfer(button.dataset.dropKind, selected ? selected.map(i => i.source) : paths, target, { ...options, retryItems: selected });
+      dialog.close();
+      if (options.retryItems) openLocalTaskCenter(batch.id);
     } catch (error) { $('externalDropStatus').textContent = String(error); }
     finally {
-      running = false; fileOpBusy = false; dialog.querySelectorAll('button').forEach((b) => { b.disabled = false; });
-      if (typeof companionFor === 'function' && companionFor(target.owner)?.open) void loadCompanion(companionFor(target.owner).path, false, true, target.owner);
-      if (curTab() === target.owner && state.path === target.folder) await refresh(true, true);
-      renderBar2();
+      running = false; dialog.querySelectorAll('button, input').forEach((b) => { b.disabled = false; });
     }
   }));
   dialog.addEventListener('close', () => dialog.remove(), { once: true }); dialog.showModal();

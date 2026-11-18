@@ -32,9 +32,22 @@ identity.write_bytes(user_key.key.private_bytes(Encoding.PEM, PrivateFormat.Open
 host_key = paramiko.RSAKey.generate(2048)
 fingerprints = []
 auth_attempts = 0
+accepted_connections = 0
 transports = []
 allow_cleanup = False
 terminal_policy = 'normal'
+task_fixture = '--task-files' in sys.argv[2:]
+release_read = threading.Event()
+
+def attrs(st, path):
+    a = paramiko.SFTPAttributes.from_stat(st)
+    if task_fixture:
+        # This fixture serves an isolated, virtual POSIX namespace on Windows.
+        a.st_uid, a.st_gid = 1000, 1000
+        a.st_mode = stat.S_IFMT(st.st_mode) | (0o700 if stat.S_ISDIR(st.st_mode) else 0o600)
+        if Path(path).name == 'shared': a.st_mode |= 0o022
+        if Path(path).name == 'link.md': a.st_mode = stat.S_IFLNK | 0o777
+    return a
 
 def fingerprint(key):
     return 'SHA256:' + base64.b64encode(hashlib.sha256(key.asbytes()).digest()).decode().rstrip('=')
@@ -46,12 +59,19 @@ def local_path(remote):
     return candidate
 
 class Handle(paramiko.SFTPHandle):
+    def stat(self):
+        if task_fixture and Path(self.filename).name == 'nofstat.md': return paramiko.SFTP_OP_UNSUPPORTED
+        return attrs(os.fstat(self.readfile.fileno()), self.filename)
+
     def write(self, offset, data):
         if self.filename.endswith('.part') and len(data) >= 16384:
             time.sleep(0.015)
         return super().write(offset, data)
 
     def read(self, offset, length):
+        if task_fixture and Path(self.filename).name == 'slow.md' and offset == 0:
+            print(json.dumps(dict(reading='slow.md')), flush=True)
+            release_read.wait(12)
         if self.filename.endswith('slow.bin'):
             time.sleep(0.035)
         return super().read(offset, length)
@@ -69,17 +89,17 @@ class Files(paramiko.SFTPServerInterface):
                 return result
             result = []
             for file in local_path(path).iterdir():
-                attr = paramiko.SFTPAttributes.from_stat(file.lstat()); attr.filename = file.name; result.append(attr)
+                attr = attrs(file.lstat(), file); attr.filename = file.name; result.append(attr)
             return result
         except OSError as error:
             return paramiko.SFTPServer.convert_errno(error.errno or 13)
 
     def stat(self, path):
-        try: return paramiko.SFTPAttributes.from_stat(local_path(path).stat())
+        try: return attrs(local_path(path).stat(), path)
         except OSError as e: return paramiko.SFTPServer.convert_errno(e.errno or 13)
 
     def lstat(self, path):
-        try: return paramiko.SFTPAttributes.from_stat(local_path(path).lstat())
+        try: return attrs(local_path(path).lstat(), path)
         except OSError as e: return paramiko.SFTPServer.convert_errno(e.errno or 13)
 
     def mkdir(self, path, attr):
@@ -178,8 +198,12 @@ def serve(client):
     finally: transport.close()
 
 def accept():
+    global accepted_connections
     while not stop.is_set():
-        try: client, _ = listener.accept(); threading.Thread(target=serve, args=(client,), daemon=True).start()
+        try:
+            client, _ = listener.accept()
+            accepted_connections += 1
+            threading.Thread(target=serve, args=(client,), daemon=True).start()
         except socket.timeout: pass
         except OSError: break
 
@@ -208,13 +232,16 @@ try:
             host_key = paramiko.RSAKey.generate(2048); fingerprints.append(fingerprint(host_key))
             print(json.dumps(dict(fingerprint=fingerprints[-1],authAttempts=auth_attempts)),flush=True)
         elif command == 'auth-count': print(json.dumps(dict(authAttempts=auth_attempts)),flush=True)
+        elif command == 'session-counts': print(json.dumps(dict(connections=accepted_connections, authAttempts=auth_attempts)), flush=True)
         elif command.startswith('terminal-policy '):
             terminal_policy = command.split(' ',1)[1]
             assert terminal_policy in ['normal','deny-pty','deny-shell','window-adjust','slow-shell']
             print(json.dumps(dict(terminalPolicy=terminal_policy)),flush=True)
+        elif command == 'release-read': release_read.set()
         elif command == 'allow-cleanup': allow_cleanup = True
         elif command == 'stop': break
 finally:
+    release_read.set()
     stop.set(); listener.close()
     for transport in transports: transport.close()
     if allow_cleanup: cleanup_credentials()

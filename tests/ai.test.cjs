@@ -23,7 +23,7 @@ function harness(handler = async () => undefined, initial = {}) {
     basename: (p) => p.split('\\').pop(), document: { body: { classList: { toggle() {} } } },
   });
   vm.runInContext(source, context);
-  vm.runInContext("aiPanel = panel; aiSettings = { endpoint: 'https://example.test/v1', model: 'model' }; aiSessionKey = 'session-secret'; aiCurrentKey = aiSessionKeyFor(state.path); aiSessionFor(state.path);", context);
+  vm.runInContext("aiPanel = panel; aiSettings = { endpoint: 'https://example.test/v1', model: 'model' }; aiSessionKey = 'session-secret'; aiCurrentKey = aiSessionKeyFor(state.path); aiSessionFor(state.path).projectTools = true;", context);
   return { context, fields, calls, saved, refreshes, notices, get, run: (code) => vm.runInContext(code, context) };
 }
 
@@ -118,12 +118,12 @@ test('settings show the effective endpoint; cancelling discards drafts and prese
   assert.equal(h.run('aiCurrentSession().requestId'), 'active-request'); assert.equal(h.saved.length, 0); assert.equal(h.calls.length, 0);
 });
 
-test('saving changed settings cancels pending replies and expires plans without executing anything', () => {
+test('saving a new default preserves submitted requests and reviewed proposals', () => {
   const h = harness(); h.run("aiCurrentSession().requestId = 'active-request'; addAiMessage(aiCurrentSession(), 'assistant', 'A proposal', { plan: { id: 'pending-plan', actions: [] }, planState: 'pending' }); toggleAiSettings(true)");
   h.get('aiModel').value = 'different-model'; assert.equal(h.run('saveAiSettings()'), true);
-  assert.equal(h.run('aiCurrentSession().requestId'), null);
-  assert.equal(h.run('aiCurrentSession().messages[0].planState'), 'superseded');
-  assert.deepEqual(h.calls.map((call) => call.cmd), ['ai_cancel', 'ai_discard']);
+  assert.equal(h.run('aiCurrentSession().requestId'), 'active-request');
+  assert.equal(h.run('aiCurrentSession().messages[0].planState'), 'pending');
+  assert.deepEqual(h.calls, []);
   assert.equal(h.get('aiModelLabel').textContent, 'different-model');
 });
 test('chat sends folder scope and selection, then includes actual preceding turns', async () => {
@@ -167,28 +167,46 @@ test('provider changes reset incompatible effort; cancelling keeps the committed
   assert.equal(h.run('aiSettings.reasoningEffort'), 'medium');
 });
 
-test('quick effort changes cancel pending responses and expire plans without executing them', () => {
+test('quick effort changes apply to future submissions, including while a file operation runs', () => {
   const h = harness();
   h.run("aiSettings.apiDialect = 'deepseek'; aiCurrentSession().requestId = 'waiting'; addAiMessage(aiCurrentSession(), 'assistant', 'Plan', { plan: { id: 'old-plan', actions: [] }, planState: 'pending' });");
   assert.equal(h.run("changeAiQuickEffort('max')"), true);
-  assert.equal(h.run('aiCurrentSession().requestId'), null);
-  assert.equal(h.run('aiCurrentSession().messages[0].planState'), 'superseded');
-  assert.deepEqual(h.calls.map((call) => call.cmd), ['ai_cancel', 'ai_discard']);
+  assert.equal(h.run('aiCurrentSession().requestId'), 'waiting');
+  assert.equal(h.run('aiCurrentSession().messages[0].planState'), 'pending');
+  assert.deepEqual(h.calls, []);
   assert.equal(h.run("changeAiQuickEffort('medium')"), false);
   h.run('aiCurrentSession().running = true');
-  assert.equal(h.run("changeAiQuickEffort('none')"), false);
-  assert.equal(h.run('aiSettings.reasoningEffort'), 'max');
+  assert.equal(h.run("changeAiQuickEffort('none')"), true);
+  assert.equal(h.run('aiSettings.reasoningEffort'), 'none');
+  assert.equal(h.run('aiCurrentSession().running'),true);
 });
 
-test('saved models switch only within the current endpoint and never forward its key elsewhere', () => {
+test('saved models switch across endpoints without forwarding session keys', () => {
   const h = harness();
   h.run("aiModelPresets = [{ endpoint: 'https://example.test/v1', model: 'other', apiDialect: 'openai', reasoningEffort: 'low' }, { endpoint: 'https://different.test/v1', model: 'remote' }]");
-  assert.equal(h.run("changeAiModelPreset('1')"), false);
-  assert.equal(h.run('aiSettings.model'), 'model');
+  assert.equal(h.run("changeAiModelPreset('1')"), true);
+  assert.equal(h.run('aiSettings.model'), 'remote');
+  assert.equal(h.run('aiSessionKey'), '');
   assert.equal(h.run("changeAiModelPreset('0')"), true);
   assert.equal(h.run('aiSettings.model'), 'other'); assert.equal(h.run('aiSettings.reasoningEffort'), 'low');
-  assert.equal(h.run('aiSessionKey'), 'session-secret');
+  assert.equal(h.run('aiSessionKey'), '');
   assert.equal(JSON.stringify(h.saved).includes('session-secret'), false);
+});
+test('a message waiting for context keeps its submitted protocol, streaming policy and session credential', async () => {
+  const waiting = deferred(), h = harness(cmd => cmd === 'ai_plan' ? plan('C:\\work',[]) : undefined);
+  h.context.getAgentRequestContext = () => waiting.promise;
+  h.run('aiCurrentSession().projectTools=false; aiStreamReplies=true');
+  const sent = h.run('sendAiMessage()');
+  h.run("applyAiRuntimeSettings({endpoint:'https://next.test/v1', model:'next', apiFormat:'openai-responses'}); aiStreamReplies=false");
+  assert.equal(h.run('aiSessionKey'),'');
+  waiting.resolve({}); await sent;
+  const request = h.calls.find(c => c.cmd === 'ai_plan').args.request;
+  assert.equal(request.endpoint,'https://example.test/v1');
+  assert.equal(request.model,'model'); assert.equal(request.apiKey,'session-secret');
+  assert.equal(request.apiFormat ?? 'openai-completions','openai-completions');
+  assert.equal(request.streamChat,true);
+  assert.equal(h.run('aiCurrentSession().messages.at(-1).modelRoute.model'),'model');
+  assert.doesNotMatch(h.run('JSON.stringify(aiCurrentSession())'),/session-secret/);
 });
 test('folder switching preserves drafts and same-folder refresh keeps the session', () => {
   const h = harness(); h.get('aiPrompt').value = 'draft A';
@@ -206,6 +224,90 @@ test('late reply remains with its originating folder and does not enter the curr
   assert.equal(h.run('aiCurrentSession().messages.length'), 0);
   assert.equal(h.run("aiSessions.get(aiSessionKeyFor('C:\\\\work')).messages.at(-1).role"), 'assistant');
   assert.doesNotMatch(h.get('aiMessages').innerHTML, /Create a folder/);
+});
+
+function visitFolders(h, count, prefix = 'idle') {
+  for (let i = 0; i < count; i++) {
+    h.context.state.path = 'D:\\' + prefix + i;
+    h.run('syncAiWorkspace()');
+  }
+}
+
+test('visiting many folders keeps unsent drafts scoped to each tab without persisting them', () => {
+  const h = harness();
+  h.get('aiPrompt').value = 'first tab draft';
+  h.run("state.tabs.push({}); state.tab=1; syncAiWorkspace()");
+  h.get('aiPrompt').value = 'second tab draft';
+  visitFolders(h, 40);
+  h.run("state.path='C:/work'; syncAiWorkspace()");
+  assert.equal(h.get('aiPrompt').value, 'second tab draft');
+  h.run('state.tab=0; syncAiWorkspace()');
+  assert.equal(h.get('aiPrompt').value, 'first tab draft');
+  assert.equal(h.run('aiSessions.size'), 24);
+  assert.equal(h.calls.length, 0);
+  assert.equal(h.saved.length, 0);
+});
+
+test('more than 24 unfinished drafts survive and empty sessions become reclaimable when the drafts are cleared', () => {
+  const h = harness();
+  for (let i=0; i<28; i++) {
+    h.context.state.path = 'D:\\draft'+i; h.run('syncAiWorkspace()');
+    h.get('aiPrompt').value = 'draft '+i;
+  }
+  visitFolders(h, 50);
+  assert.ok(h.run('aiSessions.size') <= 30, 'visiting empty folders cannot grow the cache indefinitely');
+  for (let i=0; i<28; i++) {
+    h.context.state.path = 'D:\\draft'+i; h.run('syncAiWorkspace()');
+    assert.equal(h.get('aiPrompt').value, 'draft '+i);
+    h.get('aiPrompt').value = '';
+  }
+  visitFolders(h, 26, 'after');
+  assert.equal(h.run('aiSessions.size'), 24);
+});
+
+test('cache pressure keeps a saved but actionable plan, manually unsaved text and read-only mode', async () => {
+  const h = harness(cmd => cmd === 'ai_plan' ? plan() : {revision:1});
+  const timers = new Map(); let n=0;
+  Object.assign(h.context, {setTimeout:fn=>{timers.set(++n,fn);return n;},clearTimeout:id=>timers.delete(id)});
+  vm.runInContext(readFileSync(path.join(__dirname,'../ui/ai-conversations.js'),'utf8'), h.context);
+  h.run('renderAiArchiveStatus = () => {}; const owner=aiCurrentSession(); aiArchive(owner).auto=true');
+  await h.run('sendAiMessage()'); await h.run('saveAiArchive(owner)');
+  h.run("state.path='D:/manual'; syncAiWorkspace(); const manual=aiCurrentSession(); aiArchive(manual).auto=false; addAiMessage(manual,'user','manual only')");
+  h.run("state.path='D:/readonly'; syncAiWorkspace(); const restricted=aiCurrentSession(); setAiPermissionMode('read-only')");
+  visitFolders(h, 35);
+  h.run("state.path='C:/work'; syncAiWorkspace()");
+  assert.equal(h.run('aiCurrentSession() === owner'), true);
+  assert.equal(h.run('owner.messages.at(-1).planState'), 'pending');
+  h.run("state.path='D:/manual'; syncAiWorkspace()");
+  assert.equal(h.run('aiCurrentSession().messages[0].text'), 'manual only');
+  h.run("state.path='D:/readonly'; syncAiWorkspace()");
+  assert.equal(h.run('aiCurrentSession().permissionMode'), 'read-only');
+  assert.deepEqual(h.calls.map(c=>c.cmd), ['ai_plan','agent_chat_save']);
+  h.run("discardSessionPlans(owner,'discarded')");
+  await h.run('saveAiArchive(owner)'); await h.run('saveAiArchive(manual)');
+  visitFolders(h, 34, 'later');
+  assert.equal(h.run('aiSessions.has(owner.key) || aiSessions.has(manual.key)'), false,
+    'saved text with no live work can be evicted even when manual saving is selected');
+  assert.equal(h.run('aiSessions.get(restricted.key) === restricted'), true);
+});
+
+test('an expired plan cannot be confirmed after a suspended timer, and a late timer cannot affect the next plan', async () => {
+  let now=0, seq=0; const timers=[];
+  const h=harness(cmd=>cmd==='ai_plan'?{...plan(),id:'plan-'+ ++seq,validForMs:500}:undefined);
+  Object.assign(h.context,{performance:{now:()=>now},setTimeout:(fn,ms)=>{timers.push({fn,ms});return timers.length;},clearTimeout:()=>{}});
+  await h.run('sendAiMessage()');
+  const id=h.run('aiCurrentSession().messages.at(-1).id');
+  h.get('[data-ai-confirm="'+id+'"]').checked=true;
+  // Simulate waking after the deadline, before the browser delivers the timer callback.
+  now=600; await h.run('executeAiPlan(aiCurrentSession().messages.at(-1).id)');
+  assert.equal(h.run('aiCurrentSession().messages.at(-1).planState'),'expired');
+  assert.equal(h.calls.some(c=>c.cmd==='ai_execute'),false);
+  h.get('aiPrompt').value='second request'; await h.run('sendAiMessage()');
+  assert.equal(timers[0].ms,500); timers[0].fn();
+  assert.equal(h.run('aiCurrentSession().messages.at(-1).planState'),'pending');
+  now+=500; timers[1].fn();
+  assert.equal(h.run('aiCurrentSession().messages.at(-1).planState'),'expired');
+  assert.deepEqual(h.calls.filter(c=>c.cmd==='ai_discard').map(c=>c.args.id),['plan-1','plan-2']);
 });
 test('the working folder always follows the active tab and selection cannot leak across tabs', () => {
   const h = harness(); h.run("const firstSession = aiCurrentSession(); state.path = 'C:\\\\work\\\\child'; syncAiWorkspace();");
@@ -237,6 +339,55 @@ test('new conversation invalidates a pending request without accepting its late 
   const waiting = deferred(), h = harness((cmd) => cmd === 'ai_plan' ? waiting.promise : undefined);
   const job = h.run('sendAiMessage()'); h.run('newAiConversation()'); waiting.resolve(plan()); await job;
   assert.equal(h.run('aiCurrentSession().messages.length'), 0); assert.ok(h.calls.some((c) => c.cmd === 'ai_discard'));
+});
+
+function roleHarness(handler) {
+  const h = harness(handler);
+  h.context.projectText = (zh, en) => en;
+  h.run(readFileSync(path.join(__dirname, '../ui/agent-roles.js'), 'utf8'));
+  h.run("renderAgentRole = () => {}; const review = {id:'review', access:'read-only', nameEn:'Code review', nameZh:'审查助手'};");
+  return h;
+}
+
+test('changing roles during an approved execution keeps the submitted task and its result', async () => {
+  const waiting = deferred();
+  const h = roleHarness(cmd => cmd === 'ai_plan' ? plan() : cmd === 'ai_execute' ? waiting.promise : undefined);
+  await h.run('sendAiMessage()');
+  const id = h.run('aiCurrentSession().messages.at(-1).id');
+  h.get(`[data-ai-confirm="${id}"]`).checked = true;
+  const job = h.run(`executeAiPlan('${id}')`);
+  h.run('changeAgentRole(review, true)');
+  assert.equal(h.run('aiCurrentSession().messages.at(-1).planState'), 'running');
+  assert.equal(h.calls.find(c => c.cmd === 'ai_execute').args.permissionMode, 'confirm');
+  assert.ok(!h.calls.some(c => c.cmd === 'ai_discard' || c.cmd === 'ai_cancel'));
+  waiting.resolve({completed:true, results:[{...plan().actions[0],status:'success'}]}); await job;
+  assert.equal(h.run('aiCurrentSession().messages.find(m => m.plan).planState'), 'done');
+  assert.equal(h.run('aiCurrentSession().messages.find(m => m.plan).roleLabel.en'), 'General');
+  assert.equal(h.run('aiCurrentSession().permissionMode'), 'read-only');
+});
+
+test('role and permission are captured before refreshing the skill profile', async () => {
+  const profile = deferred(), h = roleHarness(cmd => cmd === 'ai_plan' ? plan() : undefined);
+  h.context.getAgentRequestContext = () => profile.promise;
+  const job = h.run('sendAiMessage()');
+  h.run('changeAgentRole(review, true)');
+  profile.resolve({skillIds:[]}); await job;
+  const {request} = h.calls.find(c => c.cmd === 'ai_plan').args;
+  assert.deepEqual([request.roleId, request.useRoleSkills, request.permissionMode], ['general', false, 'confirm']);
+  assert.equal(h.run('aiCurrentSession().messages.at(-1).planState'), 'superseded');
+});
+
+test('role preview keeps four manual skills and lists overflow without activating it', () => {
+  const h = roleHarness();
+  const results = h.run(`const custom = ['a','b','c','d'].map(id => ({id, enabled:true, source:'user'}));
+    const extra = ['x','y'].map(id => ({id, enabled:false, source:'builtin'}));
+    const role = {suggestedSkills:['x','y']}, profile = {skills:[...custom, ...extra]};
+    const preview = enabled => {const {effective,pending} = roleSkillPreview(profile,role,enabled); return [effective,pending].map(group => group.map(s=>s.id));};
+    const full = preview(true); custom[3].enabled = false;
+    [full, preview(true), preview(false), extra.map(s=>s.enabled)]`);
+  assert.deepEqual(JSON.parse(JSON.stringify(results)), [
+    [['a','b','c','d'],['x','y']], [['a','b','c','x'],['y']], [['a','b','c'],['x','y']], [false,false],
+  ]);
 });
 test('history is bounded by turns and Unicode characters without splitting emoji', () => {
   const h = harness(); h.run("for(let i=0;i<24;i++) addAiMessage(aiCurrentSession(), i%2 ? 'assistant' : 'user', '😀'.repeat(9000));");
@@ -337,6 +488,55 @@ test('a late auto plan does not execute after switching tabs, even when switchin
   assert.equal(h.calls.some((c) => c.cmd === 'ai_execute'), false);
   assert.equal(h.run('aiCurrentSession().messages.at(-1).planState'), 'pending');
 });
+test('an auto plan arriving during desktop exit stays available for review if the user returns', async () => {
+  const waiting=deferred(), h=harness(cmd=>cmd==='ai_plan'?waiting.promise:undefined);
+  h.run("setAiPermissionMode('auto')");
+  const job=h.run('sendAiMessage()'); h.context.desktopExitPending=true;
+  waiting.resolve({...plan(),permissionMode:'auto'}); await job;
+  h.context.desktopExitPending=false;
+  assert.equal(h.calls.some(call=>call.cmd==='ai_execute'),false);
+  assert.equal(h.run('aiCurrentSession().messages.at(-1).planState'),'pending');
+});
+
+for (const [label, change] of [
+  ['another tab of the same folder', 'state.tabs.push({}); state.tab = 1;'],
+  ['the browser', "state.tabs.push({kind:'browser'}); state.tab = 1;"],
+  ['SSH', "state.tabs.push({connection:'ssh'}); state.tab = 1;"],
+  ['another folder in the same tab', "state.path = 'D:/other';"],
+]) test('pinned auto plan needs a fresh confirmation after visiting ' + label, async () => {
+  const reply = deferred();
+  const h = harness(cmd => cmd === 'ai_plan' ? reply.promise : cmd === 'ai_execute'
+    ? {completed:true,results:[]} : undefined, {aiActiveProject:'C:\\work'});
+  h.run("const owner=aiCurrentSession(); setAiPermissionMode('auto')");
+  const job = h.run('sendAiMessage()');
+  h.get('aiPrompt').value = 'draft for the next question';
+  h.run(change + ' syncAiWorkspace(); state.tab=0; state.path="C:/work"; syncAiWorkspace();');
+  reply.resolve({...plan(),permissionMode:'auto'}); await job;
+  assert.equal(h.calls.some(c => c.cmd === 'ai_execute'), false);
+  assert.equal(h.run('aiCurrentSession() === owner'), true);
+  assert.equal(h.run('owner.permissionMode'), 'confirm');
+  assert.equal(h.run('owner.messages.at(-1).planState'), 'pending');
+  assert.equal(h.get('aiPrompt').value, 'draft for the next question');
+  await h.run('executeAiPlan(owner.messages.at(-1).id)');
+  assert.equal(h.calls.some(c => c.cmd === 'ai_execute'), false);
+  const id = h.run('owner.messages.at(-1).id');
+  h.get('[data-ai-confirm="' + id + '"]').checked = true;
+  await h.run('executeAiPlan(owner.messages.at(-1).id)');
+  const writes = h.calls.filter(c => c.cmd === 'ai_execute');
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0].args.approved, true);
+  assert.equal(writes[0].args.permissionMode, 'confirm');
+});
+
+test('pinned auto stays active on an ordinary refresh but cannot be enabled from an unrelated surface', async () => {
+  const h = harness(cmd => cmd === 'ai_plan' ? {...plan(),permissionMode:'auto'} : cmd === 'ai_execute'
+    ? {completed:true,results:[]} : undefined, {aiActiveProject:'C:\\work'});
+  h.run("setAiPermissionMode('auto'); syncAiWorkspace(); syncAiWorkspace()");
+  await h.run('sendAiMessage()');
+  assert.equal(h.calls.filter(c => c.cmd === 'ai_execute' && !c.args.approved).length, 1);
+  h.run("state.tabs.push({connection:'ssh'}); state.tab=1; syncAiWorkspace(); setAiPermissionMode('auto')");
+  assert.equal(h.run('aiCurrentSession().permissionMode'), 'confirm');
+});
 
 test('changing permissions invalidates pending replies and cannot upgrade an older plan', async () => {
   const waiting = deferred(), h = harness((cmd) => cmd === 'ai_plan' ? waiting.promise : undefined);
@@ -363,4 +563,68 @@ test('an SSH tab cannot reuse local folder memory, selections or executable plan
   assert.equal(h.run('aiBrowsingFolder()'), null); assert.equal(h.run('aiCurrentSession()'), null);
   assert.equal(h.get('aiPrompt').disabled, true);
   await h.run('sendAiMessage()'); assert.equal(h.calls.some((c) => c.cmd === 'ai_plan'), false);
+});
+
+test('web and SSH tabs do not silently acquire the initialized local inbox', async () => {
+  for (const tab of [{ kind: 'browser' }, { kind: 'term', connection: 'ssh' }]) {
+    const h = harness();
+    h.context.state.tabs.push(tab);
+    h.run("aiInboxRoot = 'D:/AgentInbox'; state.tab = 1");
+    assert.equal(h.run('aiBrowsingFolder()'), null);
+    h.run('syncAiWorkspace()');
+    assert.equal(h.run('aiCurrentSession()'), null);
+    assert.equal(h.get('aiPrompt').disabled, true);
+    await h.run('sendAiMessage()');
+    assert.equal(h.calls.length, 0);
+  }
+});
+
+test('a pinned project remains the target on a web tab without inheriting stale explorer selections', () => {
+  const h = harness();
+  h.run("aiProjectRoot = state.path; state.tabs.push({ kind:'browser' }); state.tab = 1");
+  assert.equal(h.run('aiBrowsingFolder()'), h.context.state.path);
+  assert.equal(h.run('aiSelectedPaths(aiSessionFor(aiProjectRoot)).length'), 0);
+});
+
+test('stream events stay with their request and interrupted previews are excluded from future model history', () => {
+  const h = harness();
+  h.run(`const owner = aiCurrentSession(); owner.projectTools = false; owner.requestId='stream-a';
+    state.path='D:/other'; syncAiWorkspace();`);
+  h.run("onAiTextDelta({requestId:'stream-a',sequence:1,text:'partial text'})");
+  h.run("onAiTextDelta({requestId:'stream-a',sequence:1,text:'duplicate'})");
+  assert.equal(h.run('owner.streamText'),'partial text');
+  assert.equal(h.run('aiCurrentSession().streamText'),undefined);
+  h.run("cancelAiRequest(owner); owner.requestId='stream-b'; onAiTextDelta({requestId:'stream-a',sequence:2,text:'late'})");
+  assert.equal(h.run('owner.streamText'),'');
+  assert.equal(h.run('owner.messages.at(-1).omitHistory'),true);
+  assert.match(h.run('owner.messages.at(-1).text'),/Incomplete reply.*partial text/s);
+  assert.equal(h.run('aiHistory(owner).length'),0);
+});
+
+test('file progress stays with the running plan across a folder switch and ignores stale events', () => {
+  const h = harness();
+  h.run(`const owner = aiCurrentSession(); owner.running = true;
+    const message = {id:'message-1',role:'assistant',text:'',planState:'running',
+      plan:{id:'plan-a',actions:[{kind:'mkdir',target:'folder'}]}}; owner.messages.push(message);
+    state.path='D:/other'; syncAiWorkspace();`);
+  const event = (planId,index,status) => h.run('onAiFileProgress('+JSON.stringify({planId,index,status})+')');
+  event('wrong-plan',0,'running'); event('plan-a',2,'success');
+  assert.equal(h.run('message.fileProgress'),undefined);
+  event('plan-a',0,'running'); event('plan-a',0,'success'); event('plan-a',0,'running');
+  assert.equal(h.run('message.fileProgress.status'),'success');
+  assert.equal(h.run('aiCurrentSession().messages.length'),0);
+  h.run("message.planState='done'"); event('plan-a',0,'failed');
+  assert.equal(h.run('message.fileProgress.status'),'success');
+});
+
+test('cancelling a project request preserves a read with no confirmed result', () => {
+  const h = harness();
+  h.context.projectText = (_zh, en) => en;
+  h.run(`const owner = aiCurrentSession(); owner.requestId = 'read-in-flight';
+    owner.toolSteps = [{kind:'read', path:'notes.md', status:'unconfirmed', elapsedMs:null, detail:''}];
+    cancelAiRequest(owner);`);
+  assert.equal(h.run('owner.messages.at(-1).steps[0].status'), 'unconfirmed');
+  assert.match(h.run('aiStepsMarkup(owner.messages.at(-1))'), /Unconfirmed/);
+  assert.equal(h.run('aiHistory(owner).length'), 0);
+  assert.ok(!h.calls.some(c => c.cmd === 'ai_execute'));
 });

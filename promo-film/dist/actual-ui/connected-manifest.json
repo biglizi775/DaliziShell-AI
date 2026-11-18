@@ -1,0 +1,444 @@
+{
+  "source": "ui/index.html and original ui CSS/JS, Tauri test fixtures",
+  "viewport": {
+    "width": 1600,
+    "height": 740
+  },
+  "shots": [
+    {
+      "file": "ssh-workspace.png",
+      "chapter": 4,
+      "at": 0,
+      "caption": "登录后，主机概况、终端与远程目录同时展开。",
+      "description": "登录后的实际 SSH 布局：概况、终端与 SFTP 同窗；演示主机与数据。",
+      "bounds": {
+        "terminal": {
+          "x": 420,
+          "y": 190,
+          "width": 1180,
+          "height": 231.296875
+        },
+        "files": {
+          "x": 430,
+          "y": 565.296875,
+          "width": 1160,
+          "height": 133.703125
+        },
+        "resources": {
+          "x": 220,
+          "y": 152,
+          "width": 200,
+          "height": 558
+        },
+        "splitter": {
+          "x": 420,
+          "y": 421.296875,
+          "width": 1180,
+          "height": 6
+        }
+      },
+      "focus": {
+        "x": 220,
+        "y": 152,
+        "w": 200,
+        "h": 558
+      },
+      "cursor": {
+        "x": 320,
+        "y": 431
+      }
+    },
+    {
+      "file": "ssh-selected.png",
+      "chapter": 4,
+      "at": 2.5,
+      "caption": "多选远程文件，直接发起下载。",
+      "description": "真实远程列表的多选状态。",
+      "bounds": {
+        "download": {
+          "x": 629,
+          "y": 492.796875,
+          "width": 51.59375,
+          "height": 26.5
+        },
+        "selection": {
+          "x": 430,
+          "y": 595.296875,
+          "width": 1160,
+          "height": 30
+        }
+      },
+      "cursor": {
+        "x": 654.796875,
+        "y": 506.046875
+      }
+    },
+    {
+      "file": "ssh-review.png",
+      "chapter": 4,
+      "at": 4.4,
+      "caption": "核对主机、文件清单与目标目录。",
+      "description": "下载前核对主机、文件清单与目标目录。",
+      "bounds": {
+        "start": {
+          "x": 1023,
+          "y": 564.734375,
+          "width": 102,
+          "height": 34
+        },
+        "dialog": {
+          "x": 450,
+          "y": 124.265625,
+          "width": 700,
+          "height": 491.46875
+        }
+      },
+      "focus": {
+        "x": 450,
+        "y": 124.265625,
+        "w": 700,
+        "h": 491.46875
+      },
+      "cursor": {
+        "x": 1074,
+        "y": 581.734375
+      }
+    },
+    {
+      "file": "ssh-transfer.png",
+      "chapter": 4,
+      "at": 6.7,
+      "caption": "在传输任务面板查看进度，暂停或取消。",
+      "description": "软件原生 SFTP 传输任务中心；模拟传输进度。",
+      "bounds": {
+        "dialog": {
+          "x": 310,
+          "y": 52.953125,
+          "width": 980,
+          "height": 634.09375
+        },
+        "pause": {
+          "x": 569,
+          "y": 250.640625,
+          "width": 123,
+          "height": 32.5
+        },
+        "cancel": {
+          "x": 698,
+          "y": 250.640625,
+          "width": 68,
+          "height": 32.5
+        }
+      },
+      "focus": {
+        "x": 310,
+        "y": 52.953125,
+        "w": 980,
+        "h": 634.09375
+      },
+      "cursor": {
+        "x": 630.5,
+        "y": 266.890625
+      }
+    },
+    {
+      "file": "ssh-complete.png",
+      "chapter": 4,
+      "at": 9.3,
+      "caption": "下载完成，任务结果清晰可见。",
+      "description": "真实传输任务中心显示全部下载完成。",
+      "bounds": {
+        "dialog": {
+          "x": 310,
+          "y": 52.953125,
+          "width": 980,
+          "height": 634.09375
+        }
+      },
+      "focus": {
+        "x": 310,
+        "y": 52.953125,
+        "w": 980,
+        "h": 634.09375
+      }
+    },
+    {
+      "file": "ai-prompt.png",
+      "chapter": 5,
+      "at": 0,
+      "caption": "选中文件，向当前目录的 Agent 提出整理需求。",
+      "description": "真实 Agent 侧栏和当前目录/选中文件上下文。",
+      "bounds": {
+        "send": {
+          "x": 1542,
+          "y": 684.40625,
+          "width": 44,
+          "height": 29
+        },
+        "prompt": {
+          "x": 1055,
+          "y": 564.8125,
+          "width": 531,
+          "height": 61.59375
+        },
+        "panel": {
+          "x": 1040,
+          "y": 0,
+          "width": 560,
+          "height": 740
+        },
+        "folder": {
+          "x": 1084,
+          "y": 85,
+          "width": 500,
+          "height": 17.59375
+        }
+      },
+      "focus": {
+        "x": 1040,
+        "y": 0,
+        "w": 560,
+        "h": 740
+      },
+      "cursor": {
+        "x": 1564,
+        "y": 698.90625
+      }
+    },
+    {
+      "file": "ai-plan.png",
+      "chapter": 5,
+      "at": 2.4,
+      "caption": "先给出计划，等待你核对。",
+      "description": "Agent 根据当前目录给出整理计划，操作默认等待确认。",
+      "bounds": {
+        "panel": {
+          "x": 1040,
+          "y": 0,
+          "width": 560,
+          "height": 740
+        },
+        "messages": {
+          "x": 1041,
+          "y": 193.59375,
+          "width": 559,
+          "height": 286.21875
+        }
+      },
+      "focus": {
+        "x": 1040,
+        "y": 0,
+        "w": 560,
+        "h": 740
+      }
+    },
+    {
+      "file": "ai-confirm.png",
+      "chapter": 5,
+      "at": 5.4,
+      "caption": "核对源路径和目标路径，再确认执行。",
+      "description": "核对源路径和目标路径，然后确认执行。",
+      "bounds": {
+        "execute": {
+          "x": 1072,
+          "y": 357.828125,
+          "width": 70,
+          "height": 32.5
+        },
+        "confirm": {
+          "x": 1072,
+          "y": 330.03125,
+          "width": 13,
+          "height": 13
+        },
+        "plan": {
+          "x": 1058,
+          "y": 87.96875,
+          "width": 525,
+          "height": 316.359375
+        },
+        "panel": {
+          "x": 1040,
+          "y": 0,
+          "width": 560,
+          "height": 740
+        }
+      },
+      "focus": {
+        "x": 1040,
+        "y": 0,
+        "w": 560,
+        "h": 740
+      },
+      "cursor": {
+        "x": 1107,
+        "y": 374.078125
+      }
+    },
+    {
+      "file": "ai-complete.png",
+      "chapter": 5,
+      "at": 8.4,
+      "caption": "操作完成，结果留在同一个对话里。",
+      "description": "同一 Agent 侧栏呈现模拟文件操作的完成反馈。",
+      "bounds": {
+        "panel": {
+          "x": 1040,
+          "y": 0,
+          "width": 560,
+          "height": 740
+        },
+        "messages": {
+          "x": 1041,
+          "y": 193.59375,
+          "width": 559,
+          "height": 286.21875
+        }
+      },
+      "focus": {
+        "x": 1040,
+        "y": 0,
+        "w": 560,
+        "h": 740
+      }
+    },
+    {
+      "file": "skills.png",
+      "chapter": 6,
+      "at": 0,
+      "caption": "选择内置技能，让协作遵循熟悉的方法。",
+      "description": "软件原生技能管理对话框，内置文件整理技能已启用。",
+      "bounds": {
+        "dialog": {
+          "x": 435,
+          "y": 22,
+          "width": 730,
+          "height": 696
+        },
+        "skill": {
+          "x": 1064,
+          "y": 219.5625,
+          "width": 14,
+          "height": 14
+        },
+        "memories": {
+          "x": 510,
+          "y": 168.78125,
+          "width": 28,
+          "height": 44
+        }
+      },
+      "focus": {
+        "x": 435,
+        "y": 22,
+        "w": 730,
+        "h": 696
+      },
+      "cursor": {
+        "x": 524,
+        "y": 190.78125
+      }
+    },
+    {
+      "file": "memory-editor.png",
+      "chapter": 6,
+      "at": 3,
+      "caption": "核对内容，将偏好显式保存到当前目录。",
+      "description": "显式保存目录记忆的实际窗口，展示 .dalizi/agent-memory.json 路径。",
+      "bounds": {
+        "dialog": {
+          "x": 520,
+          "y": 82.34375,
+          "width": 560,
+          "height": 575.3125
+        },
+        "save": {
+          "x": 985,
+          "y": 610.65625,
+          "width": 70,
+          "height": 32
+        },
+        "file": {
+          "x": 559,
+          "y": 298.3125,
+          "width": 482,
+          "height": 18.6875
+        }
+      },
+      "focus": {
+        "x": 520,
+        "y": 82.34375,
+        "w": 560,
+        "h": 575.3125
+      },
+      "cursor": {
+        "x": 1020,
+        "y": 626.65625
+      }
+    },
+    {
+      "file": "memories.png",
+      "chapter": 6,
+      "at": 6,
+      "caption": "项目有自己的记忆，也能随目录一起移动。",
+      "description": "实际目录记忆列表与统计，偏好已保存在模拟存储中。",
+      "bounds": {
+        "dialog": {
+          "x": 435,
+          "y": 22,
+          "width": 730,
+          "height": 696
+        },
+        "memory": {
+          "x": 460,
+          "y": 518.9375,
+          "width": 680,
+          "height": 117.09375
+        }
+      },
+      "focus": {
+        "x": 435,
+        "y": 22,
+        "w": 730,
+        "h": 696
+      }
+    },
+    {
+      "file": "history.png",
+      "chapter": 6,
+      "at": 9,
+      "caption": "保存对话文字，在新标签继续之前的思路。",
+      "description": "真实对话历史窗口：保存对话文字并可在新标签继续。",
+      "bounds": {
+        "dialog": {
+          "x": 420,
+          "y": 41.84375,
+          "width": 760,
+          "height": 656.296875
+        },
+        "save": {
+          "x": 462,
+          "y": 78.4375,
+          "width": 52,
+          "height": 35.5
+        },
+        "continue": {
+          "x": 445,
+          "y": 574.5625,
+          "width": 104,
+          "height": 35.5
+        }
+      },
+      "focus": {
+        "x": 420,
+        "y": 41.84375,
+        "w": 760,
+        "h": 656.296875
+      },
+      "cursor": {
+        "x": 497,
+        "y": 592.3125
+      }
+    }
+  ]
+}

@@ -1,0 +1,137 @@
+{
+  "date": "2026-11-16",
+  "platform": {
+    "os": "Windows 11 x64",
+    "edition": "CoreCountrySpecific",
+    "build": "26300.9974",
+    "displayVersion": "26H2",
+    "webview2": "157.0.4341.46",
+    "cleanGuest": false
+  },
+  "candidate": {
+    "archive": "dalizi-files-0.5.1-windows-x64-harness-m5-rc2.zip",
+    "bytes": 54909458,
+    "sha256": "ed39e366891ebe2c0bc25f4bf5a24e1cbc5fef4b0a735789833b068cb992a7f8",
+    "exeSha256": "9ae61829247ce273829f3c930066701699b670fda206507513140d59e30b098e",
+    "component": {
+      "id": "harness-0.2.2-rc.3-node24.22.1-win-x64-r1",
+      "manifestSha256": "d053c5d93718210af7f41cd242e8233bab8a88849304316a0186f3c6adba711c",
+      "zipSha256": "a8840fe2b03028ba8bf1522fd525d0fc46244898758c941ad7a944260deca3d0"
+    },
+    "sourceHead": "de2d71ad09d0ccaaa6ca5bff23ae12b4bf959dfc",
+    "dirty": true
+  },
+  "archiveCompatibility": {
+    "oldSource": "v0.5.1 / 969524f867399a6c6b1b8d3026db0d150a5d1f1b",
+    "scope": "Tag and candidate release builds with isolated test identifiers, real Tauri and WebView2. Synthetic folders only; no cloud model used.",
+    "nativeRun": {
+      "date": "2026-11-16",
+      "mode": "isolated",
+      "oldExeSha256": "12253f2e940c963d526da892ee4290940f1fc4e267aede83a1696ca8c1c1e8d4",
+      "newExeSha256": "2c2b71b125dca90ad1770f951691988b45e3979aeb87349482eb0f7758340138",
+      "passed": [
+        "old rejected early inline steps",
+        "original chat and memory at relocated path",
+        "portable preferences across versions",
+        "new receipts and text survive reopens",
+        "explicit early archive conversion preserves original fields and revision",
+        "old reads old and new transcripts",
+        "old edits visible after return; stale write rejected",
+        "damaged receipts allow transcript reading but prevent replacement",
+        "deletion removed associated receipts"
+      ]
+    },
+    "oldSourceCommit": "de2d71ad09d0ccaaa6ca5bff23ae12b4bf959dfc",
+    "officialInput": {
+      "zipSha256": "bff66169a335bfd2b3e916687f48b0ea7c8ca566a6430cdecb6deaf37eb602a2",
+      "exeSha256": "a8f5d18928eb0b6802a07a5d3f31ed88d847c6f5485c881ed40e6c334d294ac5",
+      "buildInfoCommit": "de2d71ad09d0ccaaa6ca5bff23ae12b4bf959dfc",
+      "dirty": false,
+      "source": "https://github.com/biglizi775/DaliziShell-AI/releases/download/v0.5.1/dalizi-files-0.5.1-windows-x64.zip",
+      "executedLocally": false
+    }
+  },
+  "runtime": {
+    "optimizedTestHostSha256": "0f6e9d4709121aa82624fbfef75edfb5da94d9b4fd843d532b18811fd1eac047",
+    "measurements": {
+      "component": "harness-0.2.2-rc.3-node24.22.1-win-x64-r1",
+      "packedBytes": 42884685,
+      "startupMs": 874,
+      "firstRequestMs": 4766,
+      "firstReplyWallMs": 7230,
+      "fixtureHoldMs": 815,
+      "hostPeakBytes": 119623680,
+      "nodePeakBytes": 137932800,
+      "nodeAliveAfterExit": 0,
+      "environment": {
+        "readOnlyInstall": true,
+        "guestModelAnswered": true,
+        "closedEndpointFailedMs": 21963
+      },
+      "events": [
+        {
+          "id": 1,
+          "stage": "component-check",
+          "outcome": "failed",
+          "elapsedMs": 0
+        },
+        {
+          "id": 2,
+          "stage": "component-check",
+          "outcome": "failed",
+          "elapsedMs": 301
+        },
+        {
+          "id": 3,
+          "stage": "component-check",
+          "outcome": "ok",
+          "elapsedMs": 410
+        },
+        {
+          "id": 4,
+          "stage": "component-check",
+          "outcome": "ok",
+          "elapsedMs": 379
+        },
+        {
+          "id": 5,
+          "stage": "prepare-runtime",
+          "outcome": "failed",
+          "elapsedMs": 297
+        },
+        {
+          "id": 6,
+          "stage": "task",
+          "outcome": "failed",
+          "elapsedMs": 382
+        },
+        {
+          "id": 7,
+          "stage": "prepare-runtime",
+          "outcome": "ok",
+          "elapsedMs": 3356
+        },
+        {
+          "id": 8,
+          "stage": "task",
+          "outcome": "answered",
+          "elapsedMs": 6997
+        }
+      ]
+    }
+  },
+  "regressionCounts": {
+    "rustMainPassed": 144,
+    "rustMainIgnored": 2,
+    "frontendPassed": 273
+  },
+  "followups": {
+    "realOpenSshServers": "harness-openssh-windows11.json",
+    "note": "The pending list below reflects the original RC2 run. The follow-up covers deployed Linux OpenSSH/SFTP; authenticated cloud model and clean Windows installation/rollback are still pending."
+  },
+  "pending": [
+    "Unmodified public v0.5.1 and packaged RC2 on a disposable guest (CI gate added, not run remotely)",
+    "Clean Windows 10 and Windows 11, ordinary user and whole-machine offline",
+    "Authenticated external model and a deployed SFTP server"
+  ]
+}

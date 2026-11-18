@@ -1,0 +1,100 @@
+{
+  "scope": "Local early-Windows terminal compatibility engineering on Windows 11 x64",
+  "source": {
+    "archive": "dalizi-files-0.5.1-source-df5298a1c5eedea2.zip",
+    "sha256": "df5298a1c5eedea2196ce2790416789fd04be165475896a7c731224a26737f7f",
+    "files": 629
+  },
+  "winpty": {
+    "upstream": "https://github.com/rprichard/winpty/releases/tag/0.4.3",
+    "asset": "winpty-0.4.3-msvc2015.zip",
+    "sha256": "35a48ece2ff4acdcbc8299d4920de53eb86b1fb41e64d2fe5ae7898931bcee89"
+  },
+  "packages": {
+    "x64": {
+      "archive": "dalizi-files-0.5.1-windows-x64-preview-legacy-terminal-f5c710c01dfd.zip",
+      "packageSha256": "9f5ff609f875e06e069874e7135bd69d06acfb9f54a3f394e5de69d3c2a02069",
+      "exeSha256": "f5c710c01dfdc49395e71a5bf7b9ebbaeeab2976126bfc15c0aa0e32244b67c1",
+      "bytes": 56052257,
+      "verifiedPayloadFiles": 752,
+      "componentSha256": "576a0c64da03d892ea8ac94b7bfeda905dacd2ed7fb5f8d310fe75c46e069dc2",
+      "terminalFiles": {
+        "terminal/LICENSE.txt": "c39e428064b4f3e4fe81a975bf0fd3b845922b431bc4d9a7ffc8bfb091981836",
+        "terminal/winpty-agent.exe": "9add1a61155ec47cf6f347faf776b746eebbde1dc9360d81b8a909da34650642",
+        "terminal/winpty.dll": "936f611c2129600d35ab7aad45546a837f4f3a9ca7f673e5d66b48c313b9cd75"
+      },
+      "checker": {
+        "installationType": "Client",
+        "packageArchitecture": "x64",
+        "architecture": "x64",
+        "winptyPresent": true,
+        "webView2": "157.0.4341.46",
+        "productType": 1,
+        "windows": "Microsoft Windows 11 家庭版 中文版",
+        "result": "prerequisites-detected",
+        "build": 26300
+      },
+      "releaseEntryPoint": {
+        "architecture": "x86_64",
+        "debug": false,
+        "format": "dalizi-files/windows-build-info/v1",
+        "identifier": "com.dalizi.files",
+        "version": "0.5.1",
+        "winpty": "0.4.3"
+      },
+      "desktopFixture": "search-drop-smoke-AispEO",
+      "desktopFixtureExeSha256": "058ba0876359e4d89d2c7e50e3a9de6f0cd27f53530b75d62658abd706847427"
+    },
+    "x86": {
+      "archive": "dalizi-files-0.5.1-windows-x86-preview-legacy-terminal-ea205f454b63.zip",
+      "packageSha256": "7ece6f09ecfb3d3c976782a6c65cd75a86c44cafea3b6c20b90335eef5d49dce",
+      "exeSha256": "ea205f454b638485a1ec091f5a8289234bc18bc7907f6876e62bd99fc9306878",
+      "bytes": 11943915,
+      "verifiedPayloadFiles": 747,
+      "componentSha256": null,
+      "terminalFiles": {
+        "terminal/LICENSE.txt": "c39e428064b4f3e4fe81a975bf0fd3b845922b431bc4d9a7ffc8bfb091981836",
+        "terminal/winpty-agent.exe": "ee44e845e0a673bec76f977a86fe03792a086fcc2e07a4f91b97813a9a7f7703",
+        "terminal/winpty.dll": "16df8e023ce3fc64d7244b1d202001aeb952f597e2355a24bcb6f781b140de10"
+      },
+      "checker": {
+        "installationType": "Client",
+        "packageArchitecture": "x86",
+        "architecture": "x64",
+        "winptyPresent": true,
+        "webView2": "157.0.4341.46",
+        "productType": 1,
+        "windows": "Microsoft Windows 11 家庭版 中文版",
+        "result": "wow64-needs-test",
+        "build": 26300
+      },
+      "releaseEntryPoint": {
+        "architecture": "x86",
+        "debug": false,
+        "format": "dalizi-files/windows-build-info/v1",
+        "identifier": "com.dalizi.files",
+        "version": "0.5.1",
+        "winpty": "0.4.3"
+      },
+      "desktopFixture": "search-drop-smoke-n0HjfI",
+      "desktopFixtureExeSha256": "461ee5367246dc98fa36b3e2c8cad318c5a08cf60ac0cee55540bb5da1a25f2d"
+    }
+  },
+  "tests": {
+    "javascript": 317,
+    "python": 15,
+    "rustPassedPerArchitecture": 213,
+    "rustIgnoredPerArchitecture": 2,
+    "additionalOpenSshFixturePerArchitecture": 1
+  },
+  "results": [
+    "The two release-mode desktop fixtures used separate test application identifiers. Missing helper returned an actionable error without starting a child. Two real PowerShell tabs used distinct Unicode working directories and a helper each. The active shell observed a 91x27 resize, stopped Start-Sleep with Ctrl+C and accepted the next command. The UI received exit code 23. Killing the desktop released the remaining helper and shell.",
+    "Both local Windows OpenSSH clients used the desktop terminal selection path with WinPTY. Loopback authentication failure/relogin, metadata, resize, foreground interrupt, remote disconnect, force disconnect and reconnect passed.",
+    "The original terminal smoke reproduction returned a false failure from TerminateProcess and failed to notice exit 259. The corrected release-mode smoke executable ran alongside the exact packaged helpers under a Unicode extraction path. Both automatic native ConPTY and selected WinPTY verified two shells, successful force termination, and exit code 259 on both architectures.",
+    "Each production executable ran its read-only build-info entry point. The extracted prerequisite checker recognized matching helpers and detected a missing agent. Every ZIP payload digest, architecture and upstream WinPTY file was checked."
+  ],
+  "limits": [
+    "Local machine was Windows 11 x64; x86 ran under WOW64. The compatibility backend was explicitly selected on this machine. Automatic use on a system genuinely lacking ConPTY and end-to-end compatibility on early Windows 10, native x86, Arm and Windows Server still require OS acceptance.",
+    "GUI interaction ran against a release-mode host with an isolated identifier. Package entry points, hashes, helper binaries and offline checker were verified independently."
+  ]
+}

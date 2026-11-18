@@ -1,0 +1,61 @@
+{
+  "scope": "F03 local file transfer recovery after shutdown or process termination",
+  "machine": "Windows 11 x64 26H2, build 26300.9974",
+  "source": {
+    "archive": "dalizi-files-0.5.1-source-7bc096610e0c101f.zip",
+    "sha256": "7bc096610e0c101f21ad933fc62a08aabfe1031f2b915dca65e61c4377b6aab3",
+    "filesVerifiedBeforeBuild": 590
+  },
+  "preview": {
+    "archive": "dalizi-files-0.5.1-windows-x64-preview-local-task-recovery-2112c3f7fca6.zip",
+    "sha256": "b171a921f63961614c59e42eb5ac53d39ef5bc5756ef588b0f0c36adbc55b1b4",
+    "exeSha256": "2112c3f7fca698f4eb2864506e81567761b4dcc67acb91625bbffe1a11114dad",
+    "componentSha256": "576a0c64da03d892ea8ac94b7bfeda905dacd2ed7fb5f8d310fe75c46e069dc2",
+    "perFileHashesVerified": 748,
+    "bytes": 55272677
+  },
+  "tests": {
+    "javascript": 311,
+    "python": 11,
+    "rustMain": 174,
+    "rustAuxiliary": 23,
+    "rustHarnessClient": 12,
+    "rustMainIgnored": 2,
+    "webviewDesktop": "tools/search_drop_smoke.cjs with tools/local_task_recovery_smoke.cjs, isolated debug identifier and isolated shared profile",
+    "browser": [
+      "tools/ui_smoke.cjs",
+      "tools/ui_smoke.cjs --panes",
+      "tools/ui_smoke.cjs --transfers"
+    ],
+    "fixture": {
+      "directory": "src-tauri/target/search-drop-smoke-HC2u0v",
+      "exeSha256": "59d2c1695cef0e443de5f2cdc2bc11c8d8f14e746b29741e3597a89818bff21f",
+      "screenshot": "native-local-recovery.png",
+      "screenshotSha256": "038a2358cbe80ffdbab273f9a4c398a06182355471a481fd2216253493fbff03"
+    }
+  },
+  "results": [
+    "A real Shell copy completed before the fixture paused the final receipt write and killed the desktop process. The next process showed one complete, one uncertain, and two never-dispatched entries. Nothing automatically ran.",
+    "A second kill occurred after a selective retry atomically claimed one earlier item but before its Shell dispatch. Only the new batch could recover that item after reopening.",
+    "Replacing either the source file or the destination directory at the recorded path stopped the renewed review. Restoration of the original directory allowed the approved pending file to complete. The substituted source was never copied.",
+    "A stopped batch survived a normal Windows main-window close and reopened with one complete and one pending entry. Manual retry produced precisely two destination files. Explicit history removal persisted across the close.",
+    "A separate real Edge IndexedDB transaction check issued two concurrent retries of the same source record. Exactly one committed, and the other left no child batch. Retention kept forty settled records and an older uncertain record.",
+    "JavaScript error-injection tests covered a failed claim write before dispatch and a failed receipt write after dispatch. Native Rust tests checked volume/file identity, destination changes, same-path source replacement and ordinary source size/time changes."
+  ],
+  "files": {
+    "afterTwoKills": {
+      "done.txt": "65e0b65a29adc901f225051d36fc838baf9d851b1ac2d130f69f54f84a1a2bff",
+      "lost-receipt.txt": "bb557a36949b3bbfdadec65983c79a95ad85c59a40461728eace4a9a93ae335f",
+      "pending.txt": "b83549bed27a69df49818eb7ad1825e04c3cbd8dbd13550916e67b770589793c"
+    },
+    "afterNormalClose": {
+      "done.txt": "65e0b65a29adc901f225051d36fc838baf9d851b1ac2d130f69f54f84a1a2bff",
+      "lost-receipt.txt": "bb557a36949b3bbfdadec65983c79a95ad85c59a40461728eace4a9a93ae335f"
+    }
+  },
+  "limits": [
+    "Recovery uses the original workspace WebView2 profile on this device. Clearing that profile removes local history.",
+    "Regular source files are checked by identity, size and last-write time. A directory is checked by identity; its descendant contents can change before the Shell operation. Filesystems that cannot supply identity require fresh selection after restart.",
+    "Process termination was exercised on a development machine. Physical power loss, manual dragging/cancelling in Explorer, clean Windows installation and production provider acceptance are separate checks."
+  ]
+}

@@ -14,9 +14,7 @@ use std::{
     },
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
-use tauri::{Manager, WebviewUrl};
-use webview2_com::ExecuteScriptCompletedHandler;
-use windows_core::HSTRING;
+use tauri::{Listener, Manager, WebviewUrl};
 
 const DOWNLOAD_NAME: &str = "dalizi-native-download.txt";
 const DOWNLOAD_BODY: &str = "Dalizi isolated native WebView2 download fixture.\n";
@@ -53,7 +51,9 @@ impl FixtureServer {
                     continue;
                 }
                 let cached = request.starts_with("GET /cached ");
-                let (body, cache) = if cached {
+                let (body, cache) = if request.starts_with("POST /authorize ") {
+                    ("<title>posted-login</title><script>opener.postMessage('signed-in', location.origin)</script>", "no-store")
+                } else if cached {
                     hits.fetch_add(1, Ordering::SeqCst);
                     ("cached native smoke response", "public, max-age=3600")
                 } else {
@@ -76,54 +76,9 @@ impl Drop for FixtureServer {
     }
 }
 
-async fn script(view: tauri::Webview, source: &str) -> Result<serde_json::Value, String> {
-    let source = source.to_string();
-    let (sender, receiver) = tokio::sync::oneshot::channel();
-    let reply = Arc::new(Mutex::new(Some(sender)));
-    view.with_webview(move |native| unsafe {
-        let done = reply.clone();
-        let callback = ExecuteScriptCompletedHandler::create(Box::new(move |result, json| {
-            let result = result
-                .map_err(|error| error.to_string())
-                .and_then(|_| serde_json::from_str(&json).map_err(|error| error.to_string()));
-            if let Some(sender) = done.lock().unwrap().take() {
-                let _ = sender.send(result);
-            }
-            Ok(())
-        }));
-        let result = native
-            .controller()
-            .CoreWebView2()
-            .and_then(|view| view.ExecuteScript(&HSTRING::from(source), &callback));
-        if let Err(error) = result {
-            if let Some(sender) = reply.lock().unwrap().take() {
-                let _ = sender.send(Err(error.to_string()));
-            }
-        }
-    })
-    .map_err(|error| error.to_string())?;
-    tokio::time::timeout(Duration::from_secs(10), receiver)
-        .await
-        .map_err(|_| "fixture script timed out")?
-        .map_err(|_| "fixture script interrupted")?
-}
-
-async fn wait_script(
-    view: &tauri::Webview,
-    source: &str,
-    expected: serde_json::Value,
-) -> Result<(), String> {
-    for _ in 0..100 {
-        if script(view.clone(), source).await? == expected {
-            return Ok(());
-        }
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
-    Err(format!(
-        "Fixture assertion timed out: {source}; actual {}",
-        script(view.clone(), source).await?
-    ))
-}
+#[path="../native_webview_test.rs"]
+mod native_webview_test;
+use native_webview_test::{script,wait_script};
 
 fn browser_view(app: &tauri::AppHandle, key: &str) -> tauri::Webview {
     app.state::<browser::BrowserState>()
@@ -418,10 +373,18 @@ async fn settings_check(
     if server.cache_hits.load(Ordering::SeqCst) != 1 {
         return Err("Fixture response was not cached".into());
     }
-    browser::browser_clear_data(app.state(), "settings-first".into(), vec!["cache".into()]).await?;
-    fetch_cached(&view).await?;
-    if server.cache_hits.load(Ordering::SeqCst) != 2 {
-        return Err("Native disk cache was not cleared".into());
+    let runtime = browser::browser_runtime_info(app.state(), "settings-first".into()).await?;
+    let clears_cache = !runtime.version.starts_with("109.");
+    let cache_clear =
+        browser::browser_clear_data(app.state(), "settings-first".into(), vec!["cache".into()]).await;
+    if clears_cache {
+        cache_clear.map_err(|error| format!("Clear disk cache: {error}"))?;
+        fetch_cached(&view).await?;
+        if server.cache_hits.load(Ordering::SeqCst) != 2 {
+            return Err("Native disk cache was not cleared".into());
+        }
+    } else if !cache_clear.is_err_and(|error| error.contains(&runtime.version)) {
+        return Err("Old WebView2 accepted a disk cache clear that stalls".into());
     }
     if script(view.clone(), "document.cookie.includes('browserSmoke=1') && localStorage.getItem('browserOnly')==='present'").await? != serde_json::json!(true) {
         return Err("Cache-only clear removed cookies or localStorage".into());
@@ -431,7 +394,7 @@ async fn settings_check(
         "settings-second".into(),
         vec!["cookies".into()],
     )
-    .await?;
+    .await.map_err(|error| format!("Clear site data: {error}"))?;
     if script(
         view.clone(),
         "document.cookie==='' && localStorage.getItem('browserOnly')===null",
@@ -456,12 +419,12 @@ async fn settings_check(
     {
         return Err("Unsupported data clear kind accepted".into());
     }
-    browser::browser_clear_data(
-        app.state(),
-        "settings-new".into(),
-        vec!["cache".into(), "cookies".into()],
-    )
-    .await?;
+    let mut kinds = vec!["cookies".to_string()];
+    if clears_cache {
+        kinds.insert(0, "cache".into());
+    }
+    browser::browser_clear_data(app.state(), "settings-new".into(), kinds)
+        .await.map_err(|error| format!("Clear cache and site data: {error}"))?;
     // Default download path and automatic theme must also reach native state.
     browser::browser_settings_apply(
         app.clone(),
@@ -556,12 +519,102 @@ async fn downloads_check(
     Ok(())
 }
 
+async fn popup_check(app: &tauri::AppHandle, server: &FixtureServer) -> Result<(), String> {
+    tab(app, "login", &server.url, None).await?;
+    let parent = browser_view(app, "login");
+    wait_script(&parent, "document.title", serde_json::json!("script-ran")).await?;
+    let main = app.get_webview("main").unwrap();
+    let (tx, mut requests) = tokio::sync::mpsc::unbounded_channel();
+    let listener = main.listen("browser-page", move |event| {
+        let payload: serde_json::Value = serde_json::from_str(event.payload()).unwrap();
+        if payload["phase"] == "new-window" {
+            let _ = tx.send(payload);
+        }
+    });
+    let (closed, mut closes) = tokio::sync::mpsc::unbounded_channel();
+    let close_listener = main.listen("browser-popup-close", move |event| {
+        let _ = closed.send(serde_json::from_str::<String>(event.payload()).unwrap());
+    });
+    for (scenario, source, title) in [
+        ("link", "let a=document.createElement('a');a.href='/linked';a.target='_blank';a.click()", "script-ran"),
+        ("delayed URL", "window.loginPopup=window.open('','device-test');setTimeout(()=>loginPopup.location.href='/device',50)", "script-ran"),
+        ("form POST", "onmessage=e=>document.title=e.data;let f=document.createElement('form');f.method='POST';f.target='_blank';f.rel='opener';f.action='/authorize';document.body.append(f);f.submit()", "posted-login"),
+    ] {
+        parent.eval(source).map_err(|error| error.to_string())?;
+        let request = tokio::time::timeout(Duration::from_secs(8), requests.recv()).await
+            .map_err(|_| format!("No native popup request for {scenario}"))?.ok_or("Popup listener closed")?;
+        let key = request["popupKey"].as_str().ok_or("Popup has no native target")?;
+        tab(app, key, request["url"].as_str().unwrap(), None).await?;
+        let popup = browser_view(app, key);
+        wait_script(&popup, "document.title", serde_json::json!(title)).await?;
+        if source.contains("device-test") {
+            wait_script(&popup, "location.pathname", serde_json::json!("/device")).await?;
+        }
+        if title == "posted-login" {
+            wait_script(&parent, "document.title", serde_json::json!("signed-in")).await?;
+            popup.eval("window.close()").map_err(|error| error.to_string())?;
+            let closed = tokio::time::timeout(Duration::from_secs(5), closes.recv()).await.map_err(|_| "No popup close event")?;
+            if closed.as_deref() != Some(key) { return Err("Wrong popup closed".into()); }
+        }
+        browser::browser_close(app.state(), key.into())?;
+    }
+    parent
+        .eval("window.open('/blocked','_blank')")
+        .map_err(|error| error.to_string())?;
+    let blocked = tokio::time::timeout(Duration::from_secs(5), requests.recv())
+        .await
+        .map_err(|_| "Missing popup to dismiss")?
+        .ok_or("Popup listener closed")?;
+    let blocked_key = blocked["popupKey"]
+        .as_str()
+        .ok_or("Missing key to dismiss")?;
+    browser::browser_popup_dismiss(app.clone(), blocked_key.into())?;
+    if tab(app, blocked_key, &server.url, None).await.is_ok() {
+        return Err("Dismissed popup could still be opened".into());
+    }
+    parent
+        .eval("location.href='microsoft-edge:'+location.origin+'/wrapped'")
+        .map_err(|error| error.to_string())?;
+    let wrapped = tokio::time::timeout(Duration::from_secs(5), requests.recv())
+        .await
+        .map_err(|_| "Explicit Edge link was not routed back")?
+        .ok_or("Popup listener closed")?;
+    if wrapped["url"] != format!("{}wrapped", server.url) || !wrapped["popupKey"].is_null() {
+        return Err("Explicit Edge link lost its web destination".into());
+    }
+    main.unlisten(listener);
+    main.unlisten(close_listener);
+    browser::browser_close(app.state(), "login".into())?;
+    println!("Native popup tests passed: target=_blank, delayed blank-window navigation, POST, postMessage, window.close.");
+    Ok(())
+}
+
 async fn check(app: &tauri::AppHandle, fixture: &std::path::Path) -> Result<(), String> {
     let server = FixtureServer::start();
+    if std::env::args().any(|arg| arg == "--popups-only") {
+        return popup_check(app, &server).await;
+    }
     layout_check(app, &server).await?;
-    settings_check(app, fixture, &server).await?;
-    downloads_check(app, fixture, &server).await?;
+    settings_check(app, fixture, &server).await.map_err(|error| format!("Settings check: {error}"))?;
+    downloads_check(app, fixture, &server).await.map_err(|error| format!("Downloads check: {error}"))?;
+    println!("Native settings, data clearing and downloads passed.");
+    popup_check(app, &server).await?;
     tab(app, "first", "about:blank", None).await?;
+    let info = browser::browser_runtime_info(app.state(), "first".into()).await?;
+    println!("WebView2 {}, extension support: {}", info.version, info.extensions_supported);
+    if let Ok(expected) = std::env::var("DALIZI_EXPECT_WEBVIEW2") {
+        if info.version != expected { return Err(format!("Expected WebView2 {expected}, got {}",info.version)); }
+    }
+    if std::env::args().any(|arg| arg == "--without-extensions") {
+        if info.extensions_supported { return Err("Expected a runtime without extension management".into()); }
+        let error = browser::browser_extensions_list(app.state(), "first".into()).await.unwrap_err();
+        if !error.contains("Extension APIs unavailable") { return Err(error); }
+        browser::browser_navigate(app.state(), "first".into(), server.url.clone())?;
+        wait_script(&browser_view(app, "first"), "document.title", serde_json::json!("script-ran")).await?;
+        println!("Extension management unavailable; navigation in the same tab passed.");
+        return Ok(());
+    }
+    if !info.extensions_supported { return Err("Expected a runtime with extension support".into()); }
     // WebView2 supplies built-in PDF/clipboard extensions even in a new profile.
     let baseline = browser::browser_extensions_list(app.state(), "first".into()).await?;
     let installed = browser::browser_extension_install(
@@ -658,7 +711,7 @@ fn main() {
                 .unwrap_or_else(|_| Err("Native browser smoke timed out".into()));
             browser::shutdown(&app.state());
             match result {
-                Ok(()) => { println!("Native browser smoke passed: settings before first navigation, existing/new tab settings readback, manual zoom preserved on new-tab creation, invalid-setting rejection, native reload with JavaScript disabled, actual cache eviction, scoped cookie/site-data clear, main storage isolation, default download reset; localhost file download to configured fixture directory, per-tab native download panel open/close/readback; extension install/list/shared profile/disable/new-tab persistence/enable/remove/no auto-reinstall."); app.exit(0); },
+                Ok(()) => { println!("Native browser smoke passed."); app.exit(0); },
                 Err(error) => { eprintln!("Native browser smoke FAILED: {error}"); app.exit(1); }
             }
         });

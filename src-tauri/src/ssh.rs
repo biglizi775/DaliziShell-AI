@@ -971,14 +971,13 @@ mod tests {
                 "PreferredAuthentications=publickey".into(),
             ];
             command.get_argv_mut().splice(1..1, overrides);
-            let pair = portable_pty::native_pty_system()
-                .openpty(portable_pty::PtySize {
-                    rows: 3,
-                    cols: 20,
-                    pixel_width: 0,
-                    pixel_height: 0,
-                })
-                .unwrap();
+            let pair = crate::windows_runtime::open_pty(portable_pty::PtySize {
+                rows: 3,
+                cols: 20,
+                pixel_width: 0,
+                pixel_height: 0,
+            })
+            .unwrap();
             let portable_pty::PtyPair { master, slave } = pair;
             let mut reader = master.try_clone_reader().unwrap();
             let writer = master.take_writer().unwrap();

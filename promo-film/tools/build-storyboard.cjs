@@ -1,0 +1,8 @@
+const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
+const root=path.resolve(__dirname,'../..'),dir=path.join(root,'promo-film/dist/actual-ui'),p=path.join(dir,'local-manifest.json'),m=JSON.parse(fs.readFileSync(p,'utf8').replace(/^\uFEFF/,''));
+const entries=[['local-workspace',1,0,'多个目录标签，在同一个窗口里保持工作脉络。','tabs'],['local-terminal',1,4,'PowerShell 在当前目录打开，无需离开工作区。','terminal'],['local-selected',1,8,'回到文件列表，接着完成手上的工作。','files'],['local-dual',2,0,'打开双面板，同时查看来源与去向。','right'],['local-dual-selected',2,3,'多选要交付的文件。','left'],['local-copy-dialog',2,6,'核对目标，再确认复制。','dialog'],['local-copy-complete',2,9,'文件到达目标目录。','right'],['local-search',3,0,'使用真实搜索框与文件名条件。','results'],['local-pdf',3,3,'在 PDF 预览面板直接阅读。','preview'],['local-sheet',3,6,'查看工作表数据。','preview'],['local-word',3,9,'预览 Word 正文。','preview']];
+m.shots=entries.map(([name,chapter,at,caption,target])=>{const f=m.frames.find(x=>x.name===name),b=f.targets[target];return {file:name+'.png',chapter,at,caption,...(b?{focus:{x:b.x,y:b.y,w:b.width,h:b.height},cursor:{x:b.cx,y:b.cy}}:{})}});
+fs.writeFileSync(p,JSON.stringify(m,null,2));
+const ui=path.join(root,'ui'),sources=fs.readdirSync(ui).filter(f=>/\.(html|css|js)$/.test(f)).map(file=>({file:'ui/'+file,sha256:crypto.createHash('sha256').update(fs.readFileSync(path.join(ui,file))).digest('hex')}));
+fs.writeFileSync(path.join(dir,'provenance.json'),JSON.stringify({visualStyle:'studio',theme:'light',method:'Original application DOM/CSS/JS rendered by Edge using deterministic backend demo data. No imported screenshots or artwork.',captureViewport:[1600,740],deviceScaleFactor:2,sources},null,2));
+console.log('Built original-UI storyboard and recorded',sources.length,'source hashes.');

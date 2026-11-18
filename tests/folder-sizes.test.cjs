@@ -56,7 +56,7 @@ test('listing renders indexed sizes immediately without lookup or repeat scan', 
   const h = harness(async (cmd) => cmd === 'list_dir' ? [folder('indexed', 8192)] : undefined);
   await h.run("navigate('C:\\\\work')");
   assert.equal(h.snapshots[0][0].dirSize, 8192);
-  assert.equal(h.calls.some((c) => c.cmd === 'sizes_lookup'), false);
+  assert.equal(h.calls.some((c) => c.cmd === 'folder_size_details'), false);
   assert.equal(h.calls.some((c) => c.cmd === 'dir_sizes' && c.args.paths.length), false);
   assert.equal(h.calls.some((c) => c.cmd === 'dir_sizes' && !c.args.paths.length), true);
 });
@@ -80,6 +80,30 @@ test('only missing ordinary directories are measured and unknown labels are hone
   assert.equal(h.run('folderSizeLabel(state.entries[1])'), '—');
 });
 
+test('an explicitly empty native reading discards the session size for a recreated path', () => {
+  const h = harness();
+  h.prepare([folder('again', 89)]);
+  h.prepare([folder('again', null, { dirSizeInfo: null })]);
+  assert.equal(h.state.entries[0].dirSize, null);
+});
+
+test('a late lookup cannot replace a newer live reading, even within one frame', async () => {
+  const pending = deferred();
+  const h = harness(() => pending.promise);
+  h.prepare([folder('folder', 20)]);
+  const lookup = h.run('refreshIndexedSizes()');
+  h.run("queueDirSize(1, 'C:\\\\work\\\\folder', 20, {size:20, serial:4, basis:'measured', verifiedAt:1000})");
+  pending.resolve([{ size: 19, serial: 3, basis: 'aggregate' }]);
+  await lookup;
+  h.frames.shift()();
+  assert.equal(h.state.entries[0].dirSizeInfo.serial, 4);
+  h.run("queueDirSize(1, 'C:\\\\work\\\\folder', 19, {size:19, serial:3, basis:'aggregate'})");
+  h.frames.shift()();
+  assert.equal(h.state.entries[0].dirSize, 20);
+  h.prepare([folder('folder', 19, { dirSizeInfo: { size: 19, serial: 3 } })]);
+  assert.equal(h.state.entries[0].dirSizeInfo.serial, 4);
+});
+
 test('hard refresh keeps old numbers visible and requests a forced background scan', async () => {
   const h = harness(async (cmd) => cmd === 'list_dir' ? [folder('cached')] : undefined);
   h.prepare([folder('cached', 4096)]);
@@ -92,12 +116,12 @@ test('hard refresh keeps old numbers visible and requests a forced background sc
 
 test('stale index lookup and old generation events cannot overwrite current entries', async () => {
   const pending = deferred();
-  const h = harness((cmd) => cmd === 'sizes_lookup' ? pending.promise : Promise.resolve());
+  const h = harness((cmd) => cmd === 'folder_size_details' ? pending.promise : Promise.resolve());
   h.prepare([folder('cached', 8)]);
   const lookup = h.run('refreshIndexedSizes()');
   h.state.navToken++;
   h.state.gen++;
-  pending.resolve([999]);
+  pending.resolve([{ size: 999, serial: 1 }]);
   await lookup;
   h.run("queueDirSize(state.gen - 1, 'C:\\\\work\\\\cached', 999)");
   assert.equal(h.frames.length, 0);

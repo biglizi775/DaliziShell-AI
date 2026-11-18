@@ -1,0 +1,74 @@
+[
+  {
+    "package": "alloc-stdlib-0.3.0",
+    "name": "LICENSE",
+    "url": "https://raw.githubusercontent.com/dropbox/rust-alloc-no-stdlib/0a81fd6928ea3b33c8cd484aa4575d50ffb98012/LICENSE",
+    "sha256": "c0c56f26d9c051cac4d200c34c84e7ae9aaa853e01a982a1df08b09931e518ae"
+  },
+  {
+    "package": "delegate-0.13.5",
+    "name": "LICENSE-APACHE",
+    "url": "https://raw.githubusercontent.com/kobzol/rust-delegate/b129d4cbf4cc499eff7743365dcb0fe5d8d2e820/LICENSE-APACHE",
+    "sha256": "b40930bbcf80744c86c46a12bc9da056641d722716c378f5659b9e555ef833e1"
+  },
+  {
+    "package": "delegate-0.13.5",
+    "name": "LICENSE-MIT",
+    "url": "https://raw.githubusercontent.com/kobzol/rust-delegate/b129d4cbf4cc499eff7743365dcb0fe5d8d2e820/LICENSE-MIT",
+    "sha256": "be7ee8aa49dc586023669a0c600a0536fce6a9f61264a53a67cdd842564ed899"
+  },
+  {
+    "package": "pageant-0.2.5",
+    "name": "LICENSE.txt",
+    "url": "https://raw.githubusercontent.com/warp-tech/russh/183a22e8f8f490fa09b6eb7bd044ef99d8c4414f/LICENSE.txt",
+    "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+  },
+  {
+    "package": "russh-0.63.3",
+    "name": "LICENSE.txt",
+    "url": "https://raw.githubusercontent.com/warp-tech/russh/f33baf439be8c59c49cb6cb2ae5976c579495bdf/LICENSE.txt",
+    "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+  },
+  {
+    "package": "russh-cryptovec-0.62.0",
+    "name": "LICENSE.txt",
+    "url": "https://raw.githubusercontent.com/warp-tech/russh/907c732562c5732aad6c140dba958eafddc41ba0/LICENSE.txt",
+    "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+  },
+  {
+    "package": "russh-util-0.52.0",
+    "name": "LICENSE-2.0.txt",
+    "url": "https://raw.githubusercontent.com/warp-tech/russh/3d09c20c52a542ffa327723d3a44cb1edd9b0ca4/LICENSE-2.0.txt",
+    "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+  },
+  {
+    "package": "selectors-0.38.0",
+    "name": "MPL-2.0.txt",
+    "url": "https://www.mozilla.org/media/MPL/2.0/index.txt",
+    "sha256": "3f3d9e0024b1921b067d6f7f88deb4a60cbe7a78e76c64e3f1d7fc3b779b9d04"
+  },
+  {
+    "package": "webview2-com-0.39.1",
+    "name": "LICENSE",
+    "url": "https://raw.githubusercontent.com/wravery/webview2-rs/edc2caf886175ccaebe86078c9cfe1ae2a187328/LICENSE",
+    "sha256": "0dcf41516e608bbcb6cdc5229feb7b86fe4a643b85e7df251133c93408fdac73"
+  },
+  {
+    "package": "webview2-com-macros-0.8.1",
+    "name": "LICENSE",
+    "url": "https://raw.githubusercontent.com/wravery/webview2-rs/dffa41a8a46d3f5565eefbff2de57d38d399f158/LICENSE",
+    "sha256": "0dcf41516e608bbcb6cdc5229feb7b86fe4a643b85e7df251133c93408fdac73"
+  },
+  {
+    "package": "webview2-com-sys-0.39.1",
+    "name": "LICENSE",
+    "url": "https://raw.githubusercontent.com/wravery/webview2-rs/edc2caf886175ccaebe86078c9cfe1ae2a187328/LICENSE",
+    "sha256": "0dcf41516e608bbcb6cdc5229feb7b86fe4a643b85e7df251133c93408fdac73"
+  },
+  {
+    "package": "webview2-com-sys-0.39.1",
+    "name": "WebView2-SDK-LICENSE.txt",
+    "url": "https://www.nuget.org/packages/Microsoft.Web.WebView2/1.0.3800.47/License",
+    "sha256": "324083bf015092054be9d5851dafa1b79cbfab3331ff983476d502839515d8bb"
+  }
+]

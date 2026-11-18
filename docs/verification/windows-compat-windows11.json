@@ -1,0 +1,55 @@
+{
+  "scope": "Windows compatibility defects and offline prerequisite check; F01 durable search exclusions and correct folder sizes",
+  "machine": "Windows 11 x64 26H2, build 26300.9974",
+  "source": {
+    "archive": "dalizi-files-0.5.1-source-fd841b447e163350.zip",
+    "sha256": "fd841b447e163350f09c156f6b589f656da28d993ebc1a78affc56562975c59f",
+    "filesVerifiedBeforeBuild": 607
+  },
+  "preview": {
+    "archive": "dalizi-files-0.5.1-windows-x64-preview-windows-compat-e7f1100fe620.zip",
+    "sha256": "cb8fb495da2c7e53e38b3fc39059449c11a98b0979c99944159a58dbb341e762",
+    "exeSha256": "e7f1100fe62069ccebfb3c38ff35051c80264f49f159e2698867fdd2b7a6024a",
+    "componentSha256": "576a0c64da03d892ea8ac94b7bfeda905dacd2ed7fb5f8d310fe75c46e069dc2",
+    "perFileHashesVerified": 749,
+    "bytes": 55591660
+  },
+  "tests": {
+    "javascript": 317,
+    "python": 12,
+    "rustMain": 186,
+    "rustOtherTargetExecutions": 27,
+    "rustHarnessClient": 12,
+    "rustMainIgnored": 2,
+    "desktop": "node tools/search_drop_smoke.cjs --index-locations --older-js, isolated debug identifier and profile",
+    "browser": "node tools/ui_smoke.cjs (Edge)",
+    "terminal": "cargo run --bin term_smoke, two independent shell sessions: startup, handshake, resize, command output",
+    "checkerFromReleaseZip": {
+      "windows": "Microsoft Windows 11 家庭版 中文版",
+      "productType": 1,
+      "installationType": "Client",
+      "architecture": "x64",
+      "build": 26300,
+      "webView2": "157.0.4341.46",
+      "packageArchitecture": "x64",
+      "result": "prerequisites-detected"
+    },
+    "fixture": {
+      "directory": "src-tauri/target/search-drop-smoke-yS3yAU",
+      "debugExeSha256": "c7be867fab779ca9ebabfdbd2d6bbb0eba1de06f97050506e12af0ced351eded",
+      "screenshot": "native-index-exclusions.png",
+      "screenshotSha256": "e90ee426325e1a3a4bfaba7c53d043d0663957f4eb1261ae8fe7972ae439a893"
+    }
+  },
+  "results": [
+    "Verified startup with Object.hasOwn and Array.prototype.at removed before the first script, then opened the two local file panes with the same methods absent. This used the current WebView2 engine.",
+    "System folder resolution and shell priority were tested against alternate Unicode directory fixtures. Missing create, resize and close ConPTY functions were each injected as a recoverable error. Both real shells passed on Windows 11.",
+    "The packaged diagnostic script ran in 64-bit Windows PowerShell on the host. Eleven deterministic input cases exercised its platform classification including Win7/8.1, early Win10, x86, Arm64 and Server. These were synthetic platform inputs.",
+    "Excluding a previously indexed folder removed its own name, descendants and old result page while preserving a similarly named sibling. A new excluded child acquired no background size. The parent remained at 14 logical bytes with its exact full verification timestamp. F5 counted all 21 bytes without publishing excluded file names. Ordinary restart preserved the exclusion; unpausing and changing scope still worked."
+  ],
+  "limits": [
+    "No clean Windows guest or Windows installation media was supplied. Windows 10, older Windows, Arm64, x86 OS and Server remain unverified. The full x64 executable and Node component cannot run on a 32-bit OS.",
+    "The 32-bit Windows PowerShell host on this x64 machine refused to run the script under its local execution policy. No policy was changed. It is not an x86 OS test.",
+    "Deployment, compatibility with older operating systems and zero product defects are not established by these local tests."
+  ]
+}

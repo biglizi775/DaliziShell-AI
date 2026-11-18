@@ -1,0 +1,43 @@
+{
+  "date": "2026-11-17",
+  "scope": "Windows 11 x64 build 26300, native desktop with a test identifier, disposable local directories and loopback model endpoints",
+  "tests": {
+    "frontendPassed": 304,
+    "pythonPassed": 11,
+    "rustDesktopDefaultPassed": 153,
+    "rustDesktopDefaultIgnored": 2,
+    "explicitIgnoredTestsPassed": [
+      "native_web_quote",
+      "real_openssh_conpty_loopback_auth_info_resize_and_exit"
+    ],
+    "nativeDesktop": "tools/verify_harness_desktop.ps1 and tools/harness_m1_smoke.cjs --agent-roles",
+    "modelFormats": "tools/ai_api_smoke.cjs --workbench: OpenAI Completions, OpenAI Responses, Anthropic Messages",
+    "fixtureSha256": "28522603bde7d31b765258bc0f498ae9af57d34bd39ef55ee627d27f7a8adef9"
+  },
+  "observations": [
+    "The native selector displayed all eight presets. The loopback project request carried only manual skills until opt-in. The enabled role added its compiled recommendations in order within the four-slot budget.",
+    "Changing the recommendation switch revoked an already-pending plan. Switching away and back while the auto-mode request was in flight preserved the answer and original role label, discarded the native plan and left its target file absent.",
+    "The review role locked permissions to read-only. Terminal advice sent no directory listing or tools, and leaving that role retained read-only mode with project tools off. The two folders and a new conversation had independent choices.",
+    "Frontend tests held both a profile refresh and an already-submitted execution open across role changes. Rust tests checked four manual skills, disabled user skills, duplicate recommendations, profile preservation and direct IPC role restrictions."
+  ],
+  "source": {
+    "archive": "dalizi-files-0.5.1-source-514282eee0d7e50e.zip",
+    "filesVerifiedBeforeOfflineBuild": 555,
+    "sha256": "514282eee0d7e50e5283f63f3ddca6ff59942767b377d3cc614cc5b17875bb3a"
+  },
+  "preview": {
+    "archive": "dalizi-files-0.5.1-windows-x64-preview-agent-roles-5210719adaea.zip",
+    "bytes": 54890881,
+    "sha256": "4fbfe2071d93de175cd80c331a89020b428e7a54c8ab426b9b0c87af310165bf",
+    "exeSha256": "5210719adaea06cd023824a4c458d40b126f936fba082e7ea9a35dda92b0b578",
+    "componentSha256": "576a0c64da03d892ea8ac94b7bfeda905dacd2ed7fb5f8d310fe75c46e069dc2",
+    "entries": 749,
+    "perFileHashesVerified": 748,
+    "candidate": null
+  },
+  "releaseGatesOutstanding": [
+    "clean Windows 10",
+    "clean Windows 11",
+    "authenticated cloud turn"
+  ]
+}

@@ -9,6 +9,7 @@ const files = (n = 3) => Array.from({ length: n }, (_, i) => ({ name: `file-${i}
 function harness(handler) {
   const calls = [], timers = new Map(); let next = 0;
   const tb = { key: 'session-key', termId: 2147483648, sshAuthenticated: true, sshConfig: { host: 'server.test', user: 'demo', port: 22, password: 'never-store' } };
+  tb.sshVerifiedPeer={key:tb.key,id:tb.termId,fingerprint:'original'};
   const context = vm.createContext({ tb, files: files(), locale: 'zh', crypto: { randomUUID: () => `fixture-request-${++next}` }, Date, Set, Map, console,
     state: { tabs: [tb] }, $: () => null, requestAnimationFrame: () => 1, loadSshFiles: () => {},
     setTimeout: (fn) => { const id = ++next; timers.set(id, fn); return id; },
@@ -109,6 +110,12 @@ test('retry after closing a tab can use an explicitly connected matching host, b
   const h = harness(); h.run('createSshBatch(tb, files.slice(0,1), "upload", "/captured")'); await tick(); h.emit(0, 0, 'failed');
   h.tb.disposed = true;
   const replacement = { ...h.tb, disposed: false, key: 'new-tab', termId: h.tb.termId + 1, sshConfig: { ...h.tb.sshConfig, managed: true } };
-  h.context.state.tabs = [replacement]; h.context.review = null; h.run('showSshBatchReview = (...args) => { review = args; }; retrySshBatch(sshTaskBatches[0])');
+  const peer={key:replacement.key,id:replacement.termId};
+  replacement.sshVerifiedPeer={...peer,fingerprint:'rotated'};
+  h.context.state.tabs = [replacement]; h.context.review = null; h.context.toast=()=>{};
+  h.run('showSshBatchReview = (...args) => { review = args; }; retrySshBatch(sshTaskBatches[0])');
+  assert.equal(h.context.review,null);
+  replacement.sshVerifiedPeer={...peer,fingerprint:'original'};
+  h.run('retrySshBatch(sshTaskBatches[0])');
   assert.equal(h.context.review[0], replacement); assert.equal(h.context.review[1].length, 1); assert.equal(h.starts().length, 1);
 });

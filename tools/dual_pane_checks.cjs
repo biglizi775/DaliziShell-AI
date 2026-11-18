@@ -32,7 +32,7 @@ module.exports = async (page, output) => {
   await page.setViewportSize({width:960,height:560});
   await page.screenshot({path:path.join(output,'dual-pane-compact.png'),animations:'disabled'});
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
-  assert.equal(await page.locator('#companionPane').evaluate(el=>getComputedStyle(el).color), 'rgb(232, 237, 247)');
+  assert.equal(await page.locator('#companionPane').evaluate(el=>getComputedStyle(el).color), await page.locator('body').evaluate(el=>getComputedStyle(el).color), 'companion text follows the selected dark appearance');
   assert.equal(await page.locator('#companionPane [data-scope]').evaluate(el=>el.getBoundingClientRect().bottom<=document.querySelector('#companionPane').getBoundingClientRect().bottom),true,'AI scope hint remains visible in a small window');
   await page.setViewportSize({width:854,height:534});
   assert.ok(await page.locator('.pane-list').evaluate(el=>el.clientHeight)>=48,'high-DPI viewport keeps a usable file list');

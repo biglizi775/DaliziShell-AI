@@ -11,8 +11,6 @@ module.exports = async function checkProductivity(page, { folder, output, native
     originalChat.conversationSummary = '用户希望归档，方案尚未执行。'; originalChat.summarizedIds = new Set([user.id]); originalChat.compactedMessages = 1;
     aiSessionKey = 'fixture-key-never-archive'; originalChat.permissionMode = 'auto'; renderAiConversation(); updateAiComposer();
   });
-  assert.equal(await page.evaluate((root) => invoke('agent_chat_list', { root }).then((a) => a.length), folder), 0, 'temporary chat does not write implicitly');
-  await page.locator('[data-chat-save]').click();
   await page.waitForFunction(() => aiCurrentSession().archive?.revision === 1 && !aiCurrentSession().archive.saving);
   await page.locator('[data-chat-open]').click();
   await page.waitForSelector('[data-chat-item]');

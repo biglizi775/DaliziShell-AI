@@ -12,7 +12,7 @@ function browserSessionAllowed() {
 }
 
 function browserSessionUrl(value) {
-  if (typeof value !== 'string') return null;
+  if (typeof value !== 'string' || browserAuthorizationUrl(value)) return null;
   try {
     const url = browserHomeUrl(value);
     return url.length <= 4096 ? url : null;

@@ -10,7 +10,7 @@ use serde::Serialize;
 #[path = "preview_sheets.rs"]
 mod sheets;
 
-const TEXT_LIMIT: usize = 64 * 1024;
+pub(crate) const TEXT_LIMIT: usize = 64 * 1024;
 const IMAGE_LIMIT: usize = 8 * 1024 * 1024;
 const PDF_LIMIT: usize = 32 * 1024 * 1024;
 const DOCX_LIMIT: usize = 16 * 1024 * 1024;
@@ -278,16 +278,20 @@ fn read_preview(path: &Path) -> Result<Preview, String> {
             reason: None,
         });
     }
-    bytes.truncate(limit);
-    let Some(content) = decode_text(&bytes, truncated) else {
-        return Ok(Preview::unsupported());
+    Ok(text_sample(&bytes))
+}
+
+pub(crate) fn text_sample(bytes: &[u8]) -> Preview {
+    let truncated = bytes.len() > TEXT_LIMIT;
+    let Some(content) = decode_text(&bytes[..bytes.len().min(TEXT_LIMIT)], truncated) else {
+        return Preview::unsupported();
     };
-    Ok(Preview {
+    Preview {
         kind: "text",
         content,
         truncated,
         reason: None,
-    })
+    }
 }
 
 // Only the main Word body is read. Relationships, embedded files, images and

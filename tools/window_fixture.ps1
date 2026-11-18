@@ -1,7 +1,7 @@
 param(
   [Parameter(Mandatory=$true)][int]$FixturePid,
   [Parameter(Mandatory=$true)][string]$FixtureExe,
-  [ValidateSet('resize','restore')][string]$Action = 'resize',
+  [ValidateSet('resize','restore','minimize','verify-visible')][string]$Action = 'resize',
   [int]$Width = 1280,
   [int]$Height = 800
 )
@@ -11,8 +11,6 @@ $expected = (Resolve-Path -LiteralPath $FixtureExe).Path
 if (-not [string]::Equals($fixtureProcess.Path, $expected, [StringComparison]::OrdinalIgnoreCase)) {
   throw 'Fixture process does not match the isolated test executable.'
 }
-$handle = $fixtureProcess.MainWindowHandle
-if ($handle -eq [IntPtr]::Zero) { throw 'Fixture window not found.' }
 Add-Type @'
 using System;
 using System.Runtime.InteropServices;
@@ -23,9 +21,31 @@ public static class DaliziWindowFixture {
   [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int command);
   [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
   [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr h);
+  private delegate bool EnumWindow(IntPtr h, IntPtr p);
+  [DllImport("user32.dll")] private static extern bool EnumWindows(EnumWindow callback, IntPtr p);
+  [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+  public static IntPtr Workbench(uint pid) {
+    IntPtr found = IntPtr.Zero;
+    EnumWindows(delegate(IntPtr h, IntPtr unused) {
+      uint owner; Rect r;
+      GetWindowThreadProcessId(h, out owner);
+      if (owner != pid || !IsWindowVisible(h) || !GetWindowRect(h, out r) || r.Right-r.Left < 500) return true;
+      found = h;
+      return false;
+    }, IntPtr.Zero);
+    return found;
+  }
 }
 '@
-if ($Action -eq 'resize') {
+$handle = [DaliziWindowFixture]::Workbench($FixturePid)
+if ($handle -eq [IntPtr]::Zero) { throw 'Visible workbench window not found.' }
+if ($Action -eq 'minimize') {
+  [void][DaliziWindowFixture]::ShowWindow($handle, 6)
+  for ($i = 0; $i -lt 50 -and [DaliziWindowFixture]::IsWindowVisible($handle); $i++) { Start-Sleep -Milliseconds 100 }
+  if ([DaliziWindowFixture]::IsWindowVisible($handle)) { throw 'Minimized fixture remained visible instead of hiding to tray.' }
+} elseif ($Action -eq 'verify-visible') {
+  if ([DaliziWindowFixture]::IsIconic($handle)) { throw 'Workbench was not restored.' }
+} elseif ($Action -eq 'resize') {
   if ($Width -lt 960 -or $Height -lt 560 -or $Width -gt 2000 -or $Height -gt 1600) { throw 'Fixture dimensions outside test bounds.' }
   $rect = New-Object DaliziWindowFixture+Rect
   if (-not [DaliziWindowFixture]::GetWindowRect($handle, [ref]$rect)) { throw 'Cannot read fixture bounds.' }

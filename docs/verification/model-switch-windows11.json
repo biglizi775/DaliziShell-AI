@@ -1,0 +1,60 @@
+{
+  "date": "2026-11-17",
+  "scope": "Windows 11 development host. Separately identified desktop, disposable local folders and loopback model services.",
+  "before": "The prior desktop cancelled the A request when a new default was saved in B. Editing the endpoint after entering a replacement session key left the old draft key in the form. Both observations reproduced before the fix.",
+  "verification": {
+    "frontend": {
+      "passed": 295,
+      "failed": 0
+    },
+    "pythonTestsPassed": 11,
+    "rustDesktop": {
+      "passed": 151,
+      "failed": 0,
+      "ignoredByDefault": 2,
+      "explicitNativeWebQuotePassed": true
+    },
+    "modelSwitch": {
+      "fixtureSha256": "dcfeee26029ee0e1547b02dcc41e0531eba2cf16c6a059093e4fcbc5c0bcaa6b",
+      "requests": 4,
+      "observations": [
+        "A submitted a project task and its automatic summary reached endpoint A. While the summary waited, the operator switched to B, edited the endpoint and saved model B. The old draft key was cleared. The A request remained active.",
+        "A new B chat used model B and its own session credential. The captured B request contained the B question and no A history or A question. The B-only answer was shown in B.",
+        "A summary and task plan both reached endpoint A with model A and its original session credential. The A plan included its new summary, original workspace and no B question or answer.",
+        "Changing the default again preserved the pending A plan. The fixture file appeared in A only after confirmation. The separate on-disk chat archives contained their own replies and no fixture keys.",
+        "The next A question used the new default. An explicit stop suppressed its late reply after the send promise settled."
+      ]
+    },
+    "otherNative": [
+      "pinned project automatic writes and document review",
+      "one-turn nested selection",
+      "session cache, archive recovery and normal desktop exit",
+      "history scope",
+      "M1 local tasks",
+      "M2 reviewed edit and undo",
+      "M3 web quote",
+      "M4 two SFTP servers",
+      "Chat Completions, Responses and Messages streaming, stop, premature EOF, JSON fallback, HTTP errors, credential storage and transcript recovery"
+    ],
+    "build": "Verified and extracted 544 source entries, built the production EXE with locked dependencies using offline MSVC, verified the package, executable, component, Cargo.lock and 748 per-file digests."
+  },
+  "source": {
+    "archive": "dalizi-files-0.5.1-source-31b0847dfe7e9d4a.zip",
+    "bytes": 3978264,
+    "sha256": "31b0847dfe7e9d4a6f541e2cdbab303551e5113cac391c12daad91435a5a118a",
+    "files": 544
+  },
+  "preview": {
+    "archive": "dalizi-files-0.5.1-windows-x64-preview-model-switch-eb374f079c2c.zip",
+    "bytes": 54995572,
+    "sha256": "d9c356b11182b9055fd22c28ef95b0595da63fba73636ba8fd6daca3a4edc758",
+    "entries": 749,
+    "exeSha256": "eb374f079c2cc8ed3aa2120f55087f9728b6421c7833a842e7a80a705bba9a41",
+    "candidate": null,
+    "baseline": "M5 RC7"
+  },
+  "limits": [
+    "Model and endpoint attribution is visible for the running conversation. The compatible chat archive keeps transcript and steps.",
+    "No authenticated cloud service or clean Windows guest was used. RC7 remains independently pinned."
+  ]
+}

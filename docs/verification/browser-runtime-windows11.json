@@ -1,0 +1,57 @@
+{
+  "scope": "Browser tabs on the WebView2 109 fixed runtime and the registered system runtime, Windows 11 x64 development machine",
+  "date": "2026-11-18",
+  "system": {
+    "windows": "Microsoft Windows 11 家庭版 中文版",
+    "build": 26300,
+    "architecture": "x64"
+  },
+  "runtimes": {
+    "fixed": {
+      "version": "109.0.1518.70",
+      "installerSha256": "7782e26812348b7e3ccb38ebd2a8086b57b15dc58375c91dedc24f4191e8a1bb",
+      "msedgewebview2Sha256": "937823eadec0dc01de5a5a4ec5ff589aa3b242223424f68ca5a41d0be7fad4c1",
+      "extensionsSupported": false
+    },
+    "system": {
+      "version": "157.0.4341.46",
+      "extensionsSupported": true
+    }
+  },
+  "binaries": {
+    "desktop": {
+      "identifier": "com.dalizi.files.webview-compat-test-x64",
+      "sha256": "db5e35686282f5260efdc85c364149daf64e729fd8a02351a5e54a9513a387e7"
+    },
+    "browserSmoke": {
+      "sha256": "caf26036ef919c291223389cf93bfecb9a3de6aca372548bdf2564301d6a1bf6"
+    }
+  },
+  "package": {
+    "archive": "dalizi-files-0.5.1-windows-x64-preview-browser-runtime-30d98457f33c.zip",
+    "packageSha256": "0da242e6b2bb95ba5058e241c7ce191ce47a6d79813f2e262697c0c25d0884f9",
+    "exeSha256": "30d98457f33c6a8228df4e6eb2ce37018df6d496de261df1fe00212470a8bcd5",
+    "identifier": "com.dalizi.files",
+    "files": 753,
+    "componentSha256": "576a0c64da03d892ea8ac94b7bfeda905dacd2ed7fb5f8d310fe75c46e069dc2",
+    "winpty": "0.4.3",
+    "checker": "prerequisites-detected"
+  },
+  "tests": {
+    "javascript": 317,
+    "python": 15,
+    "rustPassed": 217,
+    "rustIgnored": 2,
+    "uiSmoke": "passed with DALIZI_BROWSER set to the installed Microsoft Edge"
+  },
+  "results": [
+    "Desktop runtime check (search_drop_smoke --webview-runtime) passed on both runtimes: loopback navigation, back, extension dialog and tab close. On 109 the dialog reported the runtime version and hid the loader.",
+    "browser_smoke passed on both runtimes: hidden creation and layout, settings readback and apply, cookie/site-data clearing, downloads, link/blank-then-navigate/POST popups with postMessage and window.close. On 157 the disk cache was evicted and the MV3 fixture extension was installed, toggled and removed.",
+    "Before the fix, 109 reported window.open('') as about:blank#blocked and the popup was dropped. Blank popup targets are now normalized to about:blank.",
+    "On 109 a disk cache clear did not complete within 30 seconds through either ClearBrowsingData or Network.clearBrowserCache. A time-range clear finished after about 60 seconds, and a cookie clear issued afterwards waited behind it. Cache clearing is refused on runtimes before 110; cookie clearing completed in under 100 ms."
+  ],
+  "limits": [
+    "Both runtimes ran on one Windows 11 x64 machine with test identifiers. Windows 7, 8.1 and early Windows 10 with a frozen runtime still require whole-system acceptance.",
+    "Runtimes between 110 and 156 were not tested; cache clearing is allowed on them."
+  ]
+}

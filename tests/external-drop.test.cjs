@@ -9,6 +9,7 @@ test('native physical drop coordinates choose the folder row at Windows scaling'
   const row = { dataset: { i: '0' } }, content = {};
   const state = { path: 'C:\\Work', view: [{ name: '目标', isDir: true }] };
   const ctx = vm.createContext({ state, window: { devicePixelRatio: 1.5 }, fileOpBusy: false, curTab: () => active, isTermTab: (t) => t.kind === 'term', isBrowserTab: (t) => t.kind === 'browser', join: (p, n) => p + '\\' + n, els: { content }, document: { querySelector: () => modal, elementFromPoint: (x, y) => { point = [x, y]; return { closest: (s) => s === '#content' ? outside ? null : content : row }; } } });
+  ctx.localTaskBusy = () => ctx.fileOpBusy;
   vm.runInContext(source, ctx);
   const run = () => vm.runInContext('externalDropDestination({x:150,y:300})', ctx);
   assert.equal(run().path, 'C:\\Work\\目标'); assert.deepEqual(point, [100, 200]);

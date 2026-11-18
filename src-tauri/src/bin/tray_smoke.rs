@@ -76,6 +76,21 @@ async fn check(app: &tauri::AppHandle) -> Result<(), String> {
     tray::show_window(app).map_err(|e| e.to_string())?;
     wait_for("menu restores window", || restored(&window)).await?;
 
+    let close_requested = Arc::new(AtomicBool::new(false));
+    let received = close_requested.clone();
+    window.on_window_event(move |event| {
+        if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+            api.prevent_close();
+            received.store(true, Ordering::SeqCst);
+        }
+    });
+    tray::hide_window(app).map_err(|e| e.to_string())?;
+    wait_for("hidden before tray exit", || !window.is_visible().unwrap_or(true)).await?;
+    tray::request_exit(app).map_err(|e| e.to_string())?;
+    wait_for("tray exit offers a visible, cancellable close", || {
+        close_requested.load(Ordering::SeqCst) && restored(&window)
+    }).await?;
+
     // A missing tray must never hide the only recovery surface.
     drop(app.remove_tray_by_id(tray::TRAY_ID));
     tray::hide_window(app).map_err(|e| e.to_string())?;

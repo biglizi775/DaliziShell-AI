@@ -1,0 +1,53 @@
+{
+  "date": "2026-11-17",
+  "scope": "Windows 11 development host, disposable workspaces, isolated WebView2 profile. No real provider or production desktop profile.",
+  "before": "Regression tests reproduced three failures on the prior implementation: a second close bypassed a failed write, an in-flight manual save did not protect the tab, and a failed Save as new lost the original archive ID/revision.",
+  "verification": {
+    "frontend": {
+      "passed": 288,
+      "failed": 0
+    },
+    "rustDesktop": {
+      "passed": 151,
+      "failed": 0,
+      "ignoredByDefault": 2
+    },
+    "native": {
+      "identity": "com.dalizi.files.harness-m1-test",
+      "exeSha256": "27d67b75396b94d23d38093ea5ad46f05e3f84df101699cfbf42e7ca5b6c7475",
+      "archiveRecoveryModelRequests": 0,
+      "checks": [
+        "Two successive new-chat attempts after a disk revision conflict kept the transcript on Escape and Keep.",
+        "Closing from B offered recovery for A. Keeping left the archive byte-identical. Save as new preserved the externally written revision 2 and saved local text as an independent revision 1; B draft survived.",
+        "An obstructed .dalizi directory caused a real save error. Discard left the blocker untouched, retry after removing it persisted only the later conversation.",
+        "Pinned chat history refused to replace unsaved text on Keep. Explicit discard restored the selected original revision; the archive bytes remained identical.",
+        "Two failing folder conversations shared a tab. Discarding the first and keeping the second cancelled the close; the next attempt asked about the first again."
+      ],
+      "passed": [
+        "--archive-recovery",
+        "--session-cache",
+        "--pinned-auto"
+      ]
+    },
+    "build": "Verified every extracted source file against its inventory; offline MSVC release from that extraction using a shared target cache. Per-file ZIP hashes, exact executable, Cargo.lock, and bundled runtime manifest verified."
+  },
+  "source": {
+    "archive": "dalizi-files-0.5.1-source-df571f9e24b803a8.zip",
+    "sha256": "df571f9e24b803a8639743fef363a350c434749e069a29541d581564bdafcd14",
+    "files": 527,
+    "bytes": 3944782
+  },
+  "preview": {
+    "archive": "dalizi-files-0.5.1-windows-x64-preview-archive-recovery-232cf2cd619e.zip",
+    "sha256": "586a636b13de046a7376a0a447ad2c94fd3c4612f3e5b5d47931a250f4012672",
+    "bytes": 54875528,
+    "exeSha256": "232cf2cd619e56290200f0f12bab65cdc71bd3a77ae5570bcc91572ab3773662",
+    "exeBytes": 26179584,
+    "entries": 749,
+    "candidate": null
+  },
+  "limits": [
+    "In-app tab and conversation changes only. Unsent drafts and an entire application quit/crash are outside the archive recovery guarantee.",
+    "Frozen M5 RC6 still requires clean Windows 10 and 11 acceptance and an authenticated model turn."
+  ]
+}

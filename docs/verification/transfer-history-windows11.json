@@ -1,0 +1,54 @@
+{
+  "date": "2026-11-17",
+  "scope": "Windows 11 x64, test-only native desktop identifier, disposable folders and loopback model providers.",
+  "feature": "A02: workspace history for Harness and native SFTP transfers",
+  "before": "The previous durable directory records covered Agent file plans and document actions. Native SFTP transfer status lived in a process-local vector and SSH batch retry matched host/account settings without a verified host fingerprint.",
+  "observations": [
+    "A pre-release download failed at MoveFileExW with Windows error 32 when a read-only directory guard was held. The corrected guard shares READ and WRITE while denying DELETE. Both a native download and a Rust test that renames a child while the directory itself stays pinned succeeded.",
+    "The native workspace history opened the selected Harness task in its original drawer. Directory switching and stale confirmation tests preserved the task in the owning workspace.",
+    "A real loopback SFTP fixture uploaded and downloaded files, protected existing targets, recovered a dropped event, retried selected items, covered recursive folders and resume verification. History showed local and remote paths, verified peer and outcomes. Another local folder could neither list nor remove those receipts.",
+    "A real host-key rotation at the same host/port/account produced a distinct remote workspace with zero old receipts. A queue retry regression rejected a rotated peer and offered review again on the original verified peer.",
+    "The fixture killed the native process during a slow transfer after receiving real bytes. After restarting, the local and remote history referenced the same unconfirmed receipt, the final file was absent and viewing the history did not increase server authentication attempts.",
+    "The native UI removed one checked receipt and then reviewed finished records on a single page. The interrupted receipt belonging to another folder was preserved. Rust tests covered live sharing, identity changes, verified roots, stale deletion, torn trailing events and disjoint pagination."
+  ],
+  "tests": {
+    "rustHarnessClientPassed": 12,
+    "frontendPassed": 307,
+    "pythonPassed": 11,
+    "rustDesktopDefaultPassed": 170,
+    "rustDesktopDefaultIgnored": 2,
+    "explicitIgnoredTestsPassed": [
+      "native_web_quote",
+      "real_openssh_conpty_loopback_auth_info_resize_and_exit"
+    ],
+    "nativeDesktop": "tools/verify_harness_desktop.ps1, including --file-history and M1-M4",
+    "nativeSftp": "tools/ssh_managed_smoke.cjs (generated loopback host and a distinct test-only desktop identifier)",
+    "queueUi": "tools/ui_smoke.cjs --transfers",
+    "modelFormats": "tools/ai_api_smoke.cjs --workbench with loopback providers",
+    "fixtureSha256": "080396fc593fce03723df026e6063ee77f233925bc1ee0c359587b6aa357b8e2"
+  },
+  "source": {
+    "archive": "dalizi-files-0.5.1-source-3a2726938aa97f6a.zip",
+    "sha256": "3a2726938aa97f6a9993cc1ca4a1d72e99431f723ca2f9deebe9fcee383b5bb5",
+    "filesVerifiedBeforeOfflineBuild": 572
+  },
+  "preview": {
+    "archive": "dalizi-files-0.5.1-windows-x64-preview-transfer-history-cdfd51515e5a.zip",
+    "bytes": 55239905,
+    "sha256": "26024623ae3c7bb4726b8e5df1471ba4a270330c0e2608e13e71aa6fb6ec0ca0",
+    "exeSha256": "cdfd51515e5a8091ce54c2f71537b7e6ecfddc999f412ce926869d434345dca3",
+    "componentSha256": "576a0c64da03d892ea8ac94b7bfeda905dacd2ed7fb5f8d310fe75c46e069dc2",
+    "entries": 749,
+    "perFileHashesVerified": 748,
+    "candidate": null
+  },
+  "remainingScope": [
+    "queued but not started SFTP items and resumable batch controls remain session-only",
+    "local source identity requires a recognizable local workspace; network shares are not local Harness workspaces"
+  ],
+  "remainingReleaseGates": [
+    "clean Windows 10",
+    "clean Windows 11",
+    "authenticated cloud turn"
+  ]
+}

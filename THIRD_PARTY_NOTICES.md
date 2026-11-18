@@ -12,9 +12,17 @@ Dalizi Files 自有代码采用 [MIT License](LICENSE)。下列离线前端资�
 
 `xterm.min.js` 与 `xterm-addon-fit.min.js` 文件头记录了原始 npm 版本；`xterm.css` 也保留许可头。升级这些资源时应同时更新来源、版本、校验信息和许可文件，并复核本地补丁。
 
-Rust 依赖及其精确版本记录在 [Cargo.lock](src-tauri/Cargo.lock)，由 Cargo 获取，不将注册表源码复制到仓库。开发检查依赖记录在 [package-lock.json](package-lock.json) 和 [Python 工具依赖](tools/requirements-dev.txt)。开发依赖不等同于应用运行依赖；发布二进制时还应核对对应构建实际使用的传递依赖声明。
+Rust 依赖及其精确版本记录在 [Cargo.lock](src-tauri/Cargo.lock)。portable-pty 0.9.0 的源码随项目提供，包含 Windows 调用约定和兼容终端的本地修改。[portable-pty MIT 许可证](src-tauri/vendor/portable-pty/LICENSE.md)
+
+便携 ZIP 的 `terminal/` 目录随包分发 WinPTY 0.4.3 的 DLL、控制台辅助程序和原始 MIT 许可证 `LICENSE.txt`。打包时从上游 MSVC 发行归档校验并提取对应架构的文件。[WinPTY 0.4.3](https://github.com/rprichard/winpty/releases/tag/0.4.3)
+
+开发检查依赖记录在 [package-lock.json](package-lock.json) 和 [Python 工具依赖](tools/requirements-dev.txt)。
 
 内置 SSH 使用锁定的 russh、russh-sftp 及其加密依赖，密码保存调用 Windows Credential Manager；相关许可随二进制发布包收集。WebView2、PowerShell 和兼容模式的 OpenSSH 使用目标机器安装的运行时/程序，未将它们的安装包内嵌到本仓库。
+
+## 可选 Agent 组件
+
+可选的 Harness 组件打包固定 Node 24.22.1 和 DeepSeek Harness 0.2.2-rc.3。内层 ZIP 的 `notices/` 包含原始 Node 许可、Harness 许可与第三方声明，以及 npm 包版本、完整性摘要和许可文件路径。桌面和组件许可独立；仅分发快照配置所需的 Windows x64 子集。主包的 `licenses/packages.json` 列出目标构建的 Rust 依赖、来源和补充声明，包括 WebView2 SDK loader；系统 WebView2 Runtime 不随包提供。详见[构建与验收指南](docs/HARNESS_M5.md)。
 
 ## 文件压缩
 

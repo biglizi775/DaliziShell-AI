@@ -1,5 +1,8 @@
 // ConPTY smoke test via the portable-pty crate (reference implementation).
 // Run: cargo run --bin ptytest
+#[path = "../windows_runtime.rs"]
+#[allow(dead_code)]
+mod windows_runtime;
 
 use std::io::{Read, Write};
 use std::sync::{Arc, Mutex};
@@ -7,6 +10,7 @@ use std::sync::{Arc, Mutex};
 use portable_pty::{native_pty_system, CommandBuilder, PtySize};
 
 fn main() {
+    windows_runtime::check_conpty().expect("ConPTY availability");
     let marker = "PTYPORTABLE-OK";
     let pty_system = native_pty_system();
     let pair = pty_system
@@ -19,12 +23,8 @@ fn main() {
         .expect("openpty failed");
 
     // Test PowerShell 7 first (what the app actually launches), fall back to 5.1.
-    let shell = if std::path::Path::new(r"C:\Program Files\PowerShell\7\pwsh.exe").exists() {
-        r"C:\Program Files\PowerShell\7\pwsh.exe"
-    } else {
-        "powershell.exe"
-    };
-    println!("testing shell: {shell}");
+    let shell = windows_runtime::powershell().expect("PowerShell installation");
+    println!("testing shell: {}", shell.display());
     let mut cmd = CommandBuilder::new(shell);
     cmd.arg("-NoLogo");
     let portable_pty::PtyPair { master, slave } = pair;

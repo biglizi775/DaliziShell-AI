@@ -1,6 +1,7 @@
 # Build outputs and generated Tauri schemas. Keep Cargo.lock in version control.
 /target/
 /src-tauri/target/
+/src-tauri/harness-client/target/
 /src-tauri/gen/
 /dist/
 

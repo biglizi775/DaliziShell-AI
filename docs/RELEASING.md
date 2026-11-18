@@ -1,5 +1,7 @@
 # GitHub 发布指南
 
+未公开的 Harness M5 候选包有独立的[构建、核验及回退流程](HARNESS_M5.md)。外层 ZIP 包含生产标识主程序、已核验的独立组件、Rust/前端许可与可离线运行的验收夹具；没有两种干净 Windows 的实测记录前，不将其作为正式版本发布。
+
 ## 源码范围
 
 提交 Rust/前端源码、测试、开发工具、内置技能、文档、GitHub 配置、`Cargo.lock`、`package-lock.json` 和 `ui/vendor/` 的离线资源与许可证。
@@ -39,9 +41,16 @@ git push -u origin main
 python tools/package_source.py
 ```
 
-打包工具先运行 `npm run check` 对应的仓库检查，再从 Git 已跟踪和未忽略的文件中生成 ZIP；包含当前未提交修改。它不使用整个目录递归打包，不包含 `.git/`、`target/`、本机配置或私人记忆。输出位于 `dist/`，同名产物不会被覆盖。源码包附带 SHA-256 文本和文件清单，可用于检查上传内容；若要发布某个精确提交，提交后使用 `git archive`。
+打包工具先运行仓库检查，再按源码目录和文件类型选取 Git 可见的文件。已修改和新建的源码都取工作目录里的实际字节。应用、Harness 客户端、前端离线资源、测试、锁文件和许可均随包；宣传片保留制作源码，不打包截图、托管信息或成片。遇到未知类型的应用文件会中止并指出路径，维护者应先核对是否需要更新 `tools/package_source.py`。
 
-源码包只包含项目源文件，不包含当前用户的 Excel、聊天记录或诊断输出。解压后若尚无 Git 仓库，先运行 `git init`，再执行仓库检查。
+默认输出到 `dist/`，可用 `--output-dir` 指定别处。ZIP 名称含其 SHA-256 前 16 位；同目录另附完整摘要（`.sha256`）及逐文件摘要与相对路径（`.files.txt`）。同一打包环境中，只有源文件时间变化不会生成另一份包；已有同名产物内容不符则报错。先用 `Get-FileHash -Algorithm SHA256 <源码包路径>` 对照完整摘要，再解压到新目录。无需初始化 Git 即可构建：
+
+~~~powershell
+cd <解压后的项目目录>\src-tauri
+cargo build --locked --release --bin dalizi-files
+~~~
+
+依赖已缓存时可加 `--offline`；首次构建需准备[开发工具链](DEVELOPMENT.md)和锁定依赖。这个步骤生成桌面 EXE；离线 Harness 运行组件按 [M5](HARNESS_M5.md) 另行核验和装配。若要从解压目录运行 `node tools/check_repo.cjs`，先在项目根运行 `git init`。Windows CI 也从解压的源码包构建 release。
 
 ## Windows 发行版
 
@@ -56,8 +65,20 @@ python tools/package_source.py
 
 ## 可重复打包与校验
 
+Harness 的 Windows 候选包还需收齐三个独立的报告：两台[干净 Windows 客机](WINDOWS_TEST_GUESTS.md)运行旧版和候选版的原始 EXE；另一次[联网测试账户的真实问答](WINDOWS_CLOUD_QA.md)。以 RC7 为例，开发机运行：
+
+~~~powershell
+python tools/check_harness_release_gates.py --release rc7 --windows10 D:\QA\win10.json --windows11 D:\QA\win11.json --cloud D:\QA\cloud.json
+~~~
+
+只给 `--release rc7` 可先核对本地候选 ZIP。没有提供、验证失败、格式或批次不符的报告分别显示 `missing`、`failed`、`invalid`；三份均符合时退出码才是 0。结果只复核输入文件，不能代替测试人员记录实际快照来源或授权，也不会自动发布。云端工具独立打包：`python tools/package_cloud_check.py --release rc7 --output-dir <新目录>`。
+
 完成测试、同步版本并提交源码后，运行 `python tools/package_windows.py --licenses <已核对的许可证目录>`。许可证目录需包含 `frontend/`、`rust/`；可复用依赖版本完全一致的上一发行包，工具逐项核对当前 Windows 依赖树与许可证目录，缺失时拒绝打包。依赖变化时先补齐对应上游许可。
 
 工具核对 EXE 的版本资源，只复制 EXE、许可文本、使用说明、版本说明与历史更新记录；生成 `BUILDINFO.json`、逐文件 SHA-256、ZIP 校验文件，并验证压缩包可解压且内容一致。同名包不会覆盖；已有本地预览包时，可使用 `--output-dir dist/github-release-<版本号>` 输出正式包，保留旧文件。`BUILDINFO.json` 记录提交与 `dirty` 状态；正式发布应在干净提交后打包，`dirty` 为 `false`。上传 GitHub 草稿 Release 后核对附件大小与摘要，全部验证完成再公开；源码标签应指向 BUILDINFO 记录的提交。
 
 每次发布同步项目首页的版本、下载链接和历史功能表，更新 `docs/CHANGELOG.md`、`docs/USER_GUIDE.md`、`docs/README.md` 与对应 `docs/RELEASE_<版本号>.md`。历史记录保留旧版测试与限制，不改写为当前能力；只为实际公开发行的版本添加 Release 链接。发布后核对 GitHub `releases/latest` 指向新版本，并验证下载附件的摘要。
+
+冻结 RC 后继续开发时，用 `tools/package_windows.py --preview workspace-history` 加上原有的 `--exe`、`--licenses`、`--component` 参数生成独立预览。它要求对应的 `docs/PREVIEW_<名称>.md`，包名含 EXE 摘要前 12 位，清单的 `candidate` 为空。该包不能用于签收已经冻结的 RC。
+
+从 RC7 起，工作树或 CI 中直接用 `--component` 装配的 ZIP 名称包含 `harness-integration`，清单含 `kind: integration`。要重做已冻结的候选包，使用冻结时的交付工具与说明，在 `dist` 放入验证记录所列的编译用源码 ZIP 和预览 ZIP，按 [RC7 冻结命令](HARNESS_M5.md)输出到新目录。工具逐字节沿用预览中的 EXE、组件和许可，生成可复核的 `BUILDINFO.json` 与文件清单，再和已登记的候选 ZIP 摘要比对。即便生产 EXE 相同，单独修改包内说明也会改变 ZIP 摘要。干净系统和云端验收均需拿同一批次的原始 ZIP。

@@ -1,4 +1,9 @@
 #btnTransfers { margin-bottom: 7px; }
+.local-batches { overflow: auto; border-right: 1px solid var(--border); padding: 10px; background: var(--bg2); }
+.local-batches button { display: grid; gap: 5px; width: 100%; padding: 10px; text-align: left; overflow-wrap: anywhere; color: var(--txt); border: 1px solid transparent; border-radius: 8px; }
+.local-batches button[aria-pressed=true] { border-color: var(--accent); background: var(--bg); }
+.local-batches small { color: var(--txt3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.local-result-path { grid-column: 1 / -1; overflow-wrap: anywhere; }
 .ssh-batch-review { width: min(700px, calc(100vw - 28px)); }
 .ssh-batch-review .file-settings-body { max-height: 63vh; overflow: auto; }
 .ssh-batch-files { list-style: none; padding: 0; max-height: 230px; overflow: auto; border: 1px solid var(--border); border-radius: 9px; margin: 14px 0; }
@@ -24,3 +29,6 @@
 .ssh-task-item[data-status=complete] > span { color: #27956b; }
 .ssh-task-item[data-status=failed] > span, .ssh-task-item[data-status=interrupted] > span, #sshBatchError { color: var(--danger); }
 @media (max-width: 700px) { .ssh-task-layout { grid-template-columns: 175px minmax(0, 1fr); } .ssh-task-detail { padding: 10px; } }
+#sshBatchRecovery [data-list] { display: grid; gap: .4rem; }
+#sshBatchRecovery [data-list] button { text-align: left; overflow-wrap: anywhere; }
+#sshBatchRecovery [data-detail] button { margin: .35rem .5rem .35rem 0; }

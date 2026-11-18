@@ -53,6 +53,7 @@ function initWorkspace() {
   if (typeof initWorkspaceSettings === 'function') initWorkspaceSettings();
   if (typeof initSshTaskCenter === 'function') initSshTaskCenter();
   if (typeof initDualPane === 'function') initDualPane();
+  applyWorkspaceVisualStyle(store.get('visualStyle', 'studio'), false);
   void applyWorkspaceTheme(store.get('theme', 'light'));
   $('brandHome').addEventListener('click', (ev) => { ev.preventDefault(); navigate(null); });
   $('btnTerminal').addEventListener('click', () => newTermTab());
@@ -129,7 +130,7 @@ function renderWorkspace() {
   $('settingsLabel').textContent = locale === 'zh' ? '设置' : 'Settings';
   $('btnSettings').title = $('settingsLabel').textContent;
   $('btnSettings').setAttribute('aria-label', $('settingsLabel').textContent);
-  $('btnAiAssistant').textContent = locale === 'zh' ? 'AI 对话' : 'AI chat';
+  $('aiToggleLabel').textContent = locale === 'zh' ? 'AI 对话' : 'AI chat';
   $('typeFilters').innerHTML = state.path === null ? '' : ['all', 'folders', 'images', 'documents'].map((key) =>
     `<button class="filter-chip${state.typeFilter === key ? ' active' : ''}" data-filter="${key}" aria-pressed="${state.typeFilter === key}">${esc(u(key))}</button>`).join('');
   $('bar2').classList.toggle('home-toolbar', state.path === null && !browser);
@@ -164,7 +165,7 @@ function renderHome() {
 }
 
 function renderNavigation() {
-  const active = isTermTab(curTab()) ? undefined : state.path;
+  const active = isTermTab(curTab()) || isBrowserTab(curTab()) ? undefined : state.path;
   const nav = (path, name, icon, extra = '') => `<button class="sitem${active === path ? ' on' : ''}" data-nav="${esc(path === null ? '__root__' : path)}" title="${esc(path || name)}">${icon}<span class="snm">${esc(name)}</span>${extra}</button>`;
   let html = nav(null, u('home'), IC.home);
   html += `<div class="slabel">${esc(u('locations'))}</div>`;
@@ -294,7 +295,7 @@ function renderCommands() {
     { title: t('newTab'), sub: 'Navigation', key: 'Ctrl T', icon: IC.plus, run: () => newTab() },
     { title: u('theme'), sub: u(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'), icon: SUN_ICON, run: toggleTheme },
   ];
-  if (!isTermTab(curTab()) && state.path !== null) actions.push(
+  if (fileListingReady()) actions.push(
     { title: u('preview'), sub: 'View', key: 'Space', icon: PANEL_ICON, run: togglePreview },
     { title: u('viewAction'), sub: 'View', icon: IC.grid, run: () => setViewMode(state.viewMode === 'grid' ? 'details' : 'grid') },
     { title: t('newFolderHere'), sub: 'Files', icon: IC.folderS, run: newFolder },
@@ -302,6 +303,7 @@ function renderCommands() {
   );
   if (typeof reopenClosedTab === 'function' && recentlyClosedTabs.length) actions.push({ title: tabText('恢复刚关闭的标签', 'Reopen closed tab'), sub: 'Tabs', icon: IC.folderS, run: reopenClosedTab });
   if (typeof openSshTaskCenter === 'function') actions.push({ title: locale === 'zh' ? '传输任务' : 'Transfers', sub: 'SFTP', icon: IC.globe, run: openSshTaskCenter });
+  if (typeof openLocalTaskCenter === 'function') actions.push({ title: locale === 'zh' ? '本地文件任务' : 'Local file tasks', sub: locale === 'zh' ? '复制与移动' : 'Copy and move', icon: IC.folderS, run: openLocalTaskCenter });
   state.tabs.forEach((tb, i) => {
     const ssh = typeof isSshTab === 'function' && isSshTab(tb);
     const web = typeof isBrowserTab === 'function' && isBrowserTab(tb);

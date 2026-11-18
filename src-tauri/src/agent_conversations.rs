@@ -2,6 +2,8 @@
 //! handles, credentials, permissions or executable plans.
 use super::{canonical_root, local_metadata, lock_memory_directory, new_id, validate_local_path};
 use serde::{Deserialize, Serialize};
+#[path = "agent_chat_steps.rs"]
+mod attachments;
 use std::os::windows::fs::{MetadataExt, OpenOptionsExt};
 use std::{
     collections::HashSet,
@@ -24,6 +26,19 @@ pub struct Message {
     pub role: String,
     pub text: String,
     pub omit_history: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub steps: Vec<ToolStep>,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ToolStep {
+    pub kind: String,
+    pub path: String,
+    pub status: String,
+    pub elapsed_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub detail: String,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -48,6 +63,15 @@ pub struct Conversation {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ReadConversation {
+    #[serde(flatten)]
+    chat: Conversation,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    receipt_warning: Option<&'static str>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Summary {
     pub id: String,
     pub title: String,
@@ -55,6 +79,7 @@ pub struct Summary {
     pub created_at: u64,
     pub updated_at: u64,
     pub message_count: usize,
+    pub inline_steps: bool,
 }
 impl From<&Conversation> for Summary {
     fn from(value: &Conversation) -> Self {
@@ -65,6 +90,7 @@ impl From<&Conversation> for Summary {
             created_at: value.created_at,
             updated_at: value.updated_at,
             message_count: value.snapshot.messages.len(),
+            inline_steps: value.snapshot.messages.iter().any(|m| !m.steps.is_empty()),
         }
     }
 }
@@ -118,6 +144,26 @@ fn validate_bounded(snapshot: &Snapshot, byte_limit: usize) -> Result<(), String
             || !matches!(message.role.as_str(), "user" | "assistant" | "notice")
             || message.text.chars().count() > 32000
             || message.text.contains('\0')
+            || message.steps.len() > 24
+            || message.steps.iter().any(|s| {
+                !matches!(
+                    s.kind.as_str(),
+                    "read"
+                        | "list"
+                        | "inspect"
+                        | "mkdir"
+                        | "create_text"
+                        | "edit_text"
+                        | "copy"
+                        | "rename"
+                        | "move"
+                ) || !matches!(
+                    s.status.as_str(),
+                    "success" | "failed" | "skipped" | "unconfirmed"
+                ) || s.path.chars().count() > 1024
+                    || s.detail.chars().count() > 600
+                    || s.path.chars().chain(s.detail.chars()).any(char::is_control)
+            })
         {
             return Err("对话消息无效或过长 / Invalid or oversized conversation message".into());
         }
@@ -236,8 +282,9 @@ impl Storage {
         }
         Ok(value)
     }
-    fn publish(&self, value: &History) -> Result<(), String> {
-        let bytes = serde_json::to_vec_pretty(value).map_err(|e| e.to_string())?;
+    fn publish(&self, mut value: History) -> Result<(), String> {
+        let pending = attachments::separate(&mut value)?;
+        let bytes = serde_json::to_vec_pretty(&value).map_err(|e| e.to_string())?;
         if bytes.len() > LIMIT {
             return Err("本目录对话库已达 8 MiB，请先导出并删除旧对话 / Archive full; export and remove older chats".into());
         }
@@ -245,6 +292,28 @@ impl Storage {
         if local_metadata(&self.path, false)?.is_some_and(|m| m.permissions().readonly()) {
             return Err("对话库为只读，原文件未修改 / Read-only chat archive".into());
         }
+        // The v1 archive is the commit point. A failed write must leave its prior
+        // text and attachments available; never change an existing revision's sidecar.
+        let mut created = Vec::new();
+        let committed = (|| {
+            for (path, data) in &pending {
+                let dest = self.directory.join(path);
+                if attachments::publish_new(self, &dest, data)? {
+                    created.push(dest);
+                }
+            }
+            self.write_atomic(&self.path, &bytes)
+        })();
+        if committed.is_err() {
+            for path in created {
+                let _ = fs::remove_file(path);
+            }
+        } else {
+            attachments::prune(self, &value);
+        }
+        committed
+    }
+    fn write_atomic(&self, destination: &Path, bytes: &[u8]) -> Result<(), String> {
         let temp = self
             .directory
             .join(format!(".chat-history-{}.tmp", new_id("save")));
@@ -255,13 +324,13 @@ impl Storage {
             .open(&temp)
             .map_err(|e| e.to_string())?;
         let written = file
-            .write_all(&bytes)
+            .write_all(bytes)
             .and_then(|_| file.sync_all())
             .map_err(|e| e.to_string());
         drop(file);
         let result = written.and_then(|_| {
-            local_metadata(&self.path, false)?;
-            fs::rename(&temp, &self.path).map_err(|e| e.to_string())
+            local_metadata(destination, false)?;
+            fs::rename(&temp, destination).map_err(|e| e.to_string())
         });
         if result.is_err() {
             let _ = fs::remove_file(&temp);
@@ -286,6 +355,11 @@ fn save(root: &str, snapshot: Snapshot, expected_revision: u64) -> Result<Summar
     if actual != expected_revision {
         return Err("对话已被其他窗口修改或删除，未覆盖原文件；请另存为新对话 / Conversation changed or deleted; save as a new chat".into());
     }
+    if let Some(i) = existing {
+        // Do not let automatic saving replace a record whose receipts could not be read.
+        attachments::attach(&storage, &mut history.conversations[i])
+            .map_err(|_| "这条对话的步骤附件无法读取，原档案未改动；可另存为新对话 / Receipts unavailable; save as new")?;
+    }
     if existing.is_none() && history.conversations.len() >= COUNT {
         return Err(
             "本目录最多保存 30 条对话，请先导出或删除旧对话 / Maximum 30 saved chats per folder"
@@ -304,13 +378,14 @@ fn save(root: &str, snapshot: Snapshot, expected_revision: u64) -> Result<Summar
             .unwrap_or(now),
         updated_at: now,
     };
-    let summary = Summary::from(&chat);
+    let mut summary = Summary::from(&chat);
+    summary.inline_steps = false;
     if let Some(i) = existing {
         history.conversations[i] = chat;
     } else {
         history.conversations.push(chat);
     }
-    storage.publish(&history)?;
+    storage.publish(history)?;
     Ok(summary)
 }
 
@@ -326,18 +401,56 @@ pub async fn agent_chat_list(root: String) -> Result<Vec<Summary>, String> {
     .await
 }
 #[tauri::command]
-pub async fn agent_chat_read(root: String, id: String) -> Result<Conversation, String> {
+pub async fn agent_chat_read(root: String, id: String) -> Result<ReadConversation, String> {
     super::blocking(move || {
         if !valid_id(&id) {
             return Err("Invalid conversation ID".into());
         }
         let _guard = TRANSACTION.lock().map_err(|_| "Chat archive unavailable")?;
-        Storage::open(&root)?
-            .read()?
+        let storage = Storage::open(&root)?;
+        let _read_lock = attachments::read_lock(&storage)?;
+        let mut chat = storage.read()?
             .conversations
             .into_iter()
             .find(|chat| chat.snapshot.id == id)
-            .ok_or_else(|| "对话已不存在 / Conversation not found".into())
+            .ok_or("对话已不存在 / Conversation not found")?;
+        let receipt_warning = if attachments::attach(&storage, &mut chat).is_err() {
+            for message in &mut chat.snapshot.messages { message.steps.clear(); }
+            Some("步骤附件无法读取；正文可导出或另存为新对话。 / Receipts unavailable; export the transcript or save as new.")
+        } else { None };
+        Ok(ReadConversation { chat, receipt_warning })
+    })
+    .await
+}
+#[tauri::command]
+pub async fn agent_chat_prepare_rollback(
+    view: tauri::Webview,
+    root: String,
+) -> Result<usize, String> {
+    let url = view.url().map_err(|_| "无法核实窗口来源")?;
+    if view.label() != "main"
+        || url.host_str() != Some("tauri.localhost")
+        || !matches!(url.scheme(), "http" | "https")
+    {
+        return Err("仅允许本地主窗口整理对话档案".into());
+    }
+    super::blocking(move || {
+        let _guard = TRANSACTION.lock().map_err(|_| "Chat archive unavailable")?;
+        let mut storage = Storage::open(&root)?;
+        if storage.directory_guard.is_none() {
+            return Ok(0);
+        }
+        let _lock = storage.lock_write()?;
+        let history = storage.read()?;
+        let count = history
+            .conversations
+            .iter()
+            .filter(|c| c.snapshot.messages.iter().any(|m| !m.steps.is_empty()))
+            .count();
+        if count > 0 {
+            storage.publish(history)?;
+        }
+        Ok(count)
     })
     .await
 }
@@ -374,6 +487,17 @@ pub async fn agent_chat_export(snapshot: Snapshot) -> Result<Option<String>, Str
         }
         for message in snapshot.messages {
             text.push_str(&format!("## {}\n\n{}\n\n", message.role, message.text));
+            for step in message.steps {
+                let time = step
+                    .elapsed_ms
+                    .map(|ms| format!(" ({ms} ms)"))
+                    .unwrap_or_default();
+                text.push_str(&format!(
+                    "- {} {} — {}{} {}\n",
+                    step.kind, step.path, step.status, time, step.detail
+                ));
+            }
+            text.push('\n');
         }
         let temp = parent.join(format!(".dalizi-export-{}.tmp", new_id("chat")));
         let mut file = OpenOptions::new()
@@ -421,7 +545,7 @@ pub async fn agent_chat_delete(
             .position(|chat| chat.snapshot.id == id && chat.revision == expected_revision)
             .ok_or("对话已变化，请刷新后重试 / Conversation changed; refresh and retry")?;
         history.conversations.remove(i);
-        storage.publish(&history)
+        storage.publish(history)
     })
     .await
 }
@@ -443,11 +567,85 @@ mod tests {
                 role: "user".into(),
                 text: "测试正文".into(),
                 omit_history: false,
+                steps: vec![],
             }],
             summary: String::new(),
             summarized_ids: vec![],
             compacted_messages: 0,
         }
+    }
+    #[test]
+    fn rich_chat_keeps_the_v051_message_schema_on_disk() {
+        let (root, dir) = fixture();
+        let mut chat = snapshot("with-steps");
+        chat.messages[0].steps.push(ToolStep {
+            kind: "inspect".into(),
+            path: "notes.md".into(),
+            status: "success".into(),
+            elapsed_ms: Some(7),
+            detail: "synthetic receipt".into(),
+        });
+        save(&root, chat, 0).unwrap();
+        let disk: serde_json::Value =
+            serde_json::from_slice(&fs::read(dir.join(".dalizi/chat-history.json")).unwrap())
+                .unwrap();
+        let msg = &disk["conversations"][0]["snapshot"]["messages"][0];
+        assert!(
+            msg.get("steps").is_none(),
+            "v0.5.1 rejects unknown message fields"
+        );
+        assert_eq!(msg["text"], "测试正文");
+        let storage = Storage::open(&root).unwrap();
+        let mut saved = storage.read().unwrap().conversations.remove(0);
+        let mut changed = saved.clone();
+        changed.snapshot.messages[0].text = "旧程序改过这条消息".into();
+        attachments::attach(&storage, &mut changed).unwrap();
+        assert!(changed.snapshot.messages[0].steps.is_empty());
+        attachments::attach(&storage, &mut saved).unwrap();
+        assert_eq!(
+            saved.snapshot.messages[0].steps[0].detail,
+            "synthetic receipt"
+        );
+        drop(storage);
+        fs::remove_dir_all(dir).unwrap();
+    }
+    #[test]
+    fn blocked_v1_commit_leaves_no_orphan_and_never_loses_an_earlier_receipt() {
+        let (root, dir) = fixture();
+        let mut chat = snapshot("audit");
+        chat.messages[0].steps.push(ToolStep {
+            kind: "read".into(),
+            path: "doc.md".into(),
+            status: "success".into(),
+            elapsed_ms: None,
+            detail: "first".into(),
+        });
+        save(&root, chat.clone(), 0).unwrap();
+        let folder = dir.join(".dalizi");
+        let names = || -> std::collections::BTreeSet<_> {
+            fs::read_dir(&folder)
+                .unwrap()
+                .map(|f| f.unwrap().file_name())
+                .collect()
+        };
+        let original = names();
+        let file = OpenOptions::new()
+            .read(true)
+            .share_mode(1)
+            .open(folder.join("chat-history.json"))
+            .unwrap();
+        chat.messages[0].steps[0].detail = "second".into();
+        assert!(save(&root, chat.clone(), 1).is_err());
+        assert_eq!(names(), original);
+        drop(file);
+        let store = Storage::open(&root).unwrap();
+        let mut record = store.read().unwrap().conversations.remove(0);
+        attachments::attach(&store, &mut record).unwrap();
+        assert_eq!(record.snapshot.messages[0].steps[0].detail, "first");
+        drop(store);
+        save(&root, chat, 1).unwrap();
+        assert_eq!(names().len(), original.len());
+        fs::remove_dir_all(dir).unwrap();
     }
     #[test]
     fn read_is_non_mutating_and_save_is_scoped_versioned_and_conflict_safe() {
@@ -510,6 +708,7 @@ mod tests {
                 role: "user".into(),
                 text: "a".repeat(32000),
                 omit_history: false,
+                steps: vec![],
             })
             .collect();
         assert!(validate(&chat).is_err());

@@ -6,7 +6,7 @@ const vm = require('node:vm');
 const source = fs.readFileSync(path.join(__dirname, '../ui/quick-search.js'), 'utf8');
 function deferred() { let resolve, reject; const promise = new Promise((a, b) => { resolve = a; reject = b; }); return { promise, resolve, reject }; }
 function harness(invoke) {
-  let tab = { kind: 'files' };
+  let tab = { kind: 'files', get path() { return state.path; } };
   const nodes = {
     quickSearchPopover: { classList: { add() {} } }, search: { value: 'project', setAttribute() {} },
     quickSearchResults: { innerHTML: '' }, quickSearchStatus: {}, quickSearchCount: {},
@@ -15,15 +15,16 @@ function harness(invoke) {
   };
   const state = { path: 'C:\\work', filter: '' };
   const ctx = vm.createContext({ locale: 'zh', $: (id) => nodes[id], invoke, state, curTab: () => tab, isTermTab: (item) => item.kind === 'terminal', els: { scroller: {} }, renderAll() {}, setTimeout, clearTimeout, clearInterval, setInterval, console });
-  vm.runInContext(source, ctx);
+  const app = fs.readFileSync(path.join(__dirname, '../ui/app.js'), 'utf8');
+  vm.runInContext(app.slice(app.indexOf('function tabLocalFolder('), app.indexOf('function fileListingReady(')) + source, ctx);
   vm.runInContext("paintQuickResults = (r) => { painted = r; }; paintQuickStatus = () => {}; positionQuickSearch = () => {}; quickState.token = 1; quickState.open = true; quickState.mode = 'global'; quickState.owner = curTab(); quickState.folder = state.path; quickState.locale = locale;", ctx);
   return { nodes, state, ctx, switchTab: (next) => { tab = next; }, run: (s) => vm.runInContext(s, ctx) };
 }
-test('quick search composes type filters and leaves empty query empty', () => {
+test('search request identity includes filter, scope and query', () => {
   const h = harness();
-  assert.equal(h.run("quickQuery('  notes ext:md ', 'file')"), 'type:file notes ext:md');
-  assert.equal(h.run("quickQuery(' ', 'dir')"), '');
-  assert.equal(h.run("quickQuery('report', 'all')"), 'report');
+  h.nodes.search.value = '  notes|ext:md ';
+  h.run("quickState.kind='file'; quickState.mode='tree'");
+  assert.deepEqual(JSON.parse(h.run('quickRequestKey()')), ['notes|ext:md','file','tree','C:\\work']);
 });
 test('search sends bounded scoped request and paints returned results', async () => {
   let call;
@@ -31,7 +32,9 @@ test('search sends bounded scoped request and paints returned results', async ()
   h.run("quickState.mode = 'tree'; quickState.kind = 'file';");
   await h.run('runQuickSearch(1)');
   assert.equal(call.cmd, 'search_files');
-  assert.equal(call.args.query, 'type:file project');
+  assert.equal(call.args.query, 'project');
+  assert.equal(call.args.kind, 'file');
+  assert.equal(call.args.paginate, true);
   assert.equal(call.args.limit, 200);
   assert.equal(call.args.scope, 'C:\\work');
   assert.equal(h.run('quickState.items[0].name'), 'notes.md');
@@ -143,4 +146,42 @@ test('search failures clear pending results and are displayed as escaped text', 
   assert.equal(h.run('quickState.pending'), false);
   assert.match(h.nodes.quickSearchResults.innerHTML, /&lt;bad&gt;/);
   assert.doesNotMatch(h.nodes.quickSearchResults.innerHTML, /<bad>/);
+});
+
+test('index notifications leave the browsed snapshot stable and a late page cannot enter a different tab', async () => {
+  const next = deferred(), calls = [];
+  const h = harness(async (cmd, args) => { calls.push([cmd,args]); if (cmd === 'search_page') return next.promise; });
+  h.run("quickState.result={ snapshotId:17, page:1, pageSize:2, total:3 }; quickState.resultKey=quickRequestKey();quickState.items=[{path:'old'}];requestQuickRefresh()");
+  assert.equal(h.run('quickState.timer'), null);
+  const pending = h.run('goQuickPage(2)');
+  await h.run("activateQuickResult(0,'open')");
+  assert.deepEqual(calls.map(c => c[0]), ['search_page']);
+  h.switchTab({kind:'files',path:'C:\\work'});
+  h.run('syncQuickSearchWorkspace()');
+  next.resolve({snapshotId:17,page:2,items:[{name:'late'}]}); await pending;
+  assert.equal(h.run('quickState.items.length'), 0);
+  assert.equal(calls.at(-1)[0], 'search_release');
+});
+
+test('a late first page releases only the discarded native snapshot', async () => {
+  const first = deferred(), releases = [];
+  const h = harness((cmd,args) => cmd === 'search_files' ? first.promise : (releases.push(args.snapshotId), Promise.resolve()));
+  const old = h.run('runQuickSearch(1)');
+  h.run('closeQuickSearch()');
+  first.resolve({ snapshotId:31, items:[], total:300 }); await old;
+  assert.deepEqual(releases,[31]); assert.equal(h.run('quickState.result'), null);
+});
+
+test('a page error keeps the original page and can be retried', async () => {
+  let calls = 0;
+  const h = harness(async () => {
+    if (++calls === 1) throw Error('Unavailable page');
+    return {snapshotId:7,page:2,pageSize:1,items:[{name:'second'}],total:2};
+  });
+  h.run("quickState.result={snapshotId:7,page:1,pageSize:1,total:2};quickState.resultKey=quickRequestKey();quickState.items=[{name:'first'}]");
+  await h.run('goQuickPage(2)');
+  assert.equal(h.run('quickState.items[0].name'), 'first');
+  assert.match(h.nodes.quickSearchCount.textContent,/Unavailable page/);
+  await h.run('goQuickPage(2)');
+  assert.equal(h.run('quickState.items[0].name'), 'second');
 });

@@ -1,0 +1,45 @@
+{
+  "scope": "F01 per-folder size verification, cache migration, incomplete scans and live properties",
+  "machine": "Windows 11 x64 26H2, build 26300.9974",
+  "source": {
+    "archive": "dalizi-files-0.5.1-source-8fc9118a479d15d6.zip",
+    "sha256": "8fc9118a479d15d67692806db2d67e30ac1833a0376f2093e276de0dbceeda3c",
+    "filesVerifiedBeforeBuild": 596
+  },
+  "preview": {
+    "archive": "dalizi-files-0.5.1-windows-x64-preview-size-verification-bd35c968edc5.zip",
+    "sha256": "8d78784a646ba1392455ff896e9a770a6c74b202fbbeab548feef00dd66fb901",
+    "exeSha256": "bd35c968edc5e32695a16910815450e55cae71ff994e5fea8ccee82f690cf87e",
+    "componentSha256": "576a0c64da03d892ea8ac94b7bfeda905dacd2ed7fb5f8d310fe75c46e069dc2",
+    "perFileHashesVerified": 748,
+    "bytes": 55353665
+  },
+  "tests": {
+    "javascript": 317,
+    "python": 11,
+    "rustMain": 179,
+    "rustAuxiliaryTargets": 23,
+    "rustHarnessClient": 12,
+    "rustMainIgnored": 2,
+    "nativeDesktop": "tools/search_drop_smoke.cjs including folder_size_checks.cjs, search_page_checks.cjs and local_task_recovery_smoke.cjs",
+    "browser": [
+      "tools/ui_smoke.cjs"
+    ],
+    "fixture": {
+      "directory": "src-tauri/target/search-drop-smoke-zk05lx",
+      "debugExeSha256": "c5aa890e499b27d867247023f329ae3867a9284f807b74dace79e489c4499bdd",
+      "screenshot": "native-folder-size.png",
+      "screenshotSha256": "2deef8d05a50a61d31487025c6b3037883eaf08de1e8ac583db3eba381c318e0"
+    }
+  },
+  "results": [
+    "A real Windows F5 scan measured an empty folder at zero and a nested folder at 13 logical bytes. A second full scan of the unchanged nested folder advanced its own verification time. The open properties dialog showed the verification state.",
+    "Denied directory-list access to the test account on one temporary child folder and confirmed Windows rejected the listing. The parent kept 13 bytes and the identical last full verification timestamp; the open dialog reported incomplete. Restored access, grew the child file and rechecked to get 15 bytes.",
+    "Closed the native application normally and relaunched it. A memory-only IPC lookup before demanding another scan returned the restored 15 bytes and exactly the previous timestamp. The properties dialog labelled the source as restored, and F5 verified it again.",
+    "Rust tests cover version-one numeric caches, unknown timestamps, version-two roundtrips, stale totals in the old name index, incremental/incomplete readings, atomic snapshots and subtree invalidation. JS tests cover same-byte updates, stale asynchronous reads, authoritative cache misses, locale and path ownership."
+  ],
+  "limits": [
+    "Times represent completed recursive enumeration under the existing local scan rules. Reparse points and UNC network locations are excluded.",
+    "Configurable index locations remain open under F01. Desktop interactions used the isolated test identifier on the development machine; a clean Windows release installation was not tested in this iteration."
+  ]
+}

@@ -20,7 +20,7 @@ const L = {
     statusItems: '{n} 个项目', statusSel: '已选 {m} 项', statusSelSize: '已选 {m} 项 · {size}',
     filtered: '(已筛选)', noMatch: '无匹配项',
     emptyDir: '此文件夹为空', loading: '正在加载…',
-    indexing: '后台索引中…', calculatingSize: '计算中…', sizeUnavailable: '不可用',
+    indexing: '后台索引中…', calculatingSize: '计算中…', sizeUnavailable: '不可用', manualSize: 'F5 核验',
     recents: '最近', newTab: '新建标签页', dupTab: '复制此标签页', closeTab: '关闭标签页', closeOtherTabs: '关闭其他标签页',
     pinQuick: '固定到快速访问', unpinQuick: '从快速访问取消固定', removeRecent: '从最近移除',
     openInTerminal: '在终端中打开', newTermTab: '新建终端标签页（PowerShell）', terminal: '终端', procExited: '[进程已退出]',
@@ -68,7 +68,7 @@ const L = {
     statusItems: '{n} items', statusSel: '{m} selected', statusSelSize: '{m} selected · {size}',
     filtered: '(filtered)', noMatch: 'No matches',
     emptyDir: 'This folder is empty', loading: 'Loading…',
-    indexing: 'Indexing in background…', calculatingSize: 'Calculating…', sizeUnavailable: 'Unavailable',
+    indexing: 'Indexing in background…', calculatingSize: 'Calculating…', sizeUnavailable: 'Unavailable', manualSize: 'F5 to measure',
     recents: 'Recent', newTab: 'New tab', dupTab: 'Duplicate tab', closeTab: 'Close tab', closeOtherTabs: 'Close other tabs',
     pinQuick: 'Pin to Quick access', unpinQuick: 'Unpin from Quick access', removeRecent: 'Remove from Recent',
     openInTerminal: 'Open in Terminal', newTermTab: 'New terminal tab (PowerShell)', terminal: 'Terminal', procExited: '[process exited]',
@@ -285,6 +285,11 @@ function parentOf(p) {
   return cut.length >= 2 ? cut : null;
 }
 function toast(msg, isErr) {
+  if (!isErr) {
+    const notices = Array.from(els.toasts.querySelectorAll('.toast:not(.err)'));
+    for (const notice of notices) if (notice.textContent === msg) notice.remove();
+    for (const older of notices.filter(notice => notice.isConnected).slice(0,-1)) older.remove();
+  }
   const el = document.createElement('div');
   el.className = 'toast' + (isErr ? ' err' : '');
   el.textContent = msg;
@@ -296,7 +301,7 @@ function toast(msg, isErr) {
 /* ============================== navigation ============================== */
 async function navigate(path, opts = {}) {
   path = normalizeNavigationPath(path);
-  if (isTermTab(curTab()) || curTab()?.kind === 'browser') { newTab(path); return; }
+  if (isTermTab(curTab()) || curTab()?.kind === 'browser') return newTab(path);
   const { push = true } = opts;
   const token = ++state.navToken;
   const owner = curTab();
@@ -304,6 +309,13 @@ async function navigate(path, opts = {}) {
   state.gen++;
   invoke('dir_sizes', { gen: state.gen, paths: [] }).catch(() => {});
   state.path = path;
+  owner.path = path;
+  if (push && (owner.hIdx < 0 || owner.history[owner.hIdx] !== path)) {
+    owner.history = owner.history.slice(0, owner.hIdx + 1);
+    owner.history.push(path);
+    owner.hIdx = owner.history.length - 1;
+  }
+  state.entries = path === null ? null : [];
   state.error = null;
   state.filter = '';
   state.typeFilter = 'all';
@@ -343,18 +355,22 @@ async function navigate(path, opts = {}) {
   }
   if (!current()) return;
   state.loading = false;
-  const tb = curTab();
-  if (push) {
-    tb.history = tb.history.slice(0, tb.hIdx + 1);
-    tb.history.push(path);
-    tb.hIdx = tb.history.length - 1;
-  }
-  tb.path = path;
   if (push && path !== null) addRecent(path);
   store.set('lastPath', path);
   renderAll();
   els.scroller.scrollTop = 0;
   requestDirSizes();
+}
+
+function tabLocalFolder(tab) {
+  if (!tab || tab.kind === 'browser' || tab.connection === 'ssh') return null;
+  return (isTermTab(tab) ? tab.cwd : tab.path) ?? null;
+}
+
+function fileListingReady() {
+  const tab = curTab();
+  return !!tab && !isTermTab(tab) && tab.kind !== 'browser' && tab.path != null &&
+    tab.path === state.path && !state.loading && !state.error && Array.isArray(state.entries);
 }
 
 function normalizeNavigationPath(path) {
@@ -372,6 +388,7 @@ function normalizeNavigationPath(path) {
 
 async function refresh(keep = true, hard = false) {
   if (state.loading || isTermTab(curTab()) || curTab()?.kind === 'browser') return;
+  if (state.error) return navigate(curTab().path, { push: false });
   const token = ++state.navToken;
   const owner = curTab();
   const path = state.path;
@@ -414,20 +431,23 @@ async function refresh(keep = true, hard = false) {
       const byName = new Map(entries.map((entry) => [entry.name, entry]));
       state.view = (state.view || []).map((entry) => byName.get(entry.name));
     }
+    if (typeof refreshEntryPropertySize === 'function') refreshEntryPropertySize();
     requestDirSizes(hard);
   } catch (e) {
     if (!current()) return;
-    toast(String(e), true);
+    state.error = String(e); state.entries = null; state.selection.clear();
+    state.renaming = null;
+    renderAll();
   }
 }
 
 function sameDirectoryEntries(before, after) {
   if (!before || before.length !== after.length) return false;
   const previous = new Map(before.map((entry) => [entry.name, entry]));
-  const fields = ['name', 'isDir', 'size', 'mtime', 'ctime', 'atime', 'attributes', 'readOnly', 'hidden', 'ext', 'dirSize', 'isReparse', 'dirSizeUnavailable'];
+  const fields = ['name', 'isDir', 'size', 'mtime', 'ctime', 'atime', 'attributes', 'readOnly', 'hidden', 'ext', 'dirSize', 'isReparse', 'dirSizeUnavailable', 'dirSizeManual'];
   return after.every((entry) => {
     const old = previous.get(entry.name);
-    return old && fields.every((field) => old[field] === entry[field]);
+    return old && fields.every((field) => old[field] === entry[field]) && old.dirSizeInfo?.serial === entry.dirSizeInfo?.serial;
   });
 }
 
@@ -458,7 +478,9 @@ function prepareEntries(raw, path) {
     if (canMeasureDirectory(e, path)) {
       const full = join(path, e.name), key = sizePathKey(full);
       const cached = state.dirSizes.get(key) ?? state.dirSizes.get(full);
-      e.dirSize = entry.dirSize ?? cached ?? null;
+      const previous = state.sizeEntries?.get(key)?.dirSizeInfo;
+      if (entry.dirSizeInfo && previous && previous.serial > entry.dirSizeInfo.serial) e.dirSizeInfo = previous;
+      e.dirSize = Object.prototype.hasOwnProperty.call(entry, 'dirSizeInfo') ? e.dirSizeInfo?.size ?? null : entry.dirSize ?? cached ?? null;
       if (e.dirSize != null) cacheDirectorySize(full, e.dirSize);
       byPath.set(key, e);
     }
@@ -479,29 +501,35 @@ let indexLookupAgain = false;
 function folderSizeLabel(entry) {
   if (entry.dirSize != null) return fmtSize(entry.dirSize);
   if (entry.dirSizeUnavailable) return t('sizeUnavailable');
+  if (entry.dirSizeManual && canMeasureDirectory(entry)) return t('manualSize');
   return canMeasureDirectory(entry) ? t('calculatingSize') : '—';
 }
-function queueDirSize(gen, path, size) {
+function queueDirSize(gen, path, size, info = null) {
   if (gen !== state.gen || (size !== null && (!Number.isFinite(size) || size < 0)) || isTermTab(curTab())) return;
-  pendingDirSizes.set(sizePathKey(path), { gen, path, size });
+  const key = sizePathKey(path);
+  if (info && info.size !== size) return;
+  const pending = pendingDirSizes.get(key);
+  if (info && pending?.gen === gen && pending.info?.serial > info.serial) return;
+  pendingDirSizes.set(key, { gen, path, size, info });
   if (sizeFrame === null) sizeFrame = requestAnimationFrame(flushDirSizes);
 }
 function flushDirSizes() {
   sizeFrame = null;
   const pending = pendingDirSizes;
   pendingDirSizes = new Map();
-  let changed = false;
+  let changed = false, bytesChanged = false;
   for (const [key, item] of pending) {
     if (item.gen !== state.gen || isTermTab(curTab())) continue;
     const entry = state.sizeEntries?.get(key);
-    if (!entry) continue;
+    if (!entry || (item.info && entry.dirSizeInfo?.serial > item.info.serial)) continue;
     if (item.size === null) {
       if (!entry.dirSizeUnavailable) { entry.dirSizeUnavailable = true; changed = true; }
       continue;
     }
     cacheDirectorySize(item.path, item.size);
     if (entry.dirSizeUnavailable) { entry.dirSizeUnavailable = false; changed = true; }
-    if (entry.dirSize !== item.size) { entry.dirSize = item.size; changed = true; }
+    if (entry.dirSize !== item.size) { entry.dirSize = item.size; bytesChanged = true; changed = true; }
+    if (entry.dirSizeInfo?.serial !== item.info?.serial) { entry.dirSizeInfo = item.info; changed = true; }
   }
   if (!changed) return;
   // Only the virtualized, visible DOM is visited, once for this batch.
@@ -509,12 +537,15 @@ function flushDirSizes() {
     const entry = state.view[+row.dataset.i];
     if (!entry?.isDir) return;
     const cell = row.querySelector('.csize');
-    if (cell) cell.textContent = folderSizeLabel(entry);
+    if (cell) {
+      cell.textContent = folderSizeLabel(entry);
+      if (typeof folderSizeVerification === 'function') cell.title = folderSizeVerification(entry);
+    }
   });
   if (typeof refreshEntryPropertySize === 'function') refreshEntryPropertySize();
   renderStatus();
   if (state.selection.size) renderPreview();
-  if (state.sortKey === 'size') scheduleSizeSort();
+  if (bytesChanged && state.sortKey === 'size') scheduleSizeSort();
 }
 function scheduleSizeSort() {
   clearTimeout(sizeSortTimer);
@@ -530,7 +561,7 @@ function scheduleSizeSort() {
 
 async function requestDirSizes(force = false) {
   if (state.path === null || !state.entries || isTermTab(curTab())) return;
-  const paths = state.entries.filter((e) => canMeasureDirectory(e) && (force || (e.dirSize == null && !e.dirSizeUnavailable))).map((e) => {
+  const paths = state.entries.filter((e) => canMeasureDirectory(e) && (force || (e.dirSize == null && !e.dirSizeUnavailable && !e.dirSizeManual))).map((e) => {
     if (force) e.dirSizeUnavailable = false;
     return join(state.path, e.name);
   });
@@ -549,9 +580,9 @@ async function refreshIndexedSizes() {
   if (!paths.length) return;
   indexLookupRunning = true;
   try {
-    const sizes = await invoke('sizes_lookup', { paths });
+    const readings = await invoke('folder_size_details', { paths });
     if (token !== state.navToken || gen !== state.gen || owner !== curTab()) return;
-    sizes.forEach((size, i) => { if (size != null) queueDirSize(gen, paths[i], size); });
+    readings.forEach((info, i) => { if (info) queueDirSize(gen, paths[i], info.size, info); });
   } catch {} finally {
     indexLookupRunning = false;
     if (indexLookupAgain) { indexLookupAgain = false; scheduleIndexLookup(); }
@@ -594,11 +625,10 @@ function switchTab(i) {
     if (typeof syncBrowserBounds === 'function') syncBrowserBounds();
   } else navigate(curTab().path, { push: false });
 }
-function newTab(path) {
+function newTab(path = tabLocalFolder(curTab())) {
   state.tabs.push({ path: null, history: [], hIdx: -1 });
   state.tab = state.tabs.length - 1;
-  renderTabs();
-  return navigate(path !== undefined ? path : state.path, { push: true });
+  return navigate(path, { push: true });
 }
 async function openContainingFolder(path) {
   const folder = parentOf(path) || path, name = basename(path);
@@ -618,7 +648,15 @@ function closeTab(i) {
   if (state.tabs.length <= 1 || i < 0 || i >= state.tabs.length) return;
   const active = curTab();
   const killed = state.tabs[i];
-  if (typeof aiTabArchiveNeedsFlush === 'function' && aiTabArchiveNeedsFlush(killed)) return flushAiTabArchives(killed).then((ok) => { if (ok) { const index = state.tabs.indexOf(killed); if (index >= 0) return closeTab(index); } });
+  if (typeof aiTabArchiveNeedsFlush === 'function' && aiTabArchiveNeedsFlush(killed)) {
+    return flushAiTabArchives(killed).then(ok => {
+      const index = state.tabs.indexOf(killed);
+      if (ok && index >= 0) return closeTab(index);
+    }).finally(() => {
+      // A later session in this tab may have blocked the close. No earlier discard survives that action.
+      for (const s of aiSessions.values()) if (s.tab === killed) clearAiArchiveDismissal(s);
+    });
+  }
   if (killed?.connection === 'ssh' && typeof disconnectSshTab === 'function' && (!killed.exited || killed.startPromise)) return closeSshTabSafely(killed);
   if (typeof rememberClosedTab === 'function') rememberClosedTab(killed);
   if (typeof disposeAiTab === 'function') disposeAiTab(killed);
@@ -643,7 +681,11 @@ function closeOtherTabs(i) {
       for (const tb of others) {
         if (!state.tabs.includes(keep)) return;
         const index = state.tabs.indexOf(tb);
-        if (index >= 0) await closeTab(index);
+        if (index >= 0) {
+          const protectsChat = typeof aiTabArchiveNeedsFlush === 'function' && aiTabArchiveNeedsFlush(tb);
+          await closeTab(index);
+          if (protectsChat && state.tabs.includes(tb)) return;
+        }
       }
     })();
   }
@@ -674,24 +716,42 @@ function closeSshTabSafely(tb) {
 }
 
 // ---- embedded terminal (ConPTY backend + xterm.js) ----
-async function newTermTab(cwd, sshConfig) {
+async function newTermTab(cwd, sshConfig, owner = null, profileId = null) {
+  if (owner && (!owner.pendingTerminal || owner.disposed || !state.tabs.includes(owner))) return null;
   state.navToken++;
   invoke('dir_sizes', { gen: state.gen, paths: [] }).catch(() => {});
-  const base = isTermTab(curTab()) ? curTab().cwd : state.path;
-  const tb = { kind: 'term', key: crypto.randomUUID(), termId: null, cwd: sshConfig ? null : cwd !== undefined ? cwd : base,
+  const base = tabLocalFolder(curTab());
+  // Keep a local tab's Agent binding. A remote login gets a fresh transport owner
+  // so a failed attempt can return to the same untouched sign-in tab.
+  const tb = Object.assign((!sshConfig && owner) || {}, { kind: 'term', key: crypto.randomUUID(), termId: null, cwd: sshConfig ? null : cwd !== undefined ? cwd : base,
     connection: sshConfig ? 'ssh' : 'local', sshConfig: sshConfig ? { host: sshConfig.host, port: sshConfig.port, user: sshConfig.user, identityFile: sshConfig.identityFile || '', infoMode: sshConfig.infoMode || 'posix', label: sshConfig.label || '' } : null,
     term: null, fit: null, el: null, exited: false, starting: true, disposed: false,
-    input: '', writing: false, resizing: false };
+    pendingTerminal: false, sshProfileId: profileId, sshError: '', input: '', writing: false, resizing: false });
   if (sshConfig?.managed) { tb.sshConfig.managed = true; tb.sshAuth = sshConfig.auth; tb.sshTerminalState = 'starting'; tb.sshTerminalVisible = true; }
   else if (sshConfig?.managed === false) tb.sshConfig.managed = false;
-  state.tabs.push(tb);
-  state.tab = state.tabs.length - 1;
-  try { attachTerm(tb); }
-  catch (error) { failTermSession(tb, error); return tb; }
-  renderAll();
-  if (curTab() === tb) tb.term.focus();
-  await startTermSession(tb);
+  if (!owner) { state.tabs.push(tb); state.tab = state.tabs.length - 1; }
+  else if (sshConfig) state.tabs[state.tabs.indexOf(owner)] = tb;
+  try {
+    attachTerm(tb);
+    renderAll();
+    if (curTab() === tb) tb.term.focus();
+    await startTermSession(tb);
+  } catch (error) { failTermSession(tb, error); }
+  const index = state.tabs.indexOf(tb);
+  if (owner && index >= 0 && !tb.disposed && tb.exited && tb.termId === null && tb.sshError) {
+    disposeTerm(tb);
+    owner.disposed = false; owner.pendingTerminal = true; owner.sshError = tb.sshError;
+    state.tabs[index] = owner;
+    renderAll();
+  }
   return tb;
+}
+
+function startPendingTerminal(tb) {
+  if (!tb?.pendingTerminal || tb !== curTab()) return;
+  if (tb.connection !== 'ssh') return newTermTab(tb.cwd, null, tb);
+  const profile = tb.sshProfileId && readSshProfiles().find(value => value.id === tb.sshProfileId);
+  openSshConnect(profile || undefined, tb);
 }
 
 function currentTermSession(tb, key) { return !tb.disposed && tb.key === key; }
@@ -938,7 +998,7 @@ function renderTabs() {
           ? 'PowerShell · ' + (basename(tb.cwd || '') || tb.cwd || '~') + (tb.exited ? ' ⏹' : tb.starting ? ' …' : '')
           : tb.path === null ? t('thisPC') : basename(tb.path) || tb.path;
         const icon = browser ? IC.globe : term ? IC.tconsole : tb.path === null ? IC.monitor : IC.folderS;
-        const tip = browser ? tb.url : remote ? `SSH · ${tb.sshConfig?.user || ''}@${tb.sshConfig?.host || ''}:${tb.sshConfig?.port || 22}` : term ? `${t('terminal')} · ${tb.cwd || ''}` : tb.path || t('thisPC');
+        const tip = tb.pendingTerminal ? name : browser ? tb.url : remote ? `SSH · ${tb.sshConfig?.user || ''}@${tb.sshConfig?.host || ''}:${tb.sshConfig?.port || 22}` : term ? `${t('terminal')} · ${tb.cwd || ''}` : tb.path || t('thisPC');
         return `<div class="tab${i === state.tab ? ' on' : ''}${term || browser ? ' isterm' : ''}" data-t="${i}" tabindex="0" title="${esc(tip || '')}">
           <span class="tic">${icon}</span><span class="tnm">${esc(name)}</span>
           <button class="tclose" data-tc="${i}" ${state.tabs.length <= 1 ? 'disabled' : ''}>${IC.x}</button>
@@ -1005,6 +1065,12 @@ let collLocale = null;
 function renderAll() {
   document.body.classList.toggle('terminal-mode', !!isTermTab(curTab()));
   document.body.classList.toggle('browser-mode', !!isBrowserTab(curTab()));
+  // The listing belongs to the visible file tab. File tabs retain their own
+  // address and history for the next visit.
+  if (isTermTab(curTab()) || isBrowserTab(curTab())) {
+    state.path = null; state.entries = null; state.selection.clear();
+    state.loading = false; state.error = null; state.renaming = null;
+  }
   rebuildView();
   renderTabs();
   renderBar1();
@@ -1129,12 +1195,13 @@ function renderBar2() {
   if (isBrowserTab(curTab())) return;
   els.btnNew.innerHTML = `<span class="icw">${IC.folderS}</span><span class="lbl">${esc(t('newFolder'))}</span>`;
   els.btnNew.title = t('newFolderHere');
-  els.btnNew.disabled = state.path === null;
-  const hasSel = state.selection.size > 0 && state.path !== null;
+  const ready = fileListingReady();
+  els.btnNew.disabled = !ready;
+  const hasSel = ready && state.selection.size > 0;
   setBtn(els.btnCut, IC.cut, '', t('cut') + ' · Ctrl+X', !hasSel);
   setBtn(els.btnCopy, IC.copy, '', t('copy') + ' · Ctrl+C', !hasSel);
-  setBtn(els.btnPaste, IC.paste, '', t('paste') + ' · Ctrl+V', !state.clipboard || state.path === null);
-  setBtn(els.btnRename, IC.pencil, '', t('rename') + ' · F2', state.selection.size !== 1);
+  setBtn(els.btnPaste, IC.paste, '', t('paste') + ' · Ctrl+V', !state.clipboard || !ready);
+  setBtn(els.btnRename, IC.pencil, '', t('rename') + ' · F2', !ready || state.selection.size !== 1);
   setBtn(els.btnDelete, IC.trash, '', t('del') + ' · Delete', !hasSel);
   els.btnSort.innerHTML = IC.sort + `<span class="lbl">${esc(t('sort'))}</span>`;
   els.btnView.innerHTML = (state.viewMode === 'details' ? IC.list : IC.grid) + `<span class="lbl">${esc(t('view'))}</span>`;
@@ -1167,6 +1234,15 @@ function renderContent() {
     els.termHost.classList.remove('hidden');
     const tb = curTab();
     els.termHost.querySelectorAll('.term').forEach((el) => { el.style.display = 'none'; });
+    $('pendingTerminal').classList.toggle('hidden', !tb.pendingTerminal);
+    if (tb.pendingTerminal) {
+      const remote = tb.connection === 'ssh';
+      $('pendingTerminalTitle').textContent = remote ? placeText('SSH 尚未连接', 'SSH is disconnected') : placeText('PowerShell 尚未启动', 'PowerShell has not started');
+      $('pendingTerminalDetail').textContent = remote ? tb.sshConfig.label || placeText('选择已保存的连接，或输入主机和用户名。', 'Choose a saved connection or enter a host and username.') : tb.cwd || placeText('默认启动目录', 'Default starting directory');
+      $('pendingTerminalError').textContent = tb.sshError || '';
+      $('pendingTerminalStart').textContent = remote ? placeText('打开 SSH 登录', 'Open SSH sign-in') : placeText('启动 PowerShell', 'Start PowerShell');
+      return;
+    }
     if (tb.el) tb.el.style.display = '';
     requestAnimationFrame(() => fitTerm(tb));
     return;
@@ -1313,7 +1389,7 @@ function renderStatus() {
 
 function updateTitle() {
   if (isBrowserTab(curTab())) { document.title = (curTab().title || curTab().url || 'Browser') + ' — ' + t('appName'); return; }
-  if (isTermTab(curTab())) { document.title = 'PowerShell — ' + t('appName'); return; }
+  if (isTermTab(curTab())) { document.title = (curTab().connection === 'ssh' ? sshTabTitle(curTab()) : 'PowerShell') + ' — ' + t('appName'); return; }
   document.title = (state.path ? basename(state.path) || state.path : t('thisPC')) + ' — ' + t('appName');
 }
 
@@ -1388,34 +1464,34 @@ function copySelectedPaths() {
   return copyFullPaths(paths);
 }
 function copySel() {
+  if (!fileListingReady()) return;
   if (!state.selection.size) { toast(t('selNone')); return; }
   state.clipboard = { mode: 'copy', paths: [...state.selection].map((n) => join(state.path, n)) };
   renderBar2(); applySelectionDom();
 }
 function cutSel() {
+  if (!fileListingReady()) return;
   if (!state.selection.size) { toast(t('selNone')); return; }
   state.clipboard = { mode: 'cut', paths: [...state.selection].map((n) => join(state.path, n)) };
   renderBar2(); applySelectionDom();
 }
 let fileOpBusy = false;
+const pendingPastes = new WeakSet();
 async function pasteClip() {
   const cb = state.clipboard;
-  if (!cb || state.path === null || fileOpBusy) return;
-  const path = state.path, owner = curTab();
-  fileOpBusy = true;
+  if (!cb || !fileListingReady() || localTaskBusy() || pendingPastes.has(cb) || localFileBatches.some(b => !b.finished && b.clipboard?.deref() === cb)) return;
+  pendingPastes.add(cb);
   try {
-    const completed = await invoke('file_op', { kind: cb.mode === 'cut' ? 'move' : 'copy', sources: cb.paths, dest: path });
-    if (completed && cb.mode === 'cut' && state.clipboard === cb) state.clipboard = null;
+    const batch = await queueLocalTransfer(cb.mode === 'cut' ? 'move' : 'copy', cb.paths, { path: state.path, owner: curTab() }, { clipboard: new WeakRef(cb) });
+    await batch.done;
   } catch (e) {
-    if (!/800704C7/.test(String(e))) toast(String(e), true);
+    toast(String(e), true);
   } finally {
-    fileOpBusy = false;
-    if (curTab() === owner && state.path === path) await refresh(true);
-    renderBar2();
+    pendingPastes.delete(cb); renderBar2(); applySelectionDom();
   }
 }
 async function deleteSel() {
-  if (!state.selection.size || state.path === null || fileOpBusy) return;
+  if (!state.selection.size || !fileListingReady() || fileOpBusy || localPlanning) return;
   const path = state.path, owner = curTab();
   const paths = [...state.selection].map((n) => join(state.path, n));
   fileOpBusy = true;
@@ -1431,13 +1507,13 @@ async function deleteSel() {
 
 /* ============================== rename / new folder ============================== */
 function startRename(name) {
-  state.renaming = name;
+  if (!fileListingReady()) return;
   const i = state.view.findIndex((e) => e.name === name);
-  if (i >= 0) {
-    const H = ROWH[state.viewMode];
-    const target = state.viewMode === 'grid' ? Math.floor(i / state.gridCols) * H : i * H;
-    els.scroller.scrollTop = Math.max(0, target - els.scroller.clientHeight / 2);
-  }
+  if (i < 0) return;
+  state.renaming = name;
+  const H = ROWH[state.viewMode];
+  const target = state.viewMode === 'grid' ? Math.floor(i / state.gridCols) * H : i * H;
+  els.scroller.scrollTop = Math.max(0, target - els.scroller.clientHeight / 2);
   renderRows();
 }
 function mountRename() {
@@ -1484,16 +1560,23 @@ function mountRename() {
 }
 
 async function newFolder() {
-  if (state.path === null) return;
+  if (!fileListingReady()) return;
+  const owner = curTab(), folder = owner.path, generation = state.gen;
+  const stillHere = () => curTab() === owner && state.gen === generation && fileListingReady() && owner.path === folder;
   const names = new Set(state.entries.map((e) => e.name.toLowerCase()));
   const base = t('newFolderName');
   let name = base, i = 2;
   while (names.has(name.toLowerCase())) name = `${base} (${i++})`;
   try {
-    await invoke('create_dir', { path: join(state.path, name) });
+    await invoke('create_dir', { path: join(folder, name) });
+    if (!stillHere()) return;
+    await refresh(false);
+    if (!stillHere() || !state.entries.some(entry => entry.isDir && entry.name === name)) return;
     state.filter = '';
     els.search.value = '';
-    await refresh(false);
+    if (typeof resetLocalSearch === 'function') resetLocalSearch();
+    if (state.typeFilter !== 'folders') state.typeFilter = 'all';
+    renderAll();
     startRename(name);
   } catch (e) {
     toast(String(e), true);
@@ -1549,6 +1632,10 @@ function itemMenu(i, x, y) {
   const items = [
     { id: 'open', label: t('open'), ic: IC.openIc, fn: openSelected },
   ];
+  if (!many && !e.isDir && !e.isReparse && /\.(md|txt)$/i.test(e.name)) {
+    items.push({id:'agent-edit', label:locale === 'zh' ? '让 Agent 修改…' : 'Edit with Agent…', ic:IC.fileS, fn:()=>startDocumentEdit(p)});
+    items.push({id:'agent-undo', label:locale === 'zh' ? '撤销上次 Agent 修改' : 'Undo last agent edit', fn:()=>undoProjectDocument(p)});
+  }
   if (!e.isDir && !many) items.push({ id: 'ow', label: t('openWith'), fn: () => invoke('open_with', { path: p }).catch((err) => toast(String(err), true)) });
   items.push(
     { id: 'exp', label: t('openInExplorer'), fn: () => invoke('reveal', { path: p }).catch((err) => toast(String(err), true)) },
@@ -1727,9 +1814,9 @@ els.tabbar.addEventListener('contextmenu', (ev) => {
   const i = +tabEl.dataset.t;
   const tb = state.tabs[i];
   showMenu(ev.clientX, ev.clientY, [
-    { id: 'newb', label: t('newTab'), ic: IC.plus, sc: 'Ctrl+T', fn: () => newTab(tb.path) },
-    { id: 'dup', label: t('dupTab'), fn: () => isBrowserTab(tb) && typeof newBrowserTab === 'function' ? newBrowserTab(tb.url) : tb.connection === 'ssh' && typeof newSshTab === 'function' ? newSshTab({ ...tb.sshConfig }) : isTermTab(tb) ? newTermTab(tb.cwd) : newTab(tb.path) },
-    { id: 'term', label: t('newTermTab'), ic: IC.tconsole, fn: () => newTermTab(isTermTab(tb) ? tb.cwd : tb.path) },
+    { id: 'newb', label: t('newTab'), ic: IC.plus, sc: 'Ctrl+T', fn: () => newTab(tabLocalFolder(tb)) },
+    { id: 'dup', label: t('dupTab'), fn: () => tb.pendingTerminal ? openPendingTerminalTab(workspaceTabItem(tb)) : isBrowserTab(tb) && typeof newBrowserTab === 'function' ? newBrowserTab(tb.url) : tb.connection === 'ssh' && typeof newSshTab === 'function' ? newSshTab(tb.sshConfig, null, null, tb.sshProfileId) : isTermTab(tb) ? newTermTab(tb.cwd) : newTab(tb.path) },
+    { id: 'term', label: t('newTermTab'), ic: IC.tconsole, fn: () => newTermTab(tabLocalFolder(tb)) },
     { sep: true },
     { id: 'clo', label: t('closeTab'), ic: IC.x, sc: 'Ctrl+W', dis: state.tabs.length <= 1, fn: () => closeTab(i) },
     { id: 'cloo', label: t('closeOtherTabs'), dis: state.tabs.length <= 1, fn: () => closeOtherTabs(i) },
@@ -1827,6 +1914,7 @@ document.addEventListener('keydown', (ev) => {
 
 window.addEventListener('contextmenu', (ev) => ev.preventDefault());
 
+$('pendingTerminalStart').addEventListener('click', () => startPendingTerminal(curTab()));
 els.termHost.addEventListener('mousedown', (event) => {
   if (event.target.closest('.ssh-files, .ssh-info-card, .ssh-workspace-toolbar, .ssh-workspace-divider')) return;
   const tb = curTab();
@@ -1873,10 +1961,16 @@ listen('fs-changed', (ev) => {
 });
 
 // folder sizes stream in from the backend; patch rows without disturbing a rename
+listen('index-locations-changed', () => {
+  if (state.path && !isTermTab(curTab()) && !isBrowserTab(curTab())) {
+    fsRefreshPending = { owner: curTab(), path: state.path };
+    scheduleFilesystemRefresh();
+  }
+});
 listen('dir-size', (ev) => {
-  const { gen, path: p, size } = ev.payload || {};
+  const { gen, path: p, size, info } = ev.payload || {};
   if (!state.entries || typeof p !== 'string') return;
-  queueDirSize(gen, p, size);
+  queueDirSize(gen, p, size, info);
 });
 
 listen('index-updated', scheduleIndexLookup);
@@ -1932,6 +2026,7 @@ window.addEventListener('DOMContentLoaded', async function init() {
   try { state.roots = await invoke('roots'); } catch {}
   if (typeof restoreWorkspaceOnStartup === 'function') {
     await restoreWorkspaceOnStartup({ initialTab, initialToken });
+    if (typeof startWindowsBrowserLinks === 'function') await startWindowsBrowserLinks();
     return;
   }
   const last = store.get('lastPath', null);

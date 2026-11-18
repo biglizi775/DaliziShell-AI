@@ -223,6 +223,34 @@ test('popup preference blocks new-window requests without disabling ordinary bro
   assert.equal(h.calls.find((call) => call.command === 'browser_create').args.url, 'https://requested.example/');
 });
 
+test('native popups use their original child view and release requests from closed or blocked tabs', async () => {
+  const h = harness({ browser: true });
+  h.state.tabs.push({ kind: 'browser', key: 'origin', history: [], hIdx: -1 }); h.state.tab = 0;
+  h.run("onBrowserPage({payload:{key:'origin',phase:'new-window',url:'about:blank',popupKey:'popup-1'}})");
+  await tick();
+  assert.equal(h.state.tabs[1].key, 'popup-1');
+  assert.equal(h.state.tabs[1].openerKey, 'origin');
+  assert.equal(h.calls.find((call) => call.command === 'browser_create').args.key, 'popup-1');
+  h.storage.set('browserSettings', { ...defaults, allowNewWindows: false });
+  for (const opener of ['origin', 'already-closed']) {
+    h.context.opener = opener;
+    h.run("onBrowserPage({payload:{key:opener,phase:'new-window',url:'about:blank',popupKey:'popup-2'}})");
+  }
+  assert.equal(h.state.tabs.length, 2);
+  assert.equal(h.calls.filter((call) => call.command === 'browser_popup_dismiss').length, 2);
+});
+
+test('one-time login codes stay out of URL history and restored sessions', () => {
+  const h = harness({ browser: true, sessions: true });
+  for (const url of ['https://id.example/?user_code=temporary', 'http://127.0.0.1:9999/cb?code=temporary', 'https://id.example/#access_token=temporary']) {
+    h.context.url = url;
+    h.run("rememberUrl(url, 'Sign-in')");
+    assert.equal(h.run('browserSessionUrl(url)'), null);
+  }
+  assert.deepEqual(h.storage.get('urlHistory'), []);
+  assert.equal(h.run("browserSessionUrl('https://example.test/docs')"), 'https://example.test/docs');
+});
+
 test('new-tab blank preference differs from empty address and explicit navigation', async () => {
   const settings = { ...defaults, newTabPage: 'blank', homeUrl: 'https://home.example/' };
   const h = harness({ browser: true, settings });

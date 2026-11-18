@@ -69,4 +69,5 @@ module.exports = async (page, output) => {
   assert.equal(await active.locator('[data-terminal-note]').isVisible(),true);
   assert.equal(await page.evaluate(()=>sshStatus(curTab())), 'connected');
   await page.screenshot({path:path.join(output,'ssh-sftp-only.png'),animations:'disabled'});
+  await require('./ssh_paired_checks.cjs')(page);
 };

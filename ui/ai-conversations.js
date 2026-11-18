@@ -9,9 +9,10 @@ function aiArchiveSnapshot(session) {
   const archive = aiArchive(session);
   const messages = session.messages.map((message) => {
     let text = String(message.text || '');
-    if (message.plan) text += '\n\n[Historical plan; status: ' + message.planState + '. A proposal is not proof of execution.]\n' + JSON.stringify(message.plan.actions);
+    if (message.plan) text += '\n\n[Historical plan; status: ' + message.planState + '. A proposal is not proof of execution.]\n' + JSON.stringify(message.plan.actions, (field, value) => field === 'content' || field === 'original' ? undefined : value);
+    if (message.journalId) text += '\n[Local file operation record: ' + message.journalId + ']';
     if (message.results) text += '\n\n[Local execution results]\n' + JSON.stringify(message.results);
-    return { id: message.id, role: message.role, text, omitHistory: !!message.omitHistory };
+    return { id: message.id, role: message.role, text, omitHistory: !!message.omitHistory, ...(message.steps?.length ? { steps: message.steps } : {}) };
   });
   const title = archive.title || aiChars((messages.find((m) => m.role === 'user')?.text || chatText('未命名对话', 'Untitled conversation')).replace(/[\x00-\x1f\x7f]/g, ' ').trim(), 60);
   const ids = new Set(messages.map((m) => m.id));
@@ -27,15 +28,17 @@ async function saveAiArchive(session, fresh = false) {
     if (session.archive !== archive || archive.error) return false;
     return saveAiArchive(session, fresh);
   }
-  if (fresh) { archive.id = crypto.randomUUID(); archive.revision = 0; archive.saved = ''; }
-  const snapshot = aiArchiveSnapshot(session), serialized = JSON.stringify(snapshot);
+  const snapshot = aiArchiveSnapshot(session);
+  if (fresh) snapshot.id = crypto.randomUUID();
+  const serialized = JSON.stringify(snapshot);
   if (archive.saved === serialized) return true;
   archive.error = '';
-  const job = invoke('agent_chat_save', { root: session.root, snapshot, expectedRevision: archive.revision }).then((result) => {
-    archive.revision = result.revision; archive.saved = serialized;
+  const job = invoke('agent_chat_save', { root: session.root, snapshot, expectedRevision: fresh ? 0 : archive.revision }).then((result) => {
+    archive.id = snapshot.id; archive.revision = result.revision; archive.saved = serialized;
+    archive.failedWrite = ''; archive.dismissed = '';
     return true;
   }).catch((error) => {
-    archive.error = String(error); archive.auto = false;
+    archive.error = String(error); archive.auto = false; archive.failedWrite = fresh ? 'copy' : 'save'; archive.dismissed = '';
     toast(chatText('对话未保存：', 'Chat not saved: ') + archive.error, true);
     return false;
   });
@@ -59,22 +62,98 @@ function retireAiArchive(session) {
   clearTimeout(archive.timer); archive.timer = null;
   if (archive.auto) void saveAiArchive(session);
 }
-function aiArchiveNeedsFlush(session) {
-  return !!session?.archive?.auto && !!session.messages.length && (!!session.archive.saving || JSON.stringify(aiArchiveSnapshot(session)) !== session.archive.saved);
+function aiArchiveHasUnsavedText(session) {
+  return !!session?.messages.length && (!session.archive?.saved || JSON.stringify(aiArchiveSnapshot(session)) !== session.archive.saved);
 }
-function aiTabArchiveNeedsFlush(tab) { return [...aiSessions.values()].some((s) => s.tab === tab && aiArchiveNeedsFlush(s)); }
+function aiArchiveNeedsFlush(session, finishWrite = false) {
+  const archive = session?.archive;
+  if (!archive) return false;
+  if (archive.saving) return true;
+  if ((!archive.auto && !archive.failedWrite && !finishWrite) || !aiArchiveHasUnsavedText(session)) return false;
+  return !archive.dismissed || archive.dismissed !== JSON.stringify(aiArchiveSnapshot(session));
+}
+// Only a user action that would leave this conversation opens recovery. Background saves stay paused.
+function chooseAiArchiveRecovery(session) {
+  if (document.getElementById('chatRecoveryDialog')) return Promise.resolve('keep');
+  const T = chatText, dialog = document.createElement('dialog');
+  dialog.id = 'chatRecoveryDialog'; dialog.className = 'file-settings-dialog';
+  dialog.setAttribute('aria-labelledby', 'chatRecoveryTitle');
+  dialog.innerHTML = '<header class="file-settings-head"><h2 id="chatRecoveryTitle"></h2></header><div class="file-settings-body"><strong></strong><p class="chat-root"></p><p role="status"></p><p class="chat-note"></p><div class="chat-actions"></div></div>';
+  dialog.querySelector('h2').textContent = T('这段对话尚未保存', 'This conversation has unsaved changes');
+  dialog.querySelector('strong').textContent = aiArchiveSnapshot(session).title;
+  dialog.querySelector('.chat-root').textContent = session.root;
+  dialog.querySelector('[role=status]').textContent = session.archive.error;
+  dialog.querySelector('.chat-note').textContent = T('另存会保留原记录。放弃只允许本次操作跳过保存，不会删除磁盘上的记录。', 'Saving a copy keeps the original. Discard skips saving these changes and leaves the disk record intact.');
+  const actions = [['keep',T('保留并返回','Keep editing')],['retry',T('重试保存','Retry save')],['copy',T('另存为新对话','Save as new')],['discard',T('放弃本次未保存的修改','Discard these changes')]];
+  for (const [value,label] of actions) {
+    const button = document.createElement('button'); button.type = 'button'; button.dataset.recovery = value; button.textContent = label;
+    button.onclick = () => dialog.close(value); dialog.querySelector('.chat-actions').append(button);
+  }
+  document.body.append(dialog);
+  return new Promise(resolve => {
+    dialog.addEventListener('close', () => { dialog.remove(); resolve(dialog.returnValue || 'keep'); }, {once:true});
+    dialog.showModal(); dialog.querySelector('[data-recovery=keep]').focus();
+  });
+}
+async function flushAiArchiveForExit(session, finishWrite = false, stillLeaving = () => true) {
+  if (!aiArchiveNeedsFlush(session, finishWrite)) return true;
+  const archive = session.archive;
+  if (archive.leaving) return false;
+  archive.leaving = true;
+  try {
+    let ok = archive.failedWrite && !archive.saving ? false : await saveAiArchive(session);
+    while (stillLeaving() && session.archive === archive && !session.closed) {
+      if (!ok) {
+        const snapshot = JSON.stringify(aiArchiveSnapshot(session)), revision = archive.revision;
+        const choice = await chooseAiArchiveRecovery(session);
+        if (choice === 'keep' || !stillLeaving() || session.closed || session.archive !== archive || archive.saving || archive.revision !== revision ||
+            snapshot !== JSON.stringify(aiArchiveSnapshot(session))) return false;
+        if (choice === 'discard') { archive.dismissed = snapshot; return true; }
+        ok = await saveAiArchive(session, choice === 'copy' || archive.failedWrite === 'copy');
+      } else if (aiArchiveHasUnsavedText(session)) {
+        // A reply can arrive while a manual save or a recovery write is in progress.
+        ok = await saveAiArchive(session);
+      } else return true;
+    }
+    return false;
+  } finally { archive.leaving = false; }
+}
+function aiHasWorkToStop(s) { return !!s.requestId || s.messages.some(m => m.plan && m.planState === 'pending'); }
+function aiSessionNeedsExitWork(s) { return s.running || aiHasWorkToStop(s) || aiArchiveNeedsFlush(s); }
+async function prepareAiSessionForExit(s, stillOwner = () => !s.closed) {
+  if (s.running || !stillOwner()) return false;
+  // If a write has already failed, let Keep preserve a live request or approval as well as its text.
+  const protect = aiArchiveNeedsFlush(s) || s.archive?.auto;
+  if (aiHasWorkToStop(s) && aiArchiveNeedsFlush(s) && !await flushAiArchiveForExit(s)) return false;
+  if (s.running || !stillOwner()) return false;
+  const stopping = aiHasWorkToStop(s);
+  if (s.requestId) cancelAiRequest(s, false);
+  if (s.messages.some(m => m.plan && m.planState === 'pending')) discardSessionPlans(s);
+  // Finalizing can add the streamed text or change a plan status after a successful manual retry.
+  return flushAiArchiveForExit(s, !!(protect && stopping && !s.archive?.dismissed));
+}
+function aiTabArchiveNeedsFlush(tab) {
+  return [...aiSessions.values()].some(s => s.tab === tab && aiSessionNeedsExitWork(s));
+}
+function clearAiArchiveDismissal(session) { if (session?.archive) session.archive.dismissed = ''; }
 async function flushAiTabArchives(tab) {
-  for (const session of aiSessions.values()) if (session.tab === tab && aiArchiveNeedsFlush(session) && !await saveAiArchive(session)) return false;
+  const owners = [...aiSessions.values()].filter(s => s.tab === tab);
+  if (owners.some(s => s.running)) { toast(chatText('文件操作正在执行，请在完成后关闭标签。','A file operation is running. Close the tab after it finishes.'), true); return false; }
+  for (const session of owners) {
+    if (aiSessionNeedsExitWork(session) && !await prepareAiSessionForExit(session)) return false;
+  }
   return true;
 }
 function renderAiArchiveStatus() {
   const bar = $('aiArchiveBar'); if (!bar) return;
   const session = aiCurrentSession(), archive = session?.archive;
-  const dirty = !!session?.messages.length && (!archive?.saved || JSON.stringify(aiArchiveSnapshot(session)) !== archive.saved);
+  const dirty = aiArchiveHasUnsavedText(session);
   bar.querySelector('[data-chat-open]').disabled = !session;
   const save = bar.querySelector('[data-chat-save]'); save.disabled = !session?.messages.length || !!archive?.saving;
   save.textContent = chatText('保存', 'Save');
   bar.querySelector('[data-chat-open]').textContent = chatText('对话历史', 'Chat history');
+  const files = bar.querySelector('[data-file-history]');
+  if (files) { files.disabled = !session; files.textContent = chatText('工作区历史', 'Workspace history'); }
   const status = bar.querySelector('[data-chat-status]');
   status.textContent = archive?.saving ? chatText('正在保存…', 'Saving…') : archive?.error ? chatText('保存失败', 'Save failed') : !dirty && archive?.revision ? chatText('已保存', 'Saved') : archive?.auto ? chatText('自动保存中', 'Auto-save on') : chatText('临时对话', 'Temporary chat');
   status.title = archive?.error || (archive?.revision ? session.root + '\\.dalizi\\chat-history.json' : chatText('点“保存”或在对话历史中开启自动保存', 'Save manually or enable auto-save in Chat history'));
@@ -83,12 +162,13 @@ function renderAiArchiveStatus() {
 function initAiArchives() {
   if (!aiPanel || $('aiArchiveBar')) return;
   const bar = document.createElement('div'); bar.id = 'aiArchiveBar';
-  bar.innerHTML = '<span data-chat-status role="status"></span><button class="ai-link" data-chat-save></button><button class="ai-link" data-chat-open></button>';
+  bar.innerHTML = '<span data-chat-status role="status"></span><button class="ai-link" data-chat-save></button><button class="ai-link" data-file-history></button><button class="ai-link" data-chat-open></button>';
   // A compact, dedicated row leaves history accessible when messages scroll.
-  $('aiAgentContext').after(bar);
+  $('aiContextRow').after(bar);
   aiPanel.classList.add('has-chat-archives');
   bar.querySelector('[data-chat-save]').addEventListener('click', () => { const session = aiCurrentSession(); if (session) void saveAiArchive(session); });
   bar.querySelector('[data-chat-open]').addEventListener('click', openAiChatHistory);
+  bar.querySelector('[data-file-history]').addEventListener('click', () => openFileHistory());
   renderAiArchiveStatus();
 }
 function renderChatCurrentStatus(view) {
@@ -107,6 +187,8 @@ async function refreshChatHistory(view) {
     const items = await invoke('agent_chat_list', { root: view.root });
     if (chatHistoryView !== view || sequence !== view.sequence) return;
     view.items = items; const list = view.dialog.querySelector('#chatSavedList');
+    const repair = view.dialog.querySelector('#chatPrepareRollback');
+    if (repair) repair.hidden = !items.some(item => item.inlineSteps);
     list.innerHTML = items.length ? items.map((item, index) => `<button type="button" data-chat-item="${index}"><strong>${esc(item.title)}</strong><small>${esc(new Date(item.updatedAt).toLocaleString())} · ${item.messageCount} ${chatText('条消息', 'messages')}</small></button>`).join('') : `<p>${chatText('此目录还没有已保存的对话。', 'No saved conversations in this folder.')}</p>`;
   } catch (error) { if (chatHistoryView === view) view.dialog.querySelector('#chatHistoryStatus').textContent = String(error); }
 }
@@ -114,20 +196,35 @@ async function continueChatArchive(view, record) {
   if (view.busy) return;
   view.busy = true;
   try {
+    if (typeof aiProjectScope === 'function' && aiProjectScope(view.root) && aiCurrentSession() === view.session) {
+      const current = view.session;
+      if (current.running || current.restoring) return;
+      if (aiSessionNeedsExitWork(current) && !await prepareAiSessionForExit(current, () => aiCurrentSession() === current)) return;
+      if (aiCurrentSession() !== current || current.running || current.requestId) return;
+      clearTimeout(aiArchive(current).timer);
+      const revision = current.revision, draft = current.draft, activation = current.activation;
+      // Reload after flushing, since the selected record may be the active one.
+      const latest = await invoke('agent_chat_read', {root:view.root, id:record.snapshot.id});
+      if (aiCurrentSession() !== current || current.running || current.requestId || current.revision !== revision ||
+          current.activation !== activation || current.draft !== draft || aiArchiveNeedsFlush(current)) return;
+      loadProjectRecord(current, latest); current.activation++; current.draft = ''; $('aiPrompt').value = '';
+      aiPaintIdentity = ''; renderAiConversation(); updateAiComposer(); view.dialog.close(); return;
+    }
     // A new tab keeps the current draft and session untouched and revokes all old authority.
     const loading = newTab(view.root), owner = curTab(); await loading;
     if (curTab() !== owner || state.error || aiKey(state.path) !== aiKey(view.root)) throw new Error(chatText('目录无法打开或标签已切换，未恢复对话。', 'The folder could not open or the active tab changed; conversation was not restored.'));
     const session = aiCurrentSession();
     if (!session || session.messages.length || session.requestId || session.running) throw new Error(chatText('标签状态已变化，请重试。', 'The active tab changed; please retry.'));
     const snapshot = record.snapshot;
-    session.messages = snapshot.messages.map((m) => ({ id: m.id, role: m.role, text: m.text, omitHistory: m.omitHistory }));
+    session.messages = snapshot.messages.map((m) => ({ id: m.id, role: m.role, text: m.text, omitHistory: m.omitHistory, steps: m.steps || [] }));
     session.conversationSummary = snapshot.summary; session.summarizedIds = new Set(snapshot.summarizedIds);
     session.compactedMessages = snapshot.compactedMessages; session.permissionMode = 'confirm'; session.activation++; session.revision++;
-    aiArchive(session).title = snapshot.title; // independent ID; the original remains intact
+    session.agentRole = null; session.useRoleSkills = false; session.roleGeneration = (session.roleGeneration || 0) + 1;
+    aiArchive(session).auto = false; aiArchive(session).title = snapshot.title; // independent ID; the original remains intact
     aiPaintIdentity = ''; renderAiConversation(); updateAiComposer(); openAiAssistant();
     view.dialog.close(); toast(chatText('已在新标签恢复文字记录；操作需要重新生成并确认。', 'Restored text in a new tab. Actions need a new plan and confirmation.'));
   } catch (error) { view.dialog.querySelector('#chatHistoryStatus').textContent = String(error); }
-  finally { view.busy = false; }
+  finally { clearAiArchiveDismissal(view.session); view.busy = false; }
 }
 async function exportChatSnapshot(snapshot, view) {
   const path = await invoke('agent_chat_export', { snapshot });
@@ -153,6 +250,14 @@ function openAiChatHistory() {
   dialog.querySelector('#chatAutoSave').onchange = (event) => { const enabled = event.target.checked; return run(async () => { title(); archive.auto = enabled; if (archive.auto) { if (await saveAiArchive(session)) await refreshChatHistory(view); } else { clearTimeout(archive.timer); archive.timer = null; } renderAiArchiveStatus(); }); };
   dialog.querySelector('#chatArchiveTitle').onchange = () => { try { title(); scheduleAiArchive(session); } catch (error) { status(error); } };
   dialog.querySelector('#chatRefresh').onclick = () => { if (!view.busy) void refreshChatHistory(view); };
+  const repair = document.createElement('button'); repair.id = 'chatPrepareRollback'; repair.hidden = true;
+  repair.textContent = T('整理步骤，使旧版可读', 'Make history readable by 0.5.1');
+  repair.title = T('将早期候选版的操作步骤另存；保留每条聊天的正文、时间和版本。','Store early candidate receipts separately; preserve transcripts, timestamps and revisions.');
+  dialog.querySelector('#chatRefresh').before(repair);
+  repair.onclick = () => run(async () => {
+    const n = await invoke('agent_chat_prepare_rollback', {root:view.root});
+    await refreshChatHistory(view); status(T('已整理对话：', 'Conversations prepared: ') + n);
+  });
   dialog.querySelector('#chatSavedList').onclick = async (event) => {
     const button = event.target.closest('[data-chat-item]'); if (!button || view.busy) return;
     const item = view.items[Number(button.dataset.chatItem)]; if (!item) return;
@@ -161,6 +266,7 @@ function openAiChatHistory() {
       const record = await invoke('agent_chat_read', { root: view.root, id: item.id });
       if (selection !== view.selection || chatHistoryView !== view) return;
       view.record = record; dialog.querySelector('#chatPreviewTitle').textContent = record.snapshot.title;
+      status(record.receiptWarning || '');
       dialog.querySelector('#chatPreviewText').textContent = (record.snapshot.summary ? T('摘要：', 'Summary: ') + record.snapshot.summary + '\n\n' : '') + record.snapshot.messages.map((m) => m.role + '\n' + m.text).join('\n\n');
       dialog.querySelector('#chatSavedPreview').hidden = false; dialog.querySelector('#chatConfirmDelete').hidden = true;
     } catch (error) { if (selection === view.selection) status(error); }
@@ -175,8 +281,12 @@ function openAiChatHistory() {
     for (const owner of owners) { owner.archive.auto = false; clearTimeout(owner.archive.timer); if (owner.archive.saving) await owner.archive.saving; }
     const revision = owners[0]?.archive.revision || record.revision;
     await invoke('agent_chat_delete', { root: view.root, id: record.snapshot.id, expectedRevision: revision });
-    for (const owner of owners) { owner.archive.saved = ''; owner.archive.error = T('已删除磁盘记录；如需保留当前文字，请另存为新对话。', 'Saved record deleted. Save as new to keep this text.'); }
+    for (const owner of owners) { owner.archive.saved = ''; owner.archive.failedWrite = ''; owner.archive.dismissed = ''; owner.archive.error = T('已删除磁盘记录；如需保留当前文字，请另存为新对话。', 'Saved record deleted. Save as new to keep this text.'); }
     view.record = null; dialog.querySelector('#chatSavedPreview').hidden = true; status(T('已删除。', 'Deleted.')); renderAiArchiveStatus(); await refreshChatHistory(view);
   });
+  if (typeof aiProjectScope === 'function' && aiProjectScope(session.root)) {
+    dialog.querySelector('#chatContinue').textContent = T('继续这段对话', 'Resume conversation');
+    dialog.querySelector('#chatSavedPreview .chat-note').textContent = T('恢复文字和摘要，项目工具权限回到逐次确认。','Restore the transcript and summary with fresh permissions.');
+  }
   dialog.showModal(); renderChatCurrentStatus(view); void refreshChatHistory(view);
 }

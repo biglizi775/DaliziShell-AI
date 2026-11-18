@@ -12,13 +12,17 @@ use std::sync::{
 };
 
 use serde::{Deserialize, Serialize};
-use tauri::webview::{NewWindowResponse, PageLoadEvent, WebviewBuilder};
+use tauri::webview::{PageLoadEvent, WebviewBuilder};
 use tauri::{AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, State, WebviewUrl, Wry};
 
 #[path = "browser_downloads.rs"]
 pub(crate) mod downloads;
 #[path = "browser_extensions.rs"]
 mod extensions;
+#[path = "browser_popups.rs"]
+mod popups;
+#[path = "browser_reference.rs"]
+pub mod reference;
 #[path = "browser_settings.rs"]
 mod settings;
 pub use settings::BrowserSettings;
@@ -29,6 +33,7 @@ pub struct BrowserState(
     pub tokio::sync::Mutex<()>,
     pub Mutex<Option<BrowserSettings>>,
     pub AtomicBool,
+    pub reference::References,
 );
 
 #[derive(Clone, Debug, Deserialize)]
@@ -47,6 +52,8 @@ pub struct BrowserPageEvent {
     pub url: String,
     pub title: Option<String>,
     pub phase: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub popup_key: Option<String>,
 }
 
 fn valid_key(key: &str) -> bool {
@@ -57,18 +64,26 @@ fn valid_key(key: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
 }
 
-fn valid_url(value: &str) -> Result<url::Url, String> {
+pub(crate) fn valid_url(value: &str) -> Result<url::Url, String> {
     let url = value
         .trim()
         .parse::<url::Url>()
         .map_err(|_| "浏览器地址无效 / Invalid browser URL".to_string())?;
-    if !matches!(url.scheme(), "http" | "https" | "about") {
+    if url.as_str() != "about:blank" && !matches!(url.scheme(), "http" | "https") {
         return Err(
             "浏览器只允许 http、https 或 about 地址 / Unsupported browser URL scheme".into(),
         );
     }
     if url.scheme() != "about" && url.host_str().is_none() {
         return Err("浏览器地址缺少主机名 / Browser URL has no host".into());
+    }
+    if matches!(
+        url.host_str().unwrap_or("").trim_end_matches('.'),
+        "tauri.localhost" | "ipc.localhost" | "asset.localhost"
+    ) || !url.username().is_empty()
+        || url.password().is_some()
+    {
+        return Err("此地址不能作为网页打开 / Reserved or credential-bearing URL".into());
     }
     Ok(url)
 }
@@ -118,13 +133,15 @@ fn profile_dir(app: &AppHandle, _key: &str) -> Result<PathBuf, String> {
 }
 
 fn emit_page(app: &AppHandle, key: &str, url: &url::Url, phase: &str, title: Option<String>) {
-    let _ = app.emit(
+    let _ = app.emit_to(
+        "main",
         "browser-page",
         BrowserPageEvent {
             key: key.to_string(),
             url: url.to_string(),
             title,
             phase: phase.to_string(),
+            popup_key: None,
         },
     );
 }
@@ -207,6 +224,8 @@ pub async fn browser_create(
     // Delay the first website navigation until script permissions, profile
     // preferences and zoom have all reached the real native WebView2 object.
     let ready = Arc::new(AtomicBool::new(false));
+    let popup = key.starts_with("popup-");
+    let instance = uuid::Uuid::new_v4();
     let builder = WebviewBuilder::new(label, WebviewUrl::External("about:blank".parse().unwrap()))
         .data_directory(profile)
         .browser_extensions_enabled(true)
@@ -217,14 +236,25 @@ pub async fn browser_create(
             let app = app.clone();
             let key = key.clone();
             let ready = ready.clone();
+            let login_redirect = Mutex::new(popups::LoginRedirect::default());
             move |next| {
-                if valid_url(next.as_str()).is_err() {
+                app.state::<BrowserState>().4.navigated(&key, instance);
+                if let Some(destination) = popups::edge_destination(next.as_str()) {
+                    emit_page(&app, &key, &destination, "new-window", None);
                     return false;
+                }
+                if valid_url(next.as_str()).is_err() {
+                    return login_redirect
+                        .lock()
+                        .is_ok_and(|redirect| redirect.matches(next));
+                }
+                if let Ok(mut redirect) = login_redirect.lock() {
+                    redirect.observe(next);
                 }
                 if ready.load(Ordering::Acquire) {
                     emit_page(&app, &key, next, "navigating", None);
                 }
-                true
+                !popup || ready.load(Ordering::Acquire)
             }
         })
         .on_page_load({
@@ -251,15 +281,12 @@ pub async fn browser_create(
                     emit_page(&app, &key, &url, "title", Some(title));
                 }
             }
-        })
-        .on_new_window({
-            let app = app.clone();
-            let key = key.clone();
-            move |next, _features| {
-                emit_page(&app, &key, &next, "new-window", None);
-                NewWindowResponse::Deny
-            }
         });
+    let builder = if popup {
+        popups::builder(&app, key.clone(), builder).await?
+    } else {
+        builder
+    };
     let child = window
         .add_child(
             builder,
@@ -274,7 +301,15 @@ pub async fn browser_create(
         let _ = child.close();
         return Err(error.to_string());
     }
-    let mut result = settings::apply(child.clone(), settings.clone()).await;
+    let mut result = popups::install(app.clone(), &child, key.clone()).await;
+    if let Some(engine) = app.try_state::<reference::EngineRevision>().filter(|_| result.is_ok()) {
+        if let Err(error)=reference::install(app.clone(),&child,key.clone(),instance,engine.0).await {
+            let _=app.emit_to(tauri::EventTarget::webview("main"),"browser-quote-error",format!("此 WebView2 无法添加网页引用菜单：{error}"));
+        }
+    }
+    if result.is_ok() {
+        result = settings::apply(child.clone(), settings.clone()).await;
+    }
     // Tauri initializes every child with its parent window's theme, which
     // writes a shared profile preference. Restore every existing native view
     // as well; WebView2's separate environment objects cache profile values.
@@ -314,12 +349,18 @@ pub async fn browser_create(
         });
     }
     ready.store(true, Ordering::Release);
-    if let Err(error) = child.navigate(url) {
+    let navigation = if popup {
+        popups::connect(&child, key.clone()).await
+    } else {
+        child.navigate(url).map_err(|error| error.to_string())
+    };
+    if let Err(error) = navigation {
         let _ = child.close();
         return Err(format!(
             "浏览器设置已应用，但导航失败 / Settings applied but navigation failed: {error}"
         ));
     }
+    state.4.opened(&key,instance);
     if let Some(previous) = state.0.lock().unwrap().insert(key, child) {
         let _ = previous.close();
     }
@@ -361,7 +402,9 @@ pub fn browser_set_active(
     } else {
         webview.hide()
     };
-    result.map_err(|e| e.to_string())
+    result.map_err(|e| e.to_string())?;
+    state.4.active(&key, active);
+    Ok(())
 }
 
 #[tauri::command]
@@ -378,6 +421,7 @@ pub fn browser_navigate(
         .get(&key)
         .cloned()
         .ok_or_else(|| "browser tab not found".to_string())?;
+    state.4.leave_document(&key);
     webview.navigate(url).map_err(|e| e.to_string())
 }
 
@@ -387,6 +431,7 @@ pub async fn browser_action(
     key: String,
     action: String,
 ) -> Result<(), String> {
+    if matches!(action.as_str(),"back"|"forward"|"reload"){state.4.leave_document(&key);}
     settings::action(extension_webview(&state, &key)?, action).await
 }
 
@@ -456,7 +501,12 @@ pub async fn browser_clear_data(
     key: String,
     kinds: Vec<String>,
 ) -> Result<(), String> {
-    settings::clear(extension_webview(&state, &key)?, kinds).await
+    let webview = extension_webview(&state, &key)?;
+    if kinds.iter().any(|kind| kind == "cache") {
+        let runtime = extensions::runtime_info(webview.clone()).await?;
+        settings::check_clear_runtime(&runtime.version, &kinds)?;
+    }
+    settings::clear(webview, kinds).await
 }
 
 #[tauri::command]
@@ -468,8 +518,19 @@ pub async fn browser_downloads_show(
 }
 
 #[tauri::command]
+pub fn browser_popup_dismiss(app: AppHandle, key: String) -> Result<(), String> {
+    app.run_on_main_thread(move || popups::dismiss(&key))
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 pub fn browser_close(state: State<'_, BrowserState>, key: String) -> Result<(), String> {
-    if let Some(webview) = state.0.lock().unwrap().remove(&key) {
+    state.4.closed(&key);
+    let removed = state.0.lock().unwrap().remove(&key);
+    if let Some(webview) = removed {
+        webview
+            .run_on_main_thread(move || popups::close_opener(&key))
+            .map_err(|error| error.to_string())?;
         webview.close().map_err(|e| e.to_string())?;
     }
     Ok(())
@@ -477,7 +538,8 @@ pub fn browser_close(state: State<'_, BrowserState>, key: String) -> Result<(), 
 
 pub fn shutdown(state: &BrowserState) {
     let views = std::mem::take(&mut *state.0.lock().unwrap());
-    for (_, webview) in views {
+    for (key, webview) in views {
+        state.4.closed(&key);
         let _ = webview.close();
     }
 }
@@ -493,6 +555,11 @@ fn extension_webview(state: &BrowserState, key: &str) -> Result<tauri::Webview<W
         .get(key)
         .cloned()
         .ok_or_else(|| "请先打开一个浏览器标签页 / Open a browser tab first".into())
+}
+
+#[tauri::command]
+pub async fn browser_runtime_info(state: State<'_, BrowserState>, key: String) -> Result<extensions::RuntimeInfo, String> {
+    extensions::runtime_info(extension_webview(&state, &key)?).await
 }
 
 #[tauri::command]

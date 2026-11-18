@@ -91,6 +91,7 @@ fn compact(request: PlanRequest, cancel: Arc<AtomicBool>) -> Result<CompactRespo
 #[tauri::command]
 pub async fn ai_compact(request: CompactRequest) -> Result<CompactResponse, String> {
     let request = PlanRequest {
+        general_chat: true, stream_chat: false,
         request_id: request.request_id,
         endpoint: request.endpoint,
         model: request.model,
@@ -104,6 +105,9 @@ pub async fn ai_compact(request: CompactRequest) -> Result<CompactResponse, Stri
         conversation_summary: request.summary,
         selection: vec![],
         skill_ids: vec![],
+        role_id: None,
+        use_role_skills: false,
+        copy_revisions: Default::default(),
         use_memory: false,
         learn_memory: false,
         permission_mode: PermissionMode::ReadOnly,

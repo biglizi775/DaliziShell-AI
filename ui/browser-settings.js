@@ -18,13 +18,22 @@ function browserHomeUrl(value) {
   return url.href;
 }
 
+// Keep one-time credentials out of exported history and restored tabs.
+function browserAuthorizationUrl(value) {
+  try {
+    const url = new URL(value);
+    const names = [...url.searchParams.keys(), ...new URL('https://localhost/?' + url.hash.slice(1)).searchParams.keys()];
+    return names.some((name) => /^(?:code|state|user_code|device_code|access_token|refresh_token|id_token|code_challenge|code_verifier)$/i.test(name));
+  } catch { return false; }
+}
+
 function normalizeBrowserSettings(raw) {
   const input = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
   const out = { ...BROWSER_DEFAULTS };
   try { if (typeof input.homeUrl === 'string') out.homeUrl = browserHomeUrl(input.homeUrl); } catch {}
   for (const key of ['recordHistory', 'restoreSession', 'allowNewWindows', 'javascriptEnabled', 'contextMenusEnabled', 'devToolsEnabled', 'autofillEnabled', 'passwordAutosaveEnabled']) if (typeof input[key] === 'boolean') out[key] = input[key];
   if (['home', 'blank'].includes(input.newTabPage)) out.newTabPage = input.newTabPage;
-  if (Object.hasOwn(BROWSER_SEARCH, input.searchEngine)) out.searchEngine = input.searchEngine;
+  if (Object.prototype.hasOwnProperty.call(BROWSER_SEARCH, input.searchEngine)) out.searchEngine = input.searchEngine;
   if (['system', 'light', 'dark'].includes(input.colorScheme)) out.colorScheme = input.colorScheme;
   if (typeof input.zoom === 'number' && Number.isFinite(input.zoom) && input.zoom >= .5 && input.zoom <= 2) out.zoom = input.zoom;
   if (typeof input.downloadDirectory === 'string' && input.downloadDirectory.length <= 1024 && !/[\x00-\x1f\x7f]/.test(input.downloadDirectory)) out.downloadDirectory = input.downloadDirectory.trim();
@@ -80,10 +89,12 @@ function openBrowserSettings() {
   const select = (name, title, detail, options) => `<label class="settings-preference"><span><strong>${title}</strong><small>${detail}</small></span><select name="${name}">${options.map(([value, label]) => `<option value="${value}">${label}</option>`).join('')}</select></label>`;
   const toggle = (name, title, detail) => `<label class="settings-preference"><span><strong>${title}</strong><small>${detail}</small></span><input name="${name}" type="checkbox" role="switch"></label>`;
   const text = (name, title, detail, placeholder) => `<label class="browser-settings-input"><strong>${title}</strong><input name="${name}" type="text" spellcheck="false" maxlength="${name === 'homeUrl' ? 4096 : 1024}" placeholder="${esc(placeholder)}"><small>${detail}</small></label>`;
-  const groups = [['general', T('常规与搜索', 'General & search')], ['appearance', T('网页外观', 'Page appearance')], ['privacy', T('隐私与数据', 'Privacy & data')], ['content', T('网页行为', 'Page behavior')], ['downloads', T('下载', 'Downloads')], ['extensions', T('扩展', 'Extensions')]];
+  const groups = [['general', T('常规与搜索', 'General & search')], ['windows', T('外部应用链接', 'Links from Windows apps')], ['appearance', T('网页外观', 'Page appearance')], ['privacy', T('隐私与数据', 'Privacy & data')], ['content', T('网页行为', 'Page behavior')], ['downloads', T('下载', 'Downloads')], ['extensions', T('扩展', 'Extensions')]];
   const section = (id, content) => `<section class="workspace-settings-section" id="browser-section-${id}" tabindex="-1"><h3>${groups.find((group) => group[0] === id)[1]}</h3>${content}</section>`;
+  const diagnosticControls = `<div id="windowsLinkResult" aria-live="polite"></div><div class="browser-settings-actions"><button type="button" data-browser-settings-action="check-links">${T('检查状态', 'Check status')}</button><button type="button" data-browser-settings-action="copy-links">${T('复制诊断摘要', 'Copy diagnostics')}</button></div>`;
   dialog.innerHTML = `<header class="file-settings-head"><div><span class="file-settings-eyebrow">DALIZI / BROWSER</span><h2 id="browserSettingsTitle">${T('浏览器设置', 'Browser settings')}</h2></div><button type="button" data-browser-settings-action="close" aria-label="${T('关闭', 'Close')}">×</button></header><form id="browserSettingsForm"><div class="browser-settings-layout"><nav aria-label="${T('设置分类', 'Settings categories')}">${groups.map(([id, title]) => `<button type="button" data-browser-section="${id}">${title}</button>`).join('')}</nav><div class="file-settings-body">
   ${section('general', text('homeUrl', T('主页地址', 'Home page'), T('点击工具栏主页按钮时打开；支持 http、https 和 about:blank。', 'Used by the Home button. Supports HTTP, HTTPS and about:blank.'), 'https://www.google.com/') + select('newTabPage', T('新建网页标签时', 'New browser tabs'), T('不影响文件夹和终端标签。', 'Does not affect folder or terminal tabs.'), [['home', T('打开主页', 'Open home page')], ['blank', T('打开空白页', 'Open blank page')]]) + toggle('restoreSession', T('启动时恢复文件夹和网页标签', 'Restore folders and web tabs on startup'), T('与“收藏与启动”共用设置。关闭自动恢复后仍可手动恢复；关闭记录网页历史会从会话中移除网址，不影响文件夹。', 'Shared with Favorites & startup. When automatic restoration is off, manual restoration remains available. Disabling URL history removes web tabs from snapshots, preserving folders.')) + select('searchEngine', T('地址栏搜索引擎', 'Address bar search'), T('输入关键词即可搜索；完整网址直接打开。', 'Search keywords or navigate directly to an address.'), [['google', 'Google'], ['bing', 'Bing'], ['baidu', T('百度', 'Baidu')], ['duckduckgo', 'DuckDuckGo']]))}
+  ${section('windows', `<p>${T('让桌面客户端发起的网页登录在工作台打开。请先把 EXE 放在固定位置，再在 Windows 中选择 Dalizi Files 处理 HTTP 和 HTTPS。此选择也适用于其他应用的普通网页链接。', 'To open desktop sign-ins here, keep this EXE in a permanent location and choose Dalizi Files for HTTP and HTTPS in Windows. This also applies to ordinary web links from other apps.')}</p><div class="browser-settings-actions"><button type="button" data-browser-settings-action="windows-links">${T('注册并打开 Windows 默认应用', 'Register and open Windows Default apps')}</button></div>` + diagnosticControls)}
   ${section('appearance', select('zoom', T('默认网页缩放', 'Default page zoom'), T('保存时应用到所有网页标签，新标签沿用。', 'Applies to all current tabs when saved and to new tabs.'), [.5,.67,.75,.8,.9,1,1.1,1.25,1.5,1.75,2].map((value) => [value, `${Math.round(value * 100)}%`])) + select('colorScheme', T('网页配色偏好', 'Page color preference'), T('支持配色的网站会响应；不强制修改网页颜色。', 'Used by sites that support color schemes; does not recolor every site.'), [['system', T('跟随系统', 'System')], ['light', T('浅色', 'Light')], ['dark', T('深色', 'Dark')]]))}
   ${section('privacy', toggle('recordHistory', T('记录网页访问历史', 'Record URL history'), T('关闭后停止新增应用内网页历史，已有记录需手动清理；这不是无痕模式。', 'Stops new app URL history. Existing history remains until cleared; this is not private browsing.')) + toggle('autofillEnabled', T('自动填充表单', 'Form autofill'), T('保存并填充姓名、地址等一般表单信息，不包含密码。', 'Save and fill general form data such as names and addresses, excluding passwords.')) + toggle('passwordAutosaveEnabled', T('提示保存密码', 'Offer to save passwords'), T('关闭后不再提示保存新密码；已保存密码仍可能自动填充。', 'Disabling stops new save prompts; previously saved passwords may still autofill.')) + `<div class="browser-settings-actions"><button type="button" data-browser-settings-action="history">${T('查看访问历史', 'View history')}</button><button type="button" data-browser-settings-action="clear-data">${T('清除浏览数据…', 'Clear browsing data…')}</button></div>`)}
   ${section('content', toggle('allowNewWindows', T('允许网页打开新标签', 'Allow pages to open new tabs'), T('关闭会阻止弹窗，以及要求新标签打开的网页链接。', 'Disabling blocks popups and page links that request a new tab.')) + toggle('javascriptEnabled', T('允许 JavaScript', 'Allow JavaScript'), T('关闭可能影响登录与交互；保存后在刷新或下次导航时生效。', 'Disabling may break login and interaction. Applies on reload or next navigation.')) + toggle('contextMenusEnabled', T('网页右键菜单', 'Page context menus'), T('显示 WebView2 的复制、链接等菜单。', 'Show WebView2 context menus for links, copying and other actions.')) + toggle('devToolsEnabled', T('允许开发者工具', 'Allow developer tools'), T('允许通过网页右键菜单或快捷键调试网页。', 'Allow page debugging through context menus or keyboard shortcuts.')))}
@@ -92,6 +103,43 @@ function openBrowserSettings() {
   </div></div><footer class="file-settings-footer"><div class="browser-settings-status"><span id="browserSettingsStatus" role="status">${T('设置保存在本机，保存后应用到所有网页标签。', 'Preferences are local and apply to all browser tabs when saved.')}</span><small>${T('关闭不保存；恢复默认不会清除浏览数据。', 'Closing discards edits; restoring defaults does not clear browsing data.')}</small></div><button type="button" data-browser-settings-action="reset">${T('恢复默认', 'Defaults')}</button><button type="button" data-browser-settings-action="back">${T('返回设置', 'Back')}</button><button type="submit" class="file-settings-primary">${T('保存并应用', 'Save & apply')}</button></footer></form>`;
   document.body.appendChild(dialog);
   const form = dialog.querySelector('form'), status = dialog.querySelector('#browserSettingsStatus');
+  const result = dialog.querySelector('#windowsLinkResult');
+  let diagnosticsActive = false, diagnosticsRevision = 0;
+  async function checkLinks(copy = false) {
+    diagnosticsActive = true;
+    const revision = ++diagnosticsRevision;
+    result.textContent = T('正在读取 Windows 设置…', 'Reading Windows settings…');
+    try {
+      const data = await invoke('browser_link_diagnostics');
+      if (!dialog.open || revision !== diagnosticsRevision) return;
+      const registrations = {
+        current: T('指向当前 EXE', 'Points to this EXE'),
+        missing: T('尚未注册', 'Unregistered'),
+        repair: T('注册不完整或指向另一个 EXE，请重新注册', 'Incomplete or points to another EXE. Register again.'),
+      };
+      const unknown = T('无法读取', 'Unavailable');
+      const handler = (id, share) => !id ? unknown : id.toLowerCase() === 'dalizifiles.url' ? 'Dalizi Files' : share ? T('其他应用', 'Another app') : id;
+      const rows = (share) => [
+        [T('运行版本', 'Build'), [$('appVersion')?.textContent, $('appVersion')?.title].filter(Boolean).join(' · ') || unknown],
+        ['WebView2', data.runtime || unknown],
+        [T('本机注册', 'Registration'), registrations[data.registration] || unknown],
+        ['HTTP', handler(data.http, share)], ['HTTPS', handler(data.https, share)],
+        [T('网页弹窗', 'Page popups'), browserSettings().allowNewWindows ? T('允许', 'Allowed') : T('阻止', 'Blocked')],
+      ];
+      result.innerHTML = `<dl class="browser-diagnostics">${rows(false).map(([k,v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl>`;
+      if (copy) {
+        await navigator.clipboard.writeText(rows(true).map(([k,v]) => k + '  ' + v).join('\n'));
+        status.textContent = T('已复制诊断摘要', 'Diagnostics copied');
+      }
+    } catch (error) {
+      if (dialog.open && revision === diagnosticsRevision) {
+        if (!result.querySelector('dl')) result.textContent = T('暂时无法读取，请重新检查。', 'Unavailable. Check again.');
+        status.textContent = String(error);
+      }
+    }
+  }
+  const returned = () => { if (dialog.open && diagnosticsActive) void checkLinks(); };
+  window.addEventListener('focus', returned);
   let busy = false;
   const fill = (settings) => { for (const [key, value] of Object.entries(settings)) { const field = form.elements.namedItem(key); if (!field) continue; if (field.type === 'checkbox') field.checked = value; else field.value = String(value); } };
   const draftSettings = () => Object.fromEntries(Object.keys(BROWSER_DEFAULTS).map((key) => { const field = form.elements.namedItem(key); return [key, field.type === 'checkbox' ? field.checked : key === 'zoom' ? Number(field.value) : field.value.trim()]; }));
@@ -107,15 +155,23 @@ function openBrowserSettings() {
     finally { busy = false; form.querySelectorAll('input,select,button').forEach((node) => { node.disabled = false; }); }
   });
   dialog.addEventListener('cancel', (event) => { if (busy) event.preventDefault(); });
-  dialog.addEventListener('close', () => dialog.remove());
+  dialog.addEventListener('close', () => { window.removeEventListener?.('focus', returned); dialog.remove(); });
   dialog.addEventListener('click', (event) => {
     if (busy) return;
     const sectionButton = event.target.closest('[data-browser-section]');
     if (sectionButton) { const target = dialog.querySelector(`#browser-section-${sectionButton.dataset.browserSection}`); target.scrollIntoView({ block: 'start' }); target.focus({ preventScroll: true }); }
     const action = event.target.closest('[data-browser-settings-action]')?.dataset.browserSettingsAction;
+    if (sectionButton?.dataset.browserSection === 'windows' || action === 'check-links' || action === 'copy-links') void checkLinks(action === 'copy-links');
     if (action === 'close') dialog.close();
     if (action === 'back') { dialog.close(); openWorkspaceSettings(); }
     if (action === 'reset') { fill(BROWSER_DEFAULTS); status.textContent = T('已填入默认值，点击“保存并应用”后生效。', 'Defaults filled. Save & apply to use them.'); }
+    if (action === 'windows-links') {
+      diagnosticsActive = true;
+      invoke('browser_register_windows').then(() => {
+        void checkLinks();
+        status.textContent = T('已注册。请在 Windows 默认应用中选择 Dalizi Files 处理 HTTP 和 HTTPS。', 'Registered. In Windows Default apps, select Dalizi Files for HTTP and HTTPS.');
+      }).catch((error) => { status.textContent = String(error); });
+    }
     if (action === 'history') showBrowserHistory();
     if (action === 'clear-data') openBrowserClearData();
     if (action === 'downloads' || action === 'download-folder') {

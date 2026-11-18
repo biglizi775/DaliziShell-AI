@@ -1,0 +1,56 @@
+{
+  "date": "2026-11-17",
+  "scope": "Local Windows 11 x64, real MSVC/Tauri/WebView2 executable using a dedicated test identifier and a generated loopback SSH/SFTP endpoint.",
+  "feature": "A02/A09: reviewed SFTP queues can recover never-started entries after process exit.",
+  "observations": [
+    "Normal window close with a paused two-entry queue preserved the one undispatched item. Offline removal kept its independent transfer receipt.",
+    "Force-terminating the process during the first download of a three-file batch left one unconfirmed receipt. Offline review identified exactly two pending files. Viewing the queue and reopening the app added zero authentication attempts.",
+    "A changed host key, directory replaced at the same path, stale review revision, concurrent second writer, and a transfer whose endpoint differed from its reviewed entry each failed before a file could be transferred.",
+    "After interactive reconnect and confirmation, both pending files matched the originals byte for byte. The interrupted file remained unpublished. The exhausted queue disappeared.",
+    "Fixed standalone browser_smoke compilation by passing the optional quote-engine revision callback from the desktop builder. The browser-only target requires no Agent state."
+  ],
+  "restoredFileSha256": {
+    "中文.txt": "fc4d3b566182b22580eb1fee35842d5f36f279ce3dde621d9be16f66637c60c5",
+    "queue-one.txt": "1f8c22cc22109a7f26efac5350445b9044827804eadb16ed77618ebe1d56a587"
+  },
+  "tests": {
+    "javascript": 307,
+    "python": 11,
+    "rustDesktop": 172,
+    "rustAuxiliaryTargets": 23,
+    "rustHarnessClient": 12,
+    "explicitNativeTests": [
+      "native_web_quote",
+      "real_openssh_conpty_loopback_auth_info_resize_and_exit"
+    ],
+    "nativeSftp": "tools/ssh_managed_smoke.cjs",
+    "browserQueue": "tools/ui_smoke.cjs --transfers",
+    "standaloneBrowser": "cargo run --bin browser_smoke: native popup, layout, tab identity, settings, cache, download, extensions and isolation checks passed",
+    "nativeDesktop": "tools/verify_harness_desktop.ps1",
+    "providerCompatibility": "tools/ai_api_smoke.cjs --workbench using loopback responses",
+    "fixtureSha256": "ca1a47728c31581277340a4932fc1b5a01d88d4004a40c8182837eafbd840230"
+  },
+  "source": {
+    "archive": "dalizi-files-0.5.1-source-17d93bc15ba3dc92.zip",
+    "sha256": "17d93bc15ba3dc92766b03d7b52aa49ae94743547542c60bd32ae98942ba9c41",
+    "filesVerifiedBeforeOfflineBuild": 576
+  },
+  "preview": {
+    "archive": "dalizi-files-0.5.1-windows-x64-preview-sftp-batch-recovery-1e31538eb6dd.zip",
+    "bytes": 55237705,
+    "sha256": "1d6081ec0403c9efc80dcc4a4d9a0b8b2ccf2621d89fdbdfa1949ca90c400971",
+    "exeSha256": "1e31538eb6ddc975539389424b6f67c33cf88fed1d3b23ef030af14a4336e282",
+    "componentSha256": "576a0c64da03d892ea8ac94b7bfeda905dacd2ed7fb5f8d310fe75c46e069dc2",
+    "entries": 749,
+    "perFileHashesVerified": 748,
+    "candidate": null
+  },
+  "limits": [
+    "Only explicitly saved pending entries are recoverable. Partial-file byte checkpoints and tokens stay in-process. An interrupted published result must be checked in workspace history.",
+    "Uploads read the current contents at reviewed paths. Durable mode requires a recognizable local directory identity.",
+    "Pre-feature in-memory queues cannot be reconstructed."
+  ],
+  "releaseGates": [
+    "Clean Windows 10 and Windows 11 acceptance and an authenticated production-provider turn remain separate from local preview verification."
+  ]
+}

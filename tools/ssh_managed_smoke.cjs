@@ -20,8 +20,10 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function freePort() { const server = net.createServer(); await new Promise(resolve => server.listen(0, '127.0.0.1', resolve)); const port = server.address().port; await new Promise(resolve => server.close(resolve)); return port; }
 (async () => {
   let app, browser, page;
-  try {
-    const data = await nextMessage(), port = await freePort();
+  const errors=[];
+  async function launch(){
+    const port = await freePort();
+    page=null;
     app = spawn(exe, [], { cwd: output, windowsHide: true, stdio: 'ignore', env: { ...process.env, WEBVIEW2_USER_DATA_FOLDER: path.join(output, 'webview-profile'), WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-address=127.0.0.1 --remote-debugging-port=${port}` } });
     let endpoint;
     for (let i = 0; i < 100; i++) { try { endpoint = await fetch(`http://127.0.0.1:${port}/json/version`).then(r => r.json()); break; } catch { await delay(200); } }
@@ -30,7 +32,11 @@ async function freePort() { const server = net.createServer(); await new Promise
     for (let i = 0; i < 100; i++) { page = browser.contexts().flatMap(c => c.pages()).find(p => p.url().includes('tauri.localhost')); if (page) break; await delay(100); }
     assert.ok(page, 'Main app page exists');
     await page.waitForFunction(() => typeof ensureManagedSshEvents === 'function' && window.__TAURI__?.core);
-    const errors = []; page.on('pageerror', e => errors.push(e.message));
+    page.on('pageerror', e => errors.push(e.message));
+  }
+  try {
+    const data = await nextMessage();
+    await launch();
     const invoke = (command, args) => page.evaluate(({ command, args }) => window.__TAURI__.core.invoke(command, args), { command, args });
     await page.evaluate(async () => {
       window.fixtureEvents = [];
@@ -110,6 +116,7 @@ async function freePort() { const server = net.createServer(); await new Promise
     assert.equal(fs.readdirSync(output).some(name => name.endsWith('.part')), false);
     await require('./ssh_transfer_queue_native.cjs')({ page, invoke, id, output, remoteRoot: data.root });
     await require('./ssh_tree_resume_native.cjs')({ page, invoke, output, remoteRoot: data.root });
+    await require('./ssh_paired_native.cjs')({page,output,remoteRoot:data.root});
     // A fresh native login retrieves the protected credential without a password field.
     await page.evaluate(() => reconnectSshTab(curTab()));
     const newId = await page.evaluate(() => curTab().termId); assert.notEqual(newId, id);
@@ -126,8 +133,24 @@ async function freePort() { const server = net.createServer(); await new Promise
     await page.screenshot({ path: path.join(output, 'ssh-workspace.png') });
     await page.setViewportSize({ width: 960, height: 560 });
     await page.screenshot({ path: path.join(output, 'ssh-workspace-small.png') });
+    await page.evaluate(()=>loadSshFiles(curTab(),'/'));
+    const history=page.locator('#fileHistoryDialog');
+    await page.locator('[data-remote-history]:visible').click();
+    await history.locator('[data-related-row]').first().waitFor();
+    const remoteId=await page.evaluate(()=>curTab().sshFiles.taskBinding.workspace.identity);
+    const scope={remoteWorkspace:remoteId};
+    const remoteRecords=(await invoke('ssh_history_list',scope)).rows;
+    assert.ok(remoteRecords.length && remoteRecords.every(r=>r.start?.peer.fingerprint===data.fingerprint));
+    await history.locator('[data-related-row]').first().click();
+    assert.match(await history.locator('[data-related-records] .file-history-detail').innerText(),/SHA256:/);
+    await history.locator('[data-close]').click();
     assert.equal(await page.locator('.term.ssh-terminal-host:visible .term-terminal-viewport').isVisible(), true, 'terminal and remote files are both visible after login');
     assert.ok(await page.evaluate(() => curTab().termViewport.getBoundingClientRect().height >= 80), 'Small window keeps the terminal usable');
+    const oldId=await page.evaluate(()=>curTab().termId);
+    const oldFiles=await invoke('ssh_transfer_prepare',{id:oldId,direction:'download',paths:['中文.txt'],directory:output,remote:'/'});
+    const oldBatch=await invoke('ssh_batch_create',{id:oldId,direction:'download',destination:output,files:oldFiles});
+    await invoke('ssh_batch_end',{id:oldId,batchId:oldBatch,discard:false});
+    const oldRow=(await invoke('ssh_batch_list',{})).rows.find(r=>r.id===oldBatch);
     await page.evaluate(() => disconnectSshTab(curTab()));
     await require('./ssh_sftp_only_native.cjs')({ page, invoke, config, fixture, nextMessage, waitTransfer, output, remoteRoot: data.root });
     fixture.stdin.write('rotate\n'); const rotated = await nextMessage();
@@ -136,6 +159,120 @@ async function freePort() { const server = net.createServer(); await new Promise
     fixture.stdin.write('auth-count\n'); assert.equal((await nextMessage()).authAttempts, rotated.authAttempts, 'Changed host receives no saved credentials');
     await invoke('ssh_forget_credential', { config }); assert.equal((await invoke('ssh_probe_host', { config })).hasCredential, false);
     assert.deepEqual(errors, []);
+    const localRows=(await invoke('ssh_history_list',{root:output})).rows;
+    assert.ok(localRows.some(r=>r.status==='complete') && localRows.some(r=>r.status==='failed'));
+    const saved=localRows.find(r=>r.status==='complete');
+    assert.ok(!JSON.stringify(localRows).includes(data.password));
+    assert.ok(!localRows.some(r=>Object.hasOwn(r.start,'resumeId')));
+    assert.equal((await invoke('ssh_history_list',{root:data.root})).rows.length,0);
+    await assert.rejects(invoke('ssh_history_remove',{root:data.root,bucket:saved.bucket,id:saved.id,revision:saved.revision}));
+    await invoke('ssh_trust_host',{token:changed.token});
+    const rotatedId=await invoke('ssh_managed_start',{key:'new-history-peer',config,auth:{secret:data.password,remember:false},cols:80,rows:24});
+    await assert.rejects(invoke('ssh_batch_claim',{id:rotatedId,batchId:oldBatch,revision:oldRow.revision}),/changed|变化/);
+    await invoke('ssh_batch_forget',{batchId:oldBatch,revision:oldRow.revision});
+    const freshListing=await invoke('ssh_files_list',{id:rotatedId,path:'/',bindTasks:true});
+    const newScope={remoteWorkspace:freshListing.historyWorkspace.identity};
+    assert.notEqual(newScope.remoteWorkspace,remoteId);
+    assert.deepEqual((await invoke('ssh_history_list',newScope)).rows,[]);
+    const crashDir=path.join(output,'interrupted-workspace');fs.mkdirSync(crashDir);
+    const crashPath=path.join(crashDir,'slow.bin');
+    const crashFiles=await invoke('ssh_transfer_prepare',{id:rotatedId,direction:'download',paths:['slow.bin','中文.txt','queue-one.txt'],directory:crashDir,remote:'/'});
+    const crashBatch=await invoke('ssh_batch_create',{id:rotatedId,direction:'download',destination:crashDir,files:crashFiles});
+    const first={id:rotatedId,direction:'download',localPath:crashPath,remote:'/slow.bin',reviewedRelative:'slow.bin',batchId:crashBatch,batchIndex:0};
+    await assert.rejects(invoke('ssh_file_transfer',{...first,remote:'/中文.txt'}),/changed|变化/);
+    const token=await invoke('ssh_file_transfer',first);
+    await page.waitForFunction(token=>fixtureEvents.some(e=>e.name==='ssh-transfer'&&e.transferId===token&&e.bytes>0),token);
+    assert.equal((await invoke('ssh_history_list',{root:crashDir})).rows[0].status,'running');
+    fixture.stdin.write('auth-count\n');const authBefore=(await nextMessage()).authAttempts;
+    if(app.exitCode==null && !app.signalCode){const done=require('node:events').once(app,'exit');app.kill();await done;}
+    await browser.close().catch(()=>{});browser=null;
+    await launch();
+    await page.waitForFunction(()=>typeof workspaceSessionReady!=='undefined' && workspaceSessionReady && !state.loading);
+    assert.deepEqual((await invoke('ssh_history_list',{root:output})).rows,localRows);
+    const crashed=(await invoke('ssh_history_list',{root:crashDir})).rows;
+    assert.equal(crashed.length,1);assert.equal(crashed[0].status,'unconfirmed');assert.equal(crashed[0].outcome,null);
+    assert.equal(fs.existsSync(crashPath),false);
+    assert.equal((await invoke('ssh_history_list',newScope)).rows[0].id,crashed[0].id);
+    await page.evaluate(async root=>{aiProjectRoot='';await navigate(root);openAiAssistant();},output);
+    await page.locator('[data-file-history]').click();
+    const restored=page.locator('#fileHistoryDialog');
+    await restored.locator('[data-source=sftp]').click();
+    await restored.locator('[data-related-row]').nth(localRows.findIndex(r=>r.id===saved.id)).click();
+    await restored.locator('[data-remove-transfer]').click();await restored.locator('[data-confirm-transfer]').click();
+    await page.waitForFunction(async ({root,id})=>!(await invoke('ssh_history_list',{root})).rows.some(r=>r.id===id),{root:output,id:saved.id});
+    const seen=(await invoke('ssh_history_list',{root:output})).rows.filter(r=>r.outcome && r.status!=='unconfirmed');
+    await restored.locator('[data-remove-page]').click();
+    await restored.locator('[data-confirm-page]').click();
+    await page.waitForFunction(async ({root,ids})=>!(await invoke('ssh_history_list',{root})).rows.some(r=>ids.includes(r.id)),{root:output,ids:seen.map(r=>r.id)});
+    assert.equal((await invoke('ssh_history_list',{root:crashDir})).rows[0].id,crashed[0].id);
+    await page.waitForFunction(()=>!fileHistoryView.removing);
+    await restored.locator('[data-close]').click();
+    fixture.stdin.write('auth-count\n');assert.equal((await nextMessage()).authAttempts,authBefore);
+    await page.locator('#btnTransfers').click();
+    const recovery=page.locator('#sshBatchRecovery');
+    await page.locator('[data-task-recovery]').click();
+    await recovery.locator(`[data-recovery-id="${crashBatch}"]`).click();
+    await recovery.locator('li strong').first().waitFor();
+    const pendingNames=await recovery.locator('li strong').allTextContents();
+    assert.deepEqual(pendingNames,['中文.txt','queue-one.txt']);
+    await recovery.getByRole('button',{name:/核对并加入队列|Review and queue/}).click();
+    assert.match(await recovery.locator('[data-status]').innerText(),/原账户|original account/);
+    fixture.stdin.write('auth-count\n');assert.equal((await nextMessage()).authAttempts,authBefore);
+    const row=(await invoke('ssh_batch_list',{})).rows.find(r=>r.id===crashBatch);
+    assert.equal(row.started,1);assert.equal(row.pending,2);
+    await recovery.locator('[data-close]').last().click();
+    await page.locator('[data-tasks-close]').last().click();
+    await page.evaluate(config=>openSshConnect({...config,identityFile:'',managed:true,label:'Recovery fixture'}),config);
+    await page.locator('#sshPassword').fill(data.password);await page.locator('#sshConnect').click();
+    await page.waitForFunction(()=>curTab().sshAuthenticated && !curTab().exited && curTab().sshVerifiedPeer?.peer);
+    const freshId=await page.evaluate(()=>curTab().termId);
+    fs.renameSync(crashDir,crashDir+'-original');fs.mkdirSync(crashDir);
+    try {
+      await assert.rejects(invoke('ssh_batch_claim',{id:freshId,batchId:crashBatch,revision:row.revision}),/目录|folder/);
+      assert.deepEqual(fs.readdirSync(crashDir),[]);
+    } finally {fs.rmdirSync(crashDir);fs.renameSync(crashDir+'-original',crashDir);}
+    const args={id:freshId,batchId:crashBatch,revision:row.revision};
+    await assert.rejects(invoke('ssh_batch_claim',{...args,revision:'stale'}),/changed|变化/);
+    await invoke('ssh_batch_claim',args);await assert.rejects(invoke('ssh_batch_claim',args));
+    await invoke('ssh_batch_end',{id:freshId,batchId:crashBatch,discard:false});
+    await page.locator('#btnTransfers').click();await page.locator('[data-task-recovery]').click();
+    await recovery.locator(`[data-recovery-id="${crashBatch}"]`).click();
+    await recovery.getByRole('button',{name:/核对并加入队列|Review and queue/}).click();
+    assert.equal(await page.locator('#sshBatchReview li').count(),2);
+    for(const name of pendingNames)assert.equal(fs.existsSync(path.join(crashDir,name)),false);
+    await page.locator('#sshBatchStart').click();
+    await page.waitForFunction(()=>sshTaskBatches.length===1 && sshBatchDone(sshTaskBatches[0]),null,{timeout:30000});
+    assert.deepEqual(await page.evaluate(()=>sshTaskBatches[0].items.map(i=>i.status)),['complete','complete']);
+    for(const name of pendingNames)assert.deepEqual(fs.readFileSync(path.join(crashDir,name)),fs.readFileSync(path.join(data.root,name)));
+    assert.equal(fs.existsSync(crashPath),false);
+    assert.equal((await invoke('ssh_batch_list',{})).rows.some(r=>r.id===crashBatch),false);
+    await page.locator('[data-tasks-close]').last().click();
+    const exitDir=path.join(output,'normal-close-workspace');fs.mkdirSync(exitDir);
+    const exitFiles=await invoke('ssh_transfer_prepare',{id:freshId,direction:'download',paths:['slow.bin','中文.txt'],directory:exitDir,remote:'/'});
+    await page.evaluate(({files,directory})=>showSshBatchReview(curTab(),files,'download',directory),{files:exitFiles,directory:exitDir});
+    await page.locator('#sshBatchStart').click();
+    await page.waitForFunction(()=>sshTaskBatches.length===2 && sshTaskBatches[1].items[0].bytes>0);
+    await page.locator('[data-task-pause]').click();
+    const exitBatch=await page.evaluate(()=>sshTaskBatches[1].journal.id);
+    fixture.stdin.write('auth-count\n');const exitAuth=(await nextMessage()).authAttempts;
+    const closing=app;
+    execFileSync('powershell.exe',['-NoProfile','-Command',`if (!(Get-Process -Id ${closing.pid}).CloseMainWindow()) {exit 1}`],{windowsHide:true,stdio:'ignore',timeout:10000});
+    for(let i=0;i<100 && closing.exitCode==null && !closing.signalCode;i++)await delay(100);
+    assert.equal(closing.exitCode,0,'normal window close finished');
+    await browser.close().catch(()=>{});browser=null;
+    await launch();
+    await page.waitForFunction(()=>typeof workspaceSessionReady!=='undefined' && workspaceSessionReady && !state.loading);
+    const normal=(await invoke('ssh_batch_list',{})).rows.find(r=>r.id===exitBatch);
+    assert.equal(normal.pending,1); assert.equal(normal.started,1);
+    assert.equal(fs.existsSync(path.join(exitDir,'中文.txt')),false);
+    fixture.stdin.write('auth-count\n');assert.equal((await nextMessage()).authAttempts,exitAuth);
+    await invoke('ssh_batch_forget',{batchId:exitBatch,revision:normal.revision});
+    assert.equal((await invoke('ssh_batch_list',{})).rows.some(r=>r.id===exitBatch),false);
+    assert.equal((await invoke('ssh_history_list',{root:exitDir})).rows.length,1);
+    console.log('Normal Windows close preserved the paused queue. Offline removal kept the transfer receipt.');
+    console.log('SFTP batch recovery OK: process kill during first file, offline review, unchanged auth count, fingerprint and replaced-folder isolation, exclusive claim, two pending files recovered after explicit review.');
+    assert.deepEqual(errors,[]);
+    console.log('Workspace history OK: authenticated remote scope, local scope, restart without connecting, success/failure receipts, scoped removal.');
     console.log('Native SSH: trust, failed-auth storage, protected credentials, reconnect, PTY interrupt/resize, Linux/Windows stats, private keys, bounded SFTP, transfers/conflicts/cancel and host-key rotation passed.');
     console.log('Test artifacts: ' + path.basename(output));
   } catch (error) {

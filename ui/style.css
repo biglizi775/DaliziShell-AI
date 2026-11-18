@@ -324,6 +324,12 @@ body.browser-mode #workspace { grid-template-rows: var(--tabbar-height) calc(64p
 body.browser-mode #pageHeader, body.browser-mode #bar2 { display: none; }
 body.browser-mode #previewPanel { display: none; }
 #termHost { position: absolute; inset: 0; background: #0c0c0c; }
+#pendingTerminal { height: 100%; display: grid; align-content: center; justify-items: start; gap: 12px; padding: clamp(24px, 8vw, 96px); background: var(--bg); color: var(--txt); }
+#pendingTerminal h2, #pendingTerminal p { margin: 0; }
+#pendingTerminal h2 { font-size: 21px; }
+#pendingTerminal p { color: var(--txt2); overflow-wrap: anywhere; }
+#pendingTerminalError:empty { display: none; }
+#pendingTerminalStart { padding: 8px 16px; border-radius: 6px; background: var(--accentDim); color: var(--accent); }
 .term { position: absolute; inset: 0; padding: 14px 8px 10px 16px; }
 .term .xterm-viewport { background-color: #0c0c0c; }
 #statePage { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; color: var(--txt2); pointer-events: none; text-align: center; padding: 20px; }

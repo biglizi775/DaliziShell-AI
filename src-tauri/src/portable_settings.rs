@@ -188,6 +188,7 @@ fn sanitize(input: &Value) -> Result<Value, String> {
         let next = match key.as_str() {
             "locale" if matches!(value.as_str(), Some("zh" | "en")) => value.clone(),
             "theme" if matches!(value.as_str(), Some("light" | "dark")) => value.clone(),
+            "visualStyle" => json!(if value.as_str() == Some("classic") { "classic" } else { "studio" }),
             "viewMode" if matches!(value.as_str(), Some("details" | "grid")) => value.clone(),
             "sortKey" if value.as_str().is_some_and(|v| COLUMNS.contains(&v)) => value.clone(),
             "sortDir" if matches!(value.as_i64(), Some(-1 | 1)) => value.clone(),
@@ -397,6 +398,22 @@ pub async fn portable_settings_save(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn visual_style_is_portable_and_independent_of_color_theme() {
+        for style in ["studio", "classic"] {
+            for theme in ["light", "dark"] {
+                let value = sanitize(&json!({"visualStyle": style, "theme": theme})).unwrap();
+                assert_eq!(value["visualStyle"], style);
+                assert_eq!(value["theme"], theme);
+            }
+        }
+        for invalid in [json!(null), json!("future"), json!(true), json!(12), json!({}), json!(["classic"])] {
+            let value = sanitize(&json!({"visualStyle": invalid, "theme": "dark"})).unwrap();
+            assert_eq!(value["visualStyle"], "studio");
+            assert_eq!(value["theme"], "dark");
+        }
+        assert!(sanitize(&json!({"theme": "light"})).unwrap().get("visualStyle").is_none());
+    }
     #[test]
     fn only_portable_fields_survive_including_nested_fields() {
         let clean = sanitize(&json!({"theme":"dark", "pinned":["C:/private"], "lastPath":"C:/private", "apiKey":"secret", "aiSettings":{"endpoint":"https://api.example/v1", "model":"demo", "apiKey":"secret"}, "browserSettings":{"homeUrl":"https://example.com", "downloadDirectory":"C:/private", "cookies":"secret"}, "favorites":{"items":[{"id":"folder","kind":"files","path":"C:/private"},{"id":"web","kind":"browser","url":"https://example.com","name":"Example","secret":"secret"}]}, "urlHistory":[{"url":"file:///C:/private"},{"url":"https://user:secret@example.com"},{"url":"https://example.com","visitedAt":12,"secret":"secret"}]})).unwrap();

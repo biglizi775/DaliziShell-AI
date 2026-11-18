@@ -1,0 +1,45 @@
+{
+  "date": "2026-11-17",
+  "scope": "Windows 11 x64 build 26300. Test-only desktop identifier, disposable folders and loopback model endpoints.",
+  "before": "independent_writers_keep_both_skill_changes failed against the previous store. The second writer replaced [one] with [two]; the expected result was [one, two].",
+  "observations": [
+    "Created a disabled copy in the real skill manager, cancelled an unsaved editor, made a verified out-of-process file change while a draft was open and preserved both versions by saving a separate copy.",
+    "Editing the separate copy reused its ID and kept it disabled. Removing using a stale revision failed. Restarted the native process and removed the separate copy through the UI. The original catalog and pre-test enabled choices were preserved.",
+    "A stale revision was rejected by ai_plan before the loopback server received a request. Two actual model requests showed that an enabled copy satisfied its source recommendation, the running request retained the earlier body and the next turn used the updated body.",
+    "Rust tests covered independently opened stores, migration and locked files, the 32/4 limits, duplicate saves, older source versions, preserved enable flags, ignored stale deletes, disabled copies and no resurrection on a stale edit."
+  ],
+  "tests": {
+    "frontendPassed": 306,
+    "pythonPassed": 11,
+    "rustDesktopDefaultPassed": 158,
+    "rustDesktopDefaultIgnored": 2,
+    "explicitIgnoredTestsPassed": [
+      "native_web_quote",
+      "real_openssh_conpty_loopback_auth_info_resize_and_exit"
+    ],
+    "nativeDesktop": "tools/verify_harness_desktop.ps1, including --skill-copies and --agent-roles",
+    "modelFormats": "tools/ai_api_smoke.cjs --workbench, OpenAI Completions / Responses and Anthropic Messages with loopback providers",
+    "edgeUi": "tools/ui_smoke.cjs --builtin-skills, including compact English layout and explicit project tools for read-only folder access",
+    "fixtureSha256": "e1e2cea98c2c7365438545ea8e1047db449703b895333ebaf16b14d0c3a250f3"
+  },
+  "source": {
+    "archive": "dalizi-files-0.5.1-source-d024437df97830da.zip",
+    "sha256": "d024437df97830da5c31658e19054231f798ffde382fb3d20c97f5f79de734da",
+    "filesVerifiedBeforeOfflineBuild": 560
+  },
+  "preview": {
+    "archive": "dalizi-files-0.5.1-windows-x64-preview-skill-copies-d3ba0bb47660.zip",
+    "bytes": 55038340,
+    "sha256": "5f644f53b484389528e68a3cf569e66b5789c0d7582a297e3bdb0fd00e3d6b6d",
+    "exeSha256": "d3ba0bb47660346125a0a604fac5bbe45408e422f4cd25f53c8117630838fea5",
+    "componentSha256": "576a0c64da03d892ea8ac94b7bfeda905dacd2ed7fb5f8d310fe75c46e069dc2",
+    "entries": 749,
+    "perFileHashesVerified": 748,
+    "candidate": null
+  },
+  "remainingReleaseGates": [
+    "clean Windows 10",
+    "clean Windows 11",
+    "authenticated cloud turn"
+  ]
+}

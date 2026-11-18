@@ -1,0 +1,47 @@
+{
+  "scope": "F01 live selection of local index roots, retained size-on-demand outside the searchable scope",
+  "machine": "Windows 11 x64 26H2, build 26300.9974",
+  "source": {
+    "archive": "dalizi-files-0.5.1-source-52f073016dc702d6.zip",
+    "sha256": "52f073016dc702d6f59bbd59b1d0dfe56d35a77db9c29149369246949aa49047",
+    "filesVerifiedBeforeBuild": 601
+  },
+  "preview": {
+    "archive": "dalizi-files-0.5.1-windows-x64-preview-index-locations-a53dc8d706ef.zip",
+    "sha256": "63d8c6f8820e9dac85923552ccc280f36dfe54fb94bb102fefdcf7ed2988c2ec",
+    "exeSha256": "a53dc8d706ef9b9cf0307b25b21209a2745275c37d1bb4ea460d8742f852fd27",
+    "componentSha256": "576a0c64da03d892ea8ac94b7bfeda905dacd2ed7fb5f8d310fe75c46e069dc2",
+    "perFileHashesVerified": 748,
+    "bytes": 55569289
+  },
+  "tests": {
+    "javascript": 317,
+    "python": 11,
+    "rustMain": 183,
+    "rustAuxiliaryTargets": 23,
+    "rustHarnessClient": 12,
+    "rustMainIgnored": 2,
+    "nativeDesktop": "node tools/search_drop_smoke.cjs --index-locations with a dedicated debug application identifier and isolated WebView2 profile",
+    "browser": [
+      "tools/ui_smoke.cjs"
+    ],
+    "fixture": {
+      "directory": "src-tauri/target/search-drop-smoke-T6xcLw",
+      "debugExeSha256": "2081a292510b2bd6bfee1e5defb2d4d36d5ea7d85728a256457f45253a7264fe",
+      "screenshot": "native-index-locations.png",
+      "screenshotSha256": "6cdfa49398f15bc9ef04729a627dfeccea3f61d0114c57424f7dec8bca776b59"
+    }
+  },
+  "results": [
+    "Using the native settings dialog, narrowed from all fixed drives to one folder. Its nested and duplicate inputs collapsed to the same root. A similarly named sibling disappeared, the previous immutable result-page handle expired, and an invalid save preserved the chosen scope.",
+    "After the first scan finished, a new nested file was indexed by the watcher. A sibling file outside the scope remained absent. Explicit folder size measurement outside the scope still returned the correct 5 bytes. Parent traversal and junction-descendant aliases returned no size and a junction-descendant root was rejected.",
+    "Moved the selected root away: the watcher status reported one unmonitored location and a fresh search returned zero fixture hits. Returning the root restored monitoring and all three fixture hits without an explicit rebuild.",
+    "After ordinary native close and restart the dialog restored the exact selected path and searches contained only the three in-scope matches. An empty explicit selection cleared the searchable index; switching to the sibling found its two files; all fixed drives could be re-enabled.",
+    "Rust coverage includes path boundaries, damaged preference recovery, old/scope-mismatched durable snapshots, retained counts and page expiration. Existing native pagination, folder size provenance, file operation receipts and restart recovery also passed."
+  ],
+  "limits": [
+    "Windows 11 development machine with local fixed disks. A directory rename exercised root loss and return; physical disk unplug/replug was not tested.",
+    "The native chooser button is implemented; the automated desktop test entered real paths via the multiline editor.",
+    "The full clean Windows 10/11 installation matrix and production-provider acceptance remain open."
+  ]
+}

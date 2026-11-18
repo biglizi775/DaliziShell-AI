@@ -1,5 +1,5 @@
 'use strict';
-/* Local favorites and URL/path-only workspace snapshots. Never restore terminals. */
+/* Local favorites and workspace tab descriptions. Native sessions start explicitly. */
 const placeText = (zh, en) => locale === 'zh' ? zh : en;
 const PLACE_LIMIT = 100, WORKSPACE_TAB_LIMIT = 50;
 let workspaceSessionReady = false, workspaceSessionClosing = false, workspaceSessionRestoring = false;
@@ -16,6 +16,7 @@ function placeFolder(value) {
 function placeTarget(value) {
   const path = placeFolder(value);
   if (path) return { kind: 'files', path };
+  if (browserAuthorizationUrl(value)) return null;
   try { const url = browserHomeUrl(value); return url.length <= 4096 ? { kind: 'browser', url } : null; } catch { return null; }
 }
 function placeKey(item) {
@@ -127,13 +128,41 @@ function initPlaces() {
   renderFavoritesBar();
 }
 
+function terminalSessionItem(kind, cwd, profileId) {
+  if (kind === 'ssh') return { kind, profileId: typeof profileId === 'string' && /^[A-Za-z0-9-]{1,80}$/.test(profileId) ? profileId : null };
+  if (kind !== 'terminal') return null;
+  const path = placeFolder(cwd);
+  return cwd === null || path ? { kind, cwd: path } : null;
+}
+function workspaceTabItem(tab) {
+  if (isTermTab(tab)) {
+    if (tab.connection === 'ssh') return terminalSessionItem('ssh', null, tab.sshProfileId);
+    return tab.connection === 'local' ? terminalSessionItem('terminal', tab.cwd, null) : null;
+  }
+  return isBrowserTab(tab) ? { kind: 'browser', url: tab.pendingNavigation || tab.url, title: tab.title || '' } : { kind: 'files', path: tab.path };
+}
+function pendingTerminalTab(item) {
+  const remote = item.kind === 'ssh';
+  const profile = remote && item.profileId ? readSshProfiles().find(value => value.id === item.profileId) : null;
+  return { kind: 'term', key: crypto.randomUUID(), connection: remote ? 'ssh' : 'local', cwd: remote ? null : item.cwd,
+    pendingTerminal: true, sshProfileId: item.profileId || null, sshConfig: remote ? { label: profile?.label || profile?.host || '' } : null,
+    termId: null, exited: true, starting: false, disposed: false };
+}
+function workspaceItemKey(item) {
+  if (!item) return null;
+  if (item.kind === 'ssh') return item.profileId ? 'ssh:' + item.profileId : null;
+  if (item.kind === 'terminal') return 'terminal:' + placeKey({ kind: 'files', path: item.cwd });
+  return placeKey(item);
+}
 function normalizeWorkspaceSession(raw) {
   if (!raw || raw.version !== 1 || !Array.isArray(raw.tabs) || raw.tabs.length > WORKSPACE_TAB_LIMIT || !Number.isInteger(raw.active) || raw.active < -1 || raw.active >= raw.tabs.length) return null;
   try { if (new TextEncoder().encode(JSON.stringify(raw)).length > 1024 * 1024) return null; } catch { return null; }
   const tabs = []; let active = -1;
   for (const [index, item] of raw.tabs.entries()) {
-    if (!item || !['files', 'browser'].includes(item.kind)) continue;
-    let target = item.kind === 'files' && item.path === null ? { kind: 'files', path: null } : placeTarget(placeAddress(item));
+    if (!item || !['files', 'browser', 'terminal', 'ssh'].includes(item.kind)) continue;
+    let target;
+    if (item.kind === 'terminal' || item.kind === 'ssh') target = terminalSessionItem(item.kind, item.cwd, item.profileId);
+    else target = item.kind === 'files' && item.path === null ? { kind: 'files', path: null } : placeTarget(placeAddress(item));
     if (!target || target.kind !== item.kind) continue;
     if (target.kind === 'browser' && !browserSettings().recordHistory) continue;
     if (index === raw.active) active = tabs.length;
@@ -143,10 +172,10 @@ function normalizeWorkspaceSession(raw) {
 }
 function persistWorkspaceSession() {
   if (!workspaceSessionReady || workspaceSessionClosing || workspaceSessionRestoring || !workspacePreferences().rememberSession) return false;
-  const available = state.tabs.filter((tab) => !tab.disposed && !isTermTab(tab) && (!isBrowserTab(tab) || browserSettings().recordHistory));
+  const available = state.tabs.filter((tab) => !tab.disposed && (!isBrowserTab(tab) || browserSettings().recordHistory));
   const tabs = available.slice(0, WORKSPACE_TAB_LIMIT);
   if (available.includes(curTab()) && !tabs.includes(curTab())) tabs[WORKSPACE_TAB_LIMIT - 1] = curTab();
-  const snapshot = normalizeWorkspaceSession({ version: 1, tabs: tabs.map((tab) => isBrowserTab(tab) ? { kind: 'browser', url: tab.pendingNavigation || tab.url, title: tab.title || '' } : { kind: 'files', path: tab.path }), active: tabs.indexOf(curTab()), updatedAt: Date.now() });
+  const snapshot = normalizeWorkspaceSession({ version: 1, tabs: tabs.map(workspaceTabItem), active: tabs.indexOf(curTab()), updatedAt: Date.now() });
   const old = store.get('workspaceSession', null);
   if (JSON.stringify(old && { ...old, updatedAt: 0 }) !== JSON.stringify(snapshot && { ...snapshot, updatedAt: 0 })) store.set('workspaceSession', snapshot);
   const actual = store.get('workspaceSession', null);
@@ -195,19 +224,26 @@ async function loadWorkspaceTabs(snapshot, append = false, preserveActive = fals
   const original = append ? [...state.tabs] : [], used = new Set(), restored = [], positions = [];
   if (!append) state.tabs = [];
   for (const item of snapshot.tabs) {
-    const existing = original.findIndex((tab, i) => !used.has(i) && !tab.disposed && !isTermTab(tab) && placeKey(isBrowserTab(tab) ? { kind: 'browser', url: tab.pendingNavigation || tab.url } : { kind: 'files', path: tab.path }) === placeKey(item));
+    const key = workspaceItemKey(item);
+    const existing = key === null ? -1 : original.findIndex((tab, i) => !used.has(i) && !tab.disposed && workspaceItemKey(workspaceTabItem(tab)) === key);
     if (existing >= 0) { used.add(existing); positions.push(existing); continue; }
-    const tab = item.kind === 'browser' ? createBrowserTabState(item.url, item.title) : { kind: 'files', path: item.path, history: [item.path], hIdx: 0 };
+    let tab;
+    if (item.kind === 'browser') tab = createBrowserTabState(item.url, item.title);
+    else if (item.kind === 'files') tab = { kind: 'files', path: item.path, history: [item.path], hIdx: 0 };
+    else tab = pendingTerminalTab(item);
     positions.push(state.tabs.length); state.tabs.push(tab); restored.push(tab);
   }
   if (!preserveActive) { state.tab = positions[Math.max(0, snapshot.active)]; state.navToken++; }
   workspaceSessionRestored = true;
   workspaceSessionRestoring = false;
-  persistWorkspaceSession(); renderAll();
+  persistWorkspaceSession();
   const active = curTab();
-  if (preserveActive) return restored;
-  if (isBrowserTab(active)) await ensureBrowserTab(active);
-  else await navigate(active.path, { push: false });
+  if (!preserveActive && !isBrowserTab(active) && !isTermTab(active)) {
+    await navigate(active.path, { push: false });
+  } else {
+    renderAll();
+    if (!preserveActive && isBrowserTab(active)) await ensureBrowserTab(active);
+  }
   return restored;
 }
 async function restoreWorkspaceOnStartup({ initialTab, initialToken }) {
@@ -230,7 +266,7 @@ async function restorePreviousWorkspace() {
   if (!previousWorkspaceSession || workspaceSessionRestored || workspaceSessionRestoring) return;
   const onlyHome = state.tabs.length === 1 && !isTermTab(curTab()) && !isBrowserTab(curTab()) && curTab().path === null && state.path === null;
   await loadWorkspaceTabs(previousWorkspaceSession, !onlyHome);
-  toast(placeText('已恢复上次的文件夹和网页标签', 'Previous folders and web tabs restored'));
+  toast(placeText('已恢复上次的标签', 'Previous tabs restored'));
 }
 function finishWorkspaceSession() { if (!workspaceSessionClosing) persistWorkspaceSession(); workspaceSessionClosing = true; }
 window.addEventListener('beforeunload', finishWorkspaceSession);
@@ -242,7 +278,7 @@ function openPlacesSettings(editId = '') {
   const dialog = document.createElement('dialog'); dialog.id = 'placesDialog'; dialog.className = 'file-settings-dialog places-dialog';
   dialog.setAttribute('aria-labelledby', 'placesTitle');
   const T = placeText, prefs = workspacePreferences();
-  dialog.innerHTML = `<header class="file-settings-head"><div><span class="file-settings-eyebrow">DALIZI / PLACES</span><h2 id="placesTitle">${T('收藏与启动', 'Favorites & startup')}</h2></div><button type="button" data-places-close aria-label="${T('关闭', 'Close')}">×</button></header><div class="file-settings-body"><section class="workspace-settings-section"><h3>${T('继续上次的工作', 'Continue where you left off')}</h3><p>${T('保存最多 50 个文件夹和网页标签的路径、地址、顺序与选中位置；后台网页选中时才加载。不会恢复终端、SSH、网页表单或 AI 对话。', 'Save paths, URLs, order and selection for up to 50 folder and web tabs. Background pages load when selected. Terminals, SSH, forms and AI chats are not restored.')}</p>${[['favoritesBar', T('显示收藏夹栏', 'Show favorites bar')], ['rememberSession', T('记住打开的标签', 'Remember open tabs')], ['restoreOnStartup', T('启动时自动恢复', 'Restore on startup')]].map(([key, title]) => `<label class="settings-preference"><strong>${title}</strong><input type="checkbox" data-place-pref="${key}" ${prefs[key] ? 'checked' : ''}></label>`).join('')}<div class="places-actions"><button type="button" data-places-restore ${!previousWorkspaceSession || workspaceSessionRestored ? 'disabled' : ''}>${workspaceSessionRestored ? T('本次已恢复', 'Already restored') : T('立即恢复上次标签', 'Restore previous tabs')}</button><button type="button" data-places-clear>${T('清除会话记录', 'Clear session snapshots')}</button></div></section><section class="workspace-settings-section"><h3>${T('收藏夹', 'Favorites')}</h3><p>${T('支持完整文件夹路径和 http/https 网址；单击跳转，右键调整顺序或编辑。', 'Add absolute folder paths and HTTP/HTTPS URLs. Click to open; right-click to reorder or edit.')}</p><form id="favoriteForm" class="favorite-form"><label>${T('名称', 'Name')}<input name="name" maxlength="160" required></label><label>${T('文件夹路径或网址', 'Folder path or URL')}<input name="address" maxlength="4096" required spellcheck="false" placeholder="D:\\Projects / https://example.com"></label><div class="places-actions"><button type="submit" class="file-settings-primary">${T('保存收藏', 'Save favorite')}</button><button type="button" data-places-new>${T('新增', 'New')}</button><button type="button" data-places-current>${T('填入当前位置', 'Use current location')}</button></div></form><input id="favoriteFilter" aria-label="${T('筛选收藏', 'Filter favorites')}" placeholder="${T('搜索收藏名称或地址', 'Filter by name or address')}"><div id="favoriteList"></div></section></div><footer class="file-settings-footer"><span id="placesStatus" role="status">${T('偏好即时保存到本机', 'Preferences save locally as you change them')}</span><button type="button" data-places-close>${T('完成', 'Done')}</button></footer>`;
+  dialog.innerHTML = `<header class="file-settings-head"><div><span class="file-settings-eyebrow">DALIZI / PLACES</span><h2 id="placesTitle">${T('收藏与启动', 'Favorites & startup')}</h2></div><button type="button" data-places-close aria-label="${T('关闭', 'Close')}">×</button></header><div class="file-settings-body"><section class="workspace-settings-section"><h3>${T('继续上次的工作', 'Continue where you left off')}</h3><p>${T('记住最多 50 个标签及其顺序和选中位置。后台网页选中时加载，PowerShell 和 SSH 标签等你启动或登录。', 'Remember up to 50 tabs, their order and selection. Background pages load when selected. Start PowerShell or sign in to SSH from its restored tab.')}</p>${[['favoritesBar', T('显示收藏夹栏', 'Show favorites bar')], ['rememberSession', T('记住打开的标签', 'Remember open tabs')], ['restoreOnStartup', T('启动时自动恢复', 'Restore on startup')]].map(([key, title]) => `<label class="settings-preference"><strong>${title}</strong><input type="checkbox" data-place-pref="${key}" ${prefs[key] ? 'checked' : ''}></label>`).join('')}<div class="places-actions"><button type="button" data-places-restore ${!previousWorkspaceSession || workspaceSessionRestored ? 'disabled' : ''}>${workspaceSessionRestored ? T('本次已恢复', 'Already restored') : T('立即恢复上次标签', 'Restore previous tabs')}</button><button type="button" data-places-clear>${T('清除会话记录', 'Clear session snapshots')}</button></div></section><section class="workspace-settings-section"><h3>${T('收藏夹', 'Favorites')}</h3><p>${T('支持完整文件夹路径和 http/https 网址；单击跳转，右键调整顺序或编辑。', 'Add absolute folder paths and HTTP/HTTPS URLs. Click to open; right-click to reorder or edit.')}</p><form id="favoriteForm" class="favorite-form"><label>${T('名称', 'Name')}<input name="name" maxlength="160" required></label><label>${T('文件夹路径或网址', 'Folder path or URL')}<input name="address" maxlength="4096" required spellcheck="false" placeholder="D:\\Projects / https://example.com"></label><div class="places-actions"><button type="submit" class="file-settings-primary">${T('保存收藏', 'Save favorite')}</button><button type="button" data-places-new>${T('新增', 'New')}</button><button type="button" data-places-current>${T('填入当前位置', 'Use current location')}</button></div></form><input id="favoriteFilter" aria-label="${T('筛选收藏', 'Filter favorites')}" placeholder="${T('搜索收藏名称或地址', 'Filter by name or address')}"><div id="favoriteList"></div></section></div><footer class="file-settings-footer"><span id="placesStatus" role="status">${T('偏好即时保存到本机', 'Preferences save locally as you change them')}</span><button type="button" data-places-close>${T('完成', 'Done')}</button></footer>`;
   document.body.appendChild(dialog);
   const form = dialog.querySelector('form'), status = dialog.querySelector('#placesStatus'); let editing = editId;
   const fill = (item) => { form.elements.namedItem('name').value = item?.name || ''; form.elements.namedItem('address').value = item ? placeAddress(item) || '' : ''; };

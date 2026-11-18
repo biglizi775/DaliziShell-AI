@@ -114,19 +114,23 @@ where
 struct NativeSettings {
     controller: ICoreWebView2Controller,
     settings: ICoreWebView2Settings,
-    profile: ICoreWebView2Profile6,
+    form_settings: ICoreWebView2Settings4,
+    profile: ICoreWebView2Profile,
 }
 
 impl NativeSettings {
     unsafe fn new(controller: ICoreWebView2Controller) -> Result<Self, String> {
         let view = controller.CoreWebView2().map_err(native_error)?;
         let settings = view.Settings().map_err(native_error)?;
+        // Settings4 exposes the same profile-wide autofill and password
+        // preferences as Profile6 and is available on earlier runtimes.
+        let form_settings = settings.cast::<ICoreWebView2Settings4>().map_err(native_error)?;
         let profile = view.cast::<ICoreWebView2_13>().and_then(|view| view.Profile())
-            .and_then(|profile| profile.cast::<ICoreWebView2Profile6>())
             .map_err(|error| format!("当前 WebView2 不支持所需浏览器设置，请更新运行时 / Browser settings APIs unavailable: {error}"))?;
         Ok(Self {
             controller,
             settings,
+            form_settings,
             profile,
         })
     }
@@ -149,11 +153,11 @@ impl NativeSettings {
             .AreDevToolsEnabled(&mut flag)
             .map_err(native_error)?;
         value.dev_tools_enabled = flag.as_bool();
-        self.profile
+        self.form_settings
             .IsGeneralAutofillEnabled(&mut flag)
             .map_err(native_error)?;
         value.autofill_enabled = flag.as_bool();
-        self.profile
+        self.form_settings
             .IsPasswordAutosaveEnabled(&mut flag)
             .map_err(native_error)?;
         value.password_autosave_enabled = flag.as_bool();
@@ -200,12 +204,12 @@ impl NativeSettings {
             ),
             (
                 "autofill",
-                self.profile
+                self.form_settings
                     .SetIsGeneralAutofillEnabled(value.autofill_enabled),
             ),
             (
                 "password autosave",
-                self.profile
+                self.form_settings
                     .SetIsPasswordAutosaveEnabled(value.password_autosave_enabled),
             ),
             ("color scheme", self.profile.SetPreferredColorScheme(scheme)),
@@ -277,6 +281,18 @@ fn data_kinds(kinds: &[String]) -> Result<COREWEBVIEW2_BROWSING_DATA_KINDS, Stri
         };
     }
     Ok(flags)
+}
+
+// WebView2 109 needs a minute or more to clear the disk cache, and every later
+// clear in that browser process waits behind it. Cookies are unaffected.
+pub fn check_clear_runtime(version: &str, kinds: &[String]) -> Result<(), String> {
+    let major = version.split('.').next().and_then(|major| major.parse::<u32>().ok());
+    if kinds.iter().any(|kind| kind == "cache") && major.is_some_and(|major| major < 110) {
+        return Err(format!(
+            "WebView2 {version} 无法及时清除缓存，请更新 WebView2 后再试；Cookie 和网站数据仍可单独清除。 / WebView2 {version} cannot clear the disk cache promptly. Update WebView2; cookies and site data can still be cleared."
+        ));
+    }
+    Ok(())
 }
 
 pub async fn clear(webview: Webview<Wry>, kinds: Vec<String>) -> Result<(), String> {
@@ -375,6 +391,17 @@ mod tests {
             }
             .resolved(&root)
             .is_err());
+        }
+    }
+
+    #[test]
+    fn cache_clear_is_refused_on_runtimes_that_stall_the_clear_queue() {
+        let cache = vec!["cache".to_string()];
+        let error = check_clear_runtime("109.0.1518.70", &cache).unwrap_err();
+        assert!(error.contains("109.0.1518.70"));
+        assert!(check_clear_runtime("109.0.1518.70", &["cookies".into()]).is_ok());
+        for version in ["110.0.1587.41", "157.0.4341.46", "unknown"] {
+            assert!(check_clear_runtime(version, &cache).is_ok());
         }
     }
 

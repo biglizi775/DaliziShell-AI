@@ -1,0 +1,152 @@
+{
+  "scope": "Independent test-identifier desktop builds, original release component, test files and a synthetic loopback model. This is not a clean-guest result.",
+  "kit": {
+    "file": "dalizi-m5-rc2-offline-acceptance.zip",
+    "bytes": 66274473,
+    "sha256": "61ca38e8742097c4977633479d852651f6298956eaedf43180981be72e4be70e",
+    "entries": [
+      "public-v0.5.1.zip",
+      "candidate-rc2.zip",
+      "verify_windows_guest.ps1",
+      "windows_guest_scenarios.js",
+      "README.md",
+      "SHA256SUMS.txt"
+    ]
+  },
+  "resultFromFinalExtractedKit": {
+    "schema": 1,
+    "utc": "2026-11-16T15:34:38.6532385Z",
+    "suite": "offline-start-and-rollback",
+    "mode": "Rehearse",
+    "publicExecutables": false,
+    "environment": {
+      "osBuild": "26300.9974",
+      "windowsFamily": "11",
+      "x64": true,
+      "standardUser": false,
+      "developmentCommandsOnPath": [],
+      "activeAdapterCount": 3,
+      "freshProductProfile": false
+    },
+    "oldZipSha256": "bff66169a335bfd2b3e916687f48b0ea7c8ca566a6430cdecb6deaf37eb602a2",
+    "candidateZipSha256": "ed39e366891ebe2c0bc25f4bf5a24e1cbc5fef4b0a735789833b068cb992a7f8",
+    "componentZipSha256": "a8840fe2b03028ba8bf1522fd525d0fc46244898758c941ad7a944260deca3d0",
+    "stages": [
+      {
+        "stage": "firstStart",
+        "passed": [
+          "browse without model credentials",
+          "complete candidate started without credentials; engine off by default"
+        ],
+        "metrics": {},
+        "webViewTargetReadyMs": 1043,
+        "elapsedMs": 1637
+      },
+      {
+        "stage": "oldCreate",
+        "passed": [
+          "browse without model credentials",
+          "old desktop saved chat, memory and portable preferences"
+        ],
+        "metrics": {},
+        "webViewTargetReadyMs": 1155,
+        "elapsedMs": 1354
+      },
+      {
+        "stage": "newMissing",
+        "passed": [
+          "browse without model credentials",
+          "missing component rejected while files work",
+          "old chat opened after project copy"
+        ],
+        "metrics": {},
+        "webViewTargetReadyMs": 983,
+        "elapsedMs": 1367
+      },
+      {
+        "stage": "newDamaged",
+        "passed": [
+          "browse without model credentials",
+          "damaged sidecar rejected without preventing file browsing"
+        ],
+        "metrics": {},
+        "webViewTargetReadyMs": 975,
+        "elapsedMs": 1358
+      },
+      {
+        "stage": "newFull",
+        "passed": [
+          "browse without model credentials",
+          "unsupported API format rejected before submission",
+          "diagnostic preview omits question inputs, endpoint, key and answer",
+          "selected file answered in A while viewing B; engine disabled",
+          "new desktop read old preferences and memory and saved new chat with receipt"
+        ],
+        "metrics": {
+          "firstReplyMs": 5808
+        },
+        "webViewTargetReadyMs": 1004,
+        "elapsedMs": 8161
+      },
+      {
+        "stage": "unavailable",
+        "passed": [
+          "browse without model credentials",
+          "closed model endpoint produces a failed task"
+        ],
+        "metrics": {
+          "closedEndpointFailureMs": 21838
+        },
+        "webViewTargetReadyMs": 984,
+        "elapsedMs": 23958
+      },
+      {
+        "stage": "oldRollback",
+        "passed": [
+          "browse without model credentials",
+          "old desktop read both transcripts and saved an edit"
+        ],
+        "metrics": {},
+        "webViewTargetReadyMs": 976,
+        "elapsedMs": 1195
+      },
+      {
+        "stage": "interrupt",
+        "passed": [
+          "browse without model credentials",
+          "submitted in A and switched to B while request was pending"
+        ],
+        "metrics": {},
+        "webViewTargetReadyMs": 1021,
+        "elapsedMs": 6194
+      },
+      {
+        "stage": "newRestore",
+        "passed": [
+          "browse without model credentials",
+          "rollback edit, receipt, A task and disabled engine survived restart"
+        ],
+        "metrics": {},
+        "webViewTargetReadyMs": 963,
+        "elapsedMs": 4371
+      }
+    ],
+    "passed": true,
+    "executedExeSha256": [
+      "12253f2e940c963d526da892ee4290940f1fc4e267aede83a1696ca8c1c1e8d4",
+      "2c2b71b125dca90ad1770f951691988b45e3979aeb87349482eb0f7758340138"
+    ],
+    "webView2": "Edg/157.0.4341.46",
+    "readOnlyInstallVerified": true,
+    "hostPeakWorkingSetBytes": 348438528,
+    "nodePeakWorkingSetBytes": 146112512,
+    "nodeAliveAfterExit": 0,
+    "finalStage": "newRestore",
+    "temporaryFilesRemoved": true
+  },
+  "remaining": [
+    "Windows 10 x64 clean standard-user offline guest with unmodified release EXEs",
+    "Windows 11 x64 clean standard-user offline guest with unmodified release EXEs",
+    "Authenticated cloud-model request"
+  ]
+}

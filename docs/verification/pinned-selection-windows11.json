@@ -1,0 +1,62 @@
+{
+  "date": "2026-11-17",
+  "scope": "Windows 11 development host, separately identified desktop, disposable projects and loopback model.",
+  "before": "With project A pinned, selecting a file while browsing a nested folder automatically put child/selected-child-note.md in selectedEntries at the model endpoint.",
+  "verification": {
+    "frontend": {
+      "passed": 292,
+      "failed": 0
+    },
+    "rustDesktop": {
+      "passed": 151,
+      "failed": 0,
+      "ignoredByDefault": 2,
+      "explicitNativeWebQuotePassed": true
+    },
+    "pythonTestsPassed": 11,
+    "native": {
+      "fixtureSha256": "eb4fc2811200f06c31778fd178fdafe13b61d82433aaeec79a960ad07653be5c",
+      "suite": "tools/verify_harness_desktop.ps1",
+      "pinnedSelectionModelRequests": 5,
+      "requestSelections": [
+        [],
+        [
+          "child/selected-child-note.md"
+        ],
+        [],
+        [
+          "root-note.md"
+        ],
+        [
+          "child/selected-child-note.md"
+        ]
+      ],
+      "observations": [
+        "Selected entry paths above use forward slashes for display. Each request had the same pinned authorized root.",
+        "Changing the selected file and switching tabs each invalidated a prior attachment. Refreshing unchanged selection preserved it. Sending consumed it.",
+        "An independent peer directory showed no attach control. Direct-root selection and Edit with Agent still supplied the intended file.",
+        "The same suite also passed pinned-auto, session cache, archive recovery, normal desktop exit, history scope, M1, M2, M3 and two-server M4."
+      ]
+    },
+    "build": "Verified each file of the extracted source against its inventory; built offline using locked Rust dependencies. Verified executable bytes, component manifest and all 748 ZIP manifest entries."
+  },
+  "source": {
+    "archive": "dalizi-files-0.5.1-source-0f746a134a42bc2c.zip",
+    "sha256": "0f746a134a42bc2c3e0baa2e95f94ac067667c205cf29d5148b83eff00f3b7e5",
+    "bytes": 3972336,
+    "files": 541
+  },
+  "preview": {
+    "archive": "dalizi-files-0.5.1-windows-x64-preview-pinned-selection-6afc9d39c958.zip",
+    "sha256": "4581f395adb90c25ee5a8a56ba8d24227b96d0e6793c1a9a41414a1ef058432e",
+    "bytes": 54995364,
+    "entries": 749,
+    "exeSha256": "6afc9d39c958903340eba693489208584a1c34b9938ec8f5de1e78945710105e",
+    "candidate": null,
+    "baseline": "M5 RC7"
+  },
+  "limits": [
+    "Ordinary Agent Project tools can still inspect files under the authorized root; this change controls the automatically attached selection metadata.",
+    "This is a post-RC7 development preview. Clean Windows 10, clean Windows 11 and an authenticated model turn are outstanding for the frozen candidate."
+  ]
+}

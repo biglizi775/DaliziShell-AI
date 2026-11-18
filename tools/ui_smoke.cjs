@@ -106,7 +106,17 @@ const server = http.createServer((req, res) => {
           window.mockCalls.push({ cmd, args });
           if (cmd === 'ssh_pick_upload_files') return window.mockUploadFiles || ['C:\\Uploads\\one.txt', 'C:\\Uploads\\two.txt'];
           if (cmd === 'ssh_pick_download_directory') return 'C:\\Downloads';
-          if (cmd === 'ssh_transfer_prepare') return args.paths.map((value) => ({ name: value.split('\\').at(-1), localPath: args.direction === 'upload' ? value : args.directory + '\\' + value, remote: args.direction === 'upload' ? args.remote : args.remote.replace(/\/$/, '') + '/' + value, size: 100 }));
+          if (cmd === 'ssh_batch_create') return crypto.randomUUID();
+          if (cmd === 'ssh_batch_list') return {rows:[], next:null};
+          if (cmd === 'ssh_batch_end') return;
+          if (cmd === 'ssh_pane_preview') {
+            if(window.mockPreviewDeferred) await new Promise(resolve=>{window.resolveMockPreview=resolve;});
+            return {kind:'text',content:args.side+' '+args.name,truncated:false};
+          }
+          if (cmd === 'ssh_transfer_prepare') {
+            if (window.mockPrepareDeferred) await new Promise(resolve => {window.resolveMockPrepare=resolve;});
+            return args.paths.map((value) => ({ name: value.split('\\').at(-1), localPath: args.direction === 'upload' ? value : args.directory + '\\' + value, remote: args.direction === 'upload' ? args.remote : args.remote.replace(/\/$/, '') + '/' + value, size: 100 }));
+          }
           if (cmd === 'ssh_files_list') {
             if (window.mockSftpError) throw Error('SFTP subsystem unavailable');
             return { path: args.path === '.' ? '/data' : args.path, truncated: false, entries: [{ name: '子目录', isDir: true, isLink: false }, ...['中文.txt', 'two.txt', 'three.txt'].map((name) => ({ name, isDir: false, isLink: false, size: 100, modified: 1792800000 }))] };
@@ -157,6 +167,7 @@ const server = http.createServer((req, res) => {
             if (window.mockBrowserClearFailure) throw new Error('Browser clear runtime unavailable');
             return null;
           }
+          if (cmd === 'browser_runtime_info') return {version:'157.0.0.0', extensionsSupported:true};
           if (cmd === 'browser_extensions_list') return structuredClone(window.mockExtensions);
           if (cmd === 'browser_extension_set_enabled') {
             if (window.mockExtensionFailure) throw new Error('Extension runtime unavailable');
@@ -253,10 +264,11 @@ const server = http.createServer((req, res) => {
             if (window.mockSearchDeferred) await new Promise((resolve) => { window.resolveMockSearch = resolve; });
             return { ...status, items: entries.filter((e) => !e.isDir).slice(0, 12).map((e) => ({ ...e, path: 'C:\\Projects\\' + e.name })), total: 12, truncated: false };
           }
-          if (cmd === 'external_drop_transfer') {
+          if (cmd === 'local_transfer_inspect') {
             if (window.mockDropFailure) throw new Error('Destination unavailable');
-            return { completed: true, processed: args.sources.length, skipped: 0 };
+            return { ready: args.sources.map((_, i) => i), sourceKeys: args.sources.map(p => p), destinationKey: args.dest };
           }
+          if (cmd === 'local_transfer_item') return { status: 'complete', target: args.dest + '\\' + args.source.split('\\').pop() };
           if (cmd === 'ai_compact') { if (window.mockCompactionFailure) throw new Error('Summary service unavailable'); return { summary: '用户希望按日期归档文件。之前的方案尚未执行，下一步需要核对。', beforeCharacters: JSON.stringify(args.request.history).length, afterCharacters: 34 }; }
           if (cmd === 'ai_plan') return { id: 'mock-plan', root: args.request.root, permissionMode: args.request.permissionMode, summary: args.request.prompt.includes('概括') || args.request.permissionMode === 'read-only' ? '这个文件夹包含设计资源、项目文档和 30 份 Markdown 笔记。可以按项目或用途整理。' : '创建“归档”文件夹，把选中的项目笔记移动到其中。执行前可以检查下面的路径。', contextCount: 35, contextTruncated: false, appliedSkills: mergedSkills().filter((skill) => args.request.skillIds?.includes(skill.id)).map(({ id, name }) => ({ id, name })), memoryCount: args.request.useMemory ? profileAt(args.request.root).memories.filter((memory) => memory.enabled).length : 0, memorySuggestions: args.request.learnMemory && args.request.prompt.includes('概括') ? ['归档目录使用日期命名。'] : [], actions: args.request.prompt.includes('概括') || args.request.permissionMode === 'read-only' ? [] : [{ kind: 'mkdir', target: 'C:\\Projects\\归档' }, { kind: 'move', source: 'C:\\Projects\\Project-notes-1.md', target: 'C:\\Projects\\归档\\Project-notes-1.md' }] };
           if (cmd === 'ai_execute') return { completed: true, results: [{ kind: 'mkdir', target: 'C:\\Projects\\归档', status: 'success', message: '' }] };
@@ -627,6 +639,7 @@ const server = http.createServer((req, res) => {
       await page.locator('#aiModel').fill('builtin-skill-test-model');
       await page.locator('#aiKey').fill('dummy-session-key');
       await page.locator('[data-ai-action="save-settings"]').click();
+      await page.locator('#aiProjectTools').check();
       await page.locator('#aiPermissionMode').selectOption('read-only');
       await page.locator('#aiPrompt').fill('概括当前目录，只给出建议。');
       await page.locator('#aiPrompt').press('Enter');
@@ -906,7 +919,7 @@ const server = http.createServer((req, res) => {
       window.mockListeners['tauri://drag-drop'].forEach((fn) => fn({ payload: { paths: ['C:\\Downloads\\fixture.txt'], position } }));
     });
     assert.equal(await page.locator('#externalDropDialog .drop-destination').textContent(), await page.evaluate(() => dropFixtureTarget));
-    assert.equal(await page.evaluate(() => window.mockCalls.filter((c) => c.cmd === 'external_drop_transfer').length), 0, 'release alone never moves files');
+    assert.equal(await page.evaluate(() => window.mockCalls.filter((c) => c.cmd === 'local_transfer_item').length), 0, 'release alone never moves files');
     await page.evaluate(() => { window.mockDropFailure = true; });
     await page.locator('[data-drop-kind="move"]').click();
     await page.waitForFunction(() => document.querySelector('#externalDropStatus').textContent.includes('Destination unavailable'));
@@ -916,7 +929,8 @@ const server = http.createServer((req, res) => {
     await page.locator('[data-drop-kind="move"]').click();
     await page.locator('#externalDropDialog').waitFor({ state: 'detached' });
     await page.waitForFunction(() => !state.loading && !fileOpBusy);
-    assert.deepEqual(await page.evaluate(() => window.mockCalls.filter((c) => c.cmd === 'external_drop_transfer').at(-1).args), { kind: 'move', sources: ['C:\\Downloads\\fixture.txt'], dest: await page.evaluate(() => dropFixtureTarget) });
+    const reviewedDest = await page.evaluate(() => dropFixtureTarget);
+    assert.deepEqual(await page.evaluate(() => window.mockCalls.filter((c) => c.cmd === 'local_transfer_item').at(-1).args), { kind: 'move', source: 'C:\\Downloads\\fixture.txt', dest: reviewedDest, expected: { sourceKey: 'C:\\Downloads\\fixture.txt', destinationKey: reviewedDest } });
     await page.evaluate(() => openAiAssistant());
     await page.locator('[data-agent-open="skills"]').click();
     await page.locator('[data-agent-skill-group="builtin"] [data-agent-skill]').last().waitFor();
@@ -960,6 +974,7 @@ const server = http.createServer((req, res) => {
     await page.screenshot({ path: path.join(output, 'settings.png') });
     await page.locator('[data-ai-action="save-settings"]').click();
     await page.locator('.row').filter({ hasText: 'Project-notes-1.md' }).first().click();
+    await page.locator('#aiProjectTools').check();
     await page.locator('#aiPrompt').fill('帮我概括这个文件夹。我偏好归档目录使用日期命名。');
     await page.locator('#aiPrompt').dispatchEvent('keydown', { key: 'Enter', isComposing: true });
     assert.equal(await page.evaluate(() => window.mockCalls.filter((c) => c.cmd === 'ai_plan').length), 0, 'IME confirmation never sends a message');

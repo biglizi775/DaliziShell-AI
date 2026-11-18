@@ -1,23 +1,19 @@
-// Two concurrent ConPTY shells; no profiles or user files modified.
-use portable_pty::{native_pty_system, CommandBuilder, PtySize};
+// Two concurrent terminal sessions using the desktop's backend selection.
+#[path = "../windows_runtime.rs"]
+mod windows_runtime;
+use portable_pty::{CommandBuilder, PtySize};
 use std::io::{Read, Write};
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, Instant};
 
 fn check(number: u8) -> Result<(), String> {
-    let pair = native_pty_system()
-        .openpty(PtySize {
-            rows: 25,
-            cols: 80,
-            pixel_width: 0,
-            pixel_height: 0,
-        })
-        .map_err(|e| e.to_string())?;
-    let shell = if std::path::Path::new(r"C:\Program Files\PowerShell\7\pwsh.exe").exists() {
-        r"C:\Program Files\PowerShell\7\pwsh.exe"
-    } else {
-        "powershell.exe"
-    };
+    let pair = windows_runtime::open_pty(PtySize {
+        rows: 25,
+        cols: 80,
+        pixel_width: 0,
+        pixel_height: 0,
+    })?;
+    let shell = windows_runtime::powershell()?;
     let mut cmd = CommandBuilder::new(shell);
     cmd.arg("-NoLogo");
     cmd.arg("-NoProfile");
@@ -91,7 +87,38 @@ fn check(number: u8) -> Result<(), String> {
             "terminal {number}: timed out waiting for command output"
         ))
     })();
-    let _ = child.kill();
+    let result = result.and_then(|()| {
+        let expected = if number == 1 {
+            child
+                .kill()
+                .map_err(|e| format!("terminate live shell: {e}"))?;
+            1
+        } else {
+            let mut input = writer.lock().unwrap();
+            input
+                .write_all(b"exit 259\r")
+                .and_then(|_| input.flush())
+                .map_err(|e| e.to_string())?;
+            259
+        };
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while Instant::now() < deadline {
+            if let Some(status) = child.try_wait().map_err(|e| e.to_string())? {
+                if status.exit_code() == expected {
+                    return Ok(());
+                }
+                return Err(format!(
+                    "expected exit {expected}, received {}",
+                    status.exit_code()
+                ));
+            }
+            std::thread::sleep(Duration::from_millis(30));
+        }
+        Err(format!("timed out waiting for exit {expected}"))
+    });
+    if result.is_err() {
+        let _ = child.kill();
+    }
     drop(writer);
     drop(master);
     result
@@ -105,7 +132,7 @@ fn main() {
     for (i, job) in jobs.into_iter().enumerate() {
         match job.join().unwrap() {
             Ok(()) => println!(
-                "terminal {}: startup, handshake, resize and command output OK",
+                "terminal {}: startup, resize, command output and exit status OK",
                 i + 1
             ),
             Err(e) => {

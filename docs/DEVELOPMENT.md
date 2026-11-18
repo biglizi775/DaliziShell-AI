@@ -1,5 +1,7 @@
 # 开发指南
 
+Harness 的协议诊断见 [M0](HARNESS_M0.md)，Windows 桌面的只读文件任务与隔离验证脚本见 [M1](HARNESS_M1.md)。
+
 ## 环境与首次运行
 
 原生后端面向 Windows x64。安装 Git、Rust MSVC 工具链、Visual Studio C++ 生成工具及 Windows SDK、WebView2 Runtime。Node.js 22+ 用于测试（CI 使用 24），Python 仅用于可选样本和工具。

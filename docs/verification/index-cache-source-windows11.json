@@ -1,0 +1,76 @@
+{
+  "date": "2026-11-17",
+  "scope": "Windows 11 x64 development host, build 26300. Release and tests built from an extracted source ZIP. No production user profile or cloud provider used for this check.",
+  "source": {
+    "archive": "dalizi-files-0.5.1-source-ede3ca42ea20cd11.zip",
+    "sha256": "ede3ca42ea20cd11dbb1fda5ed3223ab146da7aaa7fee2a16677a4b578b9096b",
+    "bytes": 3923812,
+    "files": 518,
+    "headAtFreeze": "de2d71ad09d0ccaaa6ca5bff23ae12b4bf959dfc",
+    "dirty": true,
+    "everyExtractedFileMatchedManifest": true,
+    "excluded": "31 Git-visible promo screenshots, capture metadata and hosting configuration; ignored data and build outputs were not included.",
+    "secondExtractionReproduced": [
+      "source ZIP",
+      "ZIP checksum sidecar",
+      "per-file SHA-256 inventory"
+    ]
+  },
+  "build": {
+    "toolchain": "rustc 1.100.0 (0ef1bc386), stable-x86_64-pc-windows-msvc; Node v24.22.1; Python 3.13.17",
+    "command": "cargo build --locked --offline --release --bin dalizi-files --target-dir <empty external directory>",
+    "inSourceAtStart": {
+      "git": false,
+      "nodeModules": false,
+      "localCargoConfig": false,
+      "buildTarget": false
+    },
+    "dependencyCache": "Prepopulated crates.io cache; build did not need a precompiled target or a network fetch.",
+    "version": "0.5.1",
+    "exeSha256": "23c7987291f9ab76922eba58687e149a54604437f018c8c3e942d5ea2ea11f88",
+    "exeBytes": 26225152,
+    "cargoLockSha256": "a7c0ffd1349bbc97acc1c4e31ff6f139bcb1bf264afaac6cf72aeb48cd3f26ea"
+  },
+  "tests": {
+    "rustDesktopRelease": {
+      "passed": 151,
+      "failed": 0,
+      "ignored": 2
+    },
+    "frontend": {
+      "passed": 274,
+      "failed": 0,
+      "skipped": 0
+    },
+    "harnessClient": {
+      "protocolReplayPassed": 8,
+      "snapshotPassed": 4
+    },
+    "sourcePackagingRegressionPassed": true
+  },
+  "cacheRegression": {
+    "observedBefore": "An optimized full-suite run failed at NameIndex::save, reporting Windows error 32. The staging file remained. The original locking process was not identified.",
+    "controlledBefore": "Holding the old cache open without delete sharing reproduced a failed replacement (Windows error 5).",
+    "controlledAfter": [
+      "A briefly locked folder-size cache publishes the new value when the shared handle closes.",
+      "A persistently locked file-name cache returns an error, preserves previous bytes, leaves no extra file in the test directory and saves successfully after unlock."
+    ],
+    "extraSleepBudgetMs": 185
+  },
+  "preview": {
+    "archive": "dalizi-files-0.5.1-windows-x64-preview-index-cache-23c7987291f9.zip",
+    "zipSha256": "633e4ec2cf8f9553df6746abb07ff921ecb5704ec8dc6eb0c8ecc65b4c6e29bc",
+    "bytes": 54886470,
+    "entries": 749,
+    "filesVerified": true,
+    "exeIdenticalToThisBuild": true,
+    "componentZipSha256": "576a0c64da03d892ea8ac94b7bfeda905dacd2ed7fb5f8d310fe75c46e069dc2",
+    "componentManifestMatchedSourcePin": true,
+    "candidate": null,
+    "baseline": "M5 RC6"
+  },
+  "limits": [
+    "Identical ZIP reproduction applies to the source snapshot in the same packaging environment, not to independently linked Windows executables.",
+    "No clean Windows 10 or Windows 11 guest acceptance or authenticated cloud turn was claimed. RC6 and the earlier workspace-history preview were not replaced."
+  ]
+}

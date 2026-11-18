@@ -10,7 +10,7 @@ function initDualPane() {
   $('previewPanel').before(panel);
   panel.querySelector('[data-close]').onclick = () => toggleDualPane(false);
   panel.querySelector('form').onsubmit = (e) => { e.preventDefault(); void loadCompanion(panel.querySelector('[data-path]').value); };
-  panel.querySelector('[data-back]').onclick = () => { const p = companionFor(); if (p?.history.length > 1) { p.history.pop(); void loadCompanion(p.history.at(-1), false); } };
+  panel.querySelector('[data-back]').onclick = () => { const p = companionFor(); if (p?.history.length > 1) { p.history.pop(); void loadCompanion(p.history[p.history.length - 1], false); } };
   panel.querySelector('[data-up]').onclick = () => { const p = parentOf(companionFor()?.path); if (p) void loadCompanion(p); };
   panel.querySelector('[data-refresh]').onclick = () => void loadCompanion(companionFor()?.path, false, true);
   panel.querySelector('[data-filter]').oninput = (e) => { const p = companionFor(); if (p) { p.filter = e.target.value; p.anchor = -1; panel.querySelector('.pane-list').scrollTop = 0; paintCompanionRows(); } };
@@ -37,17 +37,21 @@ function toggleDualPane(force) {
 async function loadCompanion(path, push = true, preserve = false, tb = curTab()) {
   const p = companionFor(tb); if (!p || !path) return;
   path = normalizeNavigationPath(path); if (!path) return;
-  const token = ++p.generation; p.loading = true; p.error = ''; p.requestPath = path;
+  const token = ++p.generation, same = p.path === path;
+  p.loading = true; p.error = ''; p.path = path;
+  if (!same) { p.entries = []; p.selection.clear(); p.filter = ''; p.anchor = -1; }
+  if ((push || !p.history.length) && p.history[p.history.length - 1] !== path) {
+    p.history.push(path); if (p.history.length > 100) p.history.shift();
+  }
   if (tb === curTab()) syncDualPane();
   try {
     const entries = await invoke('list_dir', { path }); if (p.generation !== token) return;
-    const same = p.path === path; p.path = path;
     // prepareEntries owns the main directory's size-event lookup; keep this view isolated.
     p.entries = entries.map(entry => ({ ...entry, nameLower: entry.name.toLowerCase() })); p.anchor = -1;
     p.selection = new Set(preserve && same ? [...p.selection].filter(n => p.entries.some(e => e.name === n)) : []);
-    if (push || !p.history.length) { if (p.history.at(-1) !== path) p.history.push(path); if (p.history.length > 100) p.history.shift(); }
-    if (!same) p.filter = '';
-  } catch (error) { if (p.generation === token) p.error = String(error); }
+  } catch (error) {
+    if (p.generation === token) { p.error = String(error); p.entries = []; p.selection.clear(); }
+  }
   finally { if (p.generation === token) { p.loading = false; if (tb === curTab()) syncDualPane(); } }
 }
 function companionEntries(p) {
@@ -66,13 +70,14 @@ function syncDualPane() {
   const T = paneText;
   panel.querySelector('[data-title]').textContent = T('文件对照面板', 'Companion folder');
   panel.querySelector('[data-close]').setAttribute('aria-label', T('关闭对照面板', 'Close companion'));
-  const input = panel.querySelector('[data-path]'); if (document.activeElement !== input) input.value = p.loading ? p.requestPath : p.path;
+  const input = panel.querySelector('[data-path]'); if (document.activeElement !== input) input.value = p.path;
   input.setAttribute('aria-label', T('对照目录路径', 'Companion path'));
   for(const [selector,label] of [['[data-back]',T('返回','Back')],['[data-up]',T('上一级','Parent folder')],['[data-refresh]',T('刷新','Refresh')]]) { const b=panel.querySelector(selector); b.title=label;b.setAttribute('aria-label',label); }
   const filter = panel.querySelector('[data-filter]'); filter.placeholder = T('筛选对照目录…', 'Filter companion folder…'); filter.setAttribute('aria-label', filter.placeholder); if (document.activeElement !== filter) filter.value = p.filter;
   for (const [sel, text, label] of [['[data-to-right]', '→', T('左侧选中项传输到右侧…', 'Transfer left selection to right…')], ['[data-to-left]', '←', T('右侧选中项传输到左侧…', 'Transfer right selection to left…')], ['[data-work]', T('设为工作目录', 'Work folder'), T('交换两侧目录，AI 跟随新的左侧目录', 'Swap folders; AI follows the new left folder')]]) {const b=panel.querySelector(sel);b.textContent=text;b.title=label;b.setAttribute('aria-label',label);}
-  panel.querySelector('[data-to-right]').disabled = p.loading || !state.selection.size || !state.path || fileOpBusy;
-  panel.querySelector('[data-to-left]').disabled = p.loading || !p.selection.size || !state.path || fileOpBusy;
+  const canTransfer = fileListingReady() && !p.loading && !p.error && !localTaskBusy();
+  panel.querySelector('[data-to-right]').disabled = !canTransfer || !state.selection.size;
+  panel.querySelector('[data-to-left]').disabled = !canTransfer || !p.selection.size;
   panel.querySelector('[data-work]').disabled = p.loading || !!p.error || state.loading;
   panel.querySelector('[data-scope]').textContent = T('AI / 记忆跟随左侧工作目录。', 'AI / memory follow the left work folder.');
   panel.querySelector('[data-status]').textContent = p.loading ? T('读取目录…', 'Loading…') : p.error || `${p.entries.length} ${T('项', 'items')} · ${p.selection.size} ${T('已选', 'selected')}`;
@@ -104,7 +109,7 @@ async function activateCompanion() {
   await loadCompanion(oldPath,true,false,tb); if(companionFor(tb)===p && p.path===oldPath){p.selection=oldSelection;if(curTab()===tb)syncDualPane();}
 }
 function transferBetweenPanes(direction) {
-  const p=companionFor(); if(!p || p.loading || !state.path || fileOpBusy)return;
+  const p=companionFor(); if(!p || p.loading || p.error || !fileListingReady() || localTaskBusy())return;
   const from=direction==='right'?state.path:p.path, to=direction==='right'?p.path:state.path;
   const selection=direction==='right'?state.selection:p.selection; if(!selection.size)return;
   openExternalDrop([...selection].map(n=>join(from,n)),{path:to,owner:curTab(),folder:state.path});

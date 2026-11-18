@@ -5,6 +5,14 @@ pub mod batch;
 pub mod tree;
 #[path = "ssh_files_resume.rs"]
 pub mod resume;
+#[path = "ssh_task_snapshot.rs"]
+pub mod tasks;
+#[path = "ssh_transfer_history.rs"]
+pub mod history;
+#[path = "ssh_batch_recovery.rs"]
+pub mod recovery;
+#[path = "ssh_pane_preview.rs"]
+pub mod pane_preview;
 use super::{get, nonce, Session};
 use std::{path::{Path, PathBuf}, sync::{Arc, Mutex}, time::{Duration, Instant}};
 use russh_sftp::{client::{SftpSession, RawSftpSession, error::Error}, protocol::{OpenFlags, StatusCode}};
@@ -45,11 +53,13 @@ async fn sftp(session: &Session) -> Result<Arc<SftpSession>, String> {
 #[serde(rename_all = "camelCase")]
 pub struct RemoteEntry { name: String, is_dir: bool, is_link: bool, size: Option<u64>, modified: Option<u32>, permissions: Option<u32> }
 #[derive(Serialize)]
-pub struct RemoteDirectory { path: String, entries: Vec<RemoteEntry>, truncated: bool }
+pub struct RemoteDirectory { path: String, entries: Vec<RemoteEntry>, truncated: bool, #[serde(rename="taskBinding",skip_serializing_if="Option::is_none")] task_binding: Option<tasks::Binding>,
+    #[serde(rename="historyWorkspace",skip_serializing_if="Option::is_none")] history_workspace: Option<dalizi_harness_client::snapshot::Workspace> }
 #[tauri::command]
-pub async fn ssh_files_list(id: u32, path: String) -> Result<RemoteDirectory, String> {
+pub async fn ssh_files_list(id: u32, path: String, bind_tasks: Option<bool>) -> Result<RemoteDirectory, String> {
     remote_path(&path)?;
     let session = get(id)?;
+    let revision = (bind_tasks == Some(true)).then(|| tasks::begin(&session));
     let task = async {
         // Raw directory batches let us stop without materializing a huge folder.
         let raw = RawSftpSession::new(stream(&session).await?);
@@ -80,7 +90,9 @@ pub async fn ssh_files_list(id: u32, path: String) -> Result<RemoteDirectory, St
             let _ = raw.close(handle).await;
             listing?;
             entries.sort_by(|a, b| b.is_dir.cmp(&a.is_dir).then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase())));
-            Ok(RemoteDirectory { path: resolved, entries, truncated })
+            let task_binding = revision.and_then(|v| tasks::publish(&session,v,&resolved,&entries));
+            let history_workspace=revision.map(|_|tasks::workspace(&session.task_host.host,&resolved));
+            Ok(RemoteDirectory { path: resolved, entries, truncated,task_binding,history_workspace })
         }.await;
         let _ = raw.close_session();
         operation
@@ -129,7 +141,8 @@ pub fn ssh_transfer_status(id: u32, transfer_id: String) -> Result<Option<Progre
 enum PartialFile { Local(PathBuf), Remote(String) }
 enum Commit { Directory, Local(PathBuf, PathBuf), Remote(Arc<SftpSession>, String, String) }
 #[tauri::command]
-pub async fn ssh_file_transfer(id: u32, direction: String, local_path: String, remote: String, request_id: Option<String>, entry_kind: Option<String>, resumable: Option<bool>, resume_id: Option<String>, app: AppHandle) -> Result<String, String> {
+pub async fn ssh_file_transfer(id: u32, direction: String, local_path: String, remote: String, request_id: Option<String>, entry_kind: Option<String>, resumable: Option<bool>, resume_id: Option<String>, reviewed_relative: Option<String>, batch_id: Option<String>, batch_index: Option<usize>, view: tauri::Webview, app: AppHandle) -> Result<String, String> {
+    crate::ai::harness_tasks::local(&view)?;
     if !matches!(direction.as_str(), "upload" | "download") { return Err("Invalid transfer direction".into()); }
     remote_path(&remote)?;
     let local = PathBuf::from(local_path);
@@ -145,20 +158,50 @@ pub async fn ssh_file_transfer(id: u32, direction: String, local_path: String, r
     if directory && resume_id.is_some() { return Err("Directories cannot resume bytes".into()); }
     let initial = Progress { resume_id: None, resumed_bytes: 0, id, key: session.key.clone(), transfer_id: transfer_id.clone(), direction: direction.clone(), name: if direction == "upload" { local.file_name().unwrap_or_default().to_string_lossy().into_owned() } else { remote.rsplit('/').next().unwrap_or("download").into() }, bytes: 0, total: 0, status: "running".into(), error: None };
     let (cancel, mut cancelled) = watch::channel(false);
+    let batch_receipt;
     {
         let mut active = session.transfers.lock().unwrap();
         if !active.is_empty() { return Err("当前连接已有传输任务，请等待或取消 / A transfer is already running".into()); }
         retain_transfer(&initial, true)?;
+        let dispatched = match (batch_id, batch_index) {
+            (Some(batch), Some(index)) => recovery::dispatch(&app, &session, &batch, index, &direction, &local, &remote, entry_kind.as_deref().unwrap_or("file"), reviewed_relative.as_deref()).map(Some),
+            (None, None) => Ok(None),
+            _ => Err("Invalid batch reference".into()),
+        };
+        match dispatched {
+            Ok(receipt) => batch_receipt = receipt,
+            Err(error) => {
+                TRANSFER_HISTORY.lock().unwrap().retain(|p| p.transfer_id != transfer_id);
+                return Err(error);
+            }
+        }
         active.insert(transfer_id.clone(), cancel);
     }
     let token = transfer_id.clone();
     tauri::async_runtime::spawn(async move {
         let mut progress = initial;
+        let (journal_app,host,path,endpoint,kind)=(app.clone(),session.task_host.host.clone(),local.clone(),remote.clone(),direction.clone());
+        let (receipt, _reviewed_directory) = batch_receipt.unzip();
+        let started=match receipt {
+            Some(receipt) => Ok(receipt),
+            None => tauri::async_runtime::spawn_blocking(move || history::begin(&journal_app,&host,&path,&endpoint,&kind,directory,reviewed_relative.as_deref())).await.map_err(|e|e.to_string()).and_then(|r|r),
+        };
+        let journal=match started {
+            Ok(journal)=>journal,
+            Err(error)=>{
+                progress.status="failed".into();
+                progress.error=Some(format!("无法建立传输记录，传输未开始 / Could not record transfer start: {error}"));
+                // A checkpoint from a reviewed retry was not consumed.
+                progress.resume_id=resume_id;
+                session.transfers.lock().unwrap().remove(&progress.transfer_id);
+                publish_transfer(&app,&progress); return;
+            }
+        };
         let checkpoint = Arc::new(Mutex::new(None));
         if let Some(ref resume_id) = resume_id {
             match resume::take(resume_id, &session, &direction, &local, &remote) {
                 Ok(c) => *checkpoint.lock().unwrap() = Some(c),
-                Err(e) => { progress.status="failed".into(); progress.error=Some(e); session.transfers.lock().unwrap().remove(&progress.transfer_id); publish_transfer(&app,&progress); return; }
+                Err(e) => { progress.status="failed".into(); progress.error=Some(e); finish_receipt(journal,&mut progress,false).await; session.transfers.lock().unwrap().remove(&progress.transfer_id); publish_transfer(&app,&progress); return; }
             }
         }
         // Own a resumed partial before observing cancellation, including a cancel
@@ -207,13 +250,31 @@ pub async fn ssh_file_transfer(id: u32, direction: String, local_path: String, r
             },
             None => Ok(()),
         };
+        let verify = result.is_err() && (progress.status=="finalizing" || *disconnected.borrow());
         progress.status = if result.is_ok() { "complete" } else if *cancelled.borrow() || *disconnected.borrow() { "cancelled" } else { "failed" }.into();
         progress.error = match (result.err(), progress.error.take()) { (Some(e),Some(note)) => Some(format!("{e}; {note}")), (e,_) => e };
         if let Err(warning) = cleanup { progress.error = Some(format!("{}; {warning}", progress.error.unwrap_or_default())); }
+        finish_receipt(journal,&mut progress,verify).await;
         session.transfers.lock().unwrap().remove(&progress.transfer_id);
         publish_transfer(&app, &progress);
     });
     Ok(token)
+}
+async fn finish_receipt(journal:history::Journal,progress:&mut Progress,verify:bool) {
+    let (status,bytes,total)=(progress.status.clone(),progress.bytes,progress.total);
+    // Store only a local category. Server diagnostics and checkpoint paths stay in the live queue.
+    let reason=progress.error.as_deref().map(|e|{
+        if verify {"verifyDestination"}
+        else if e.starts_with("远程同名文件已存在") || e.starts_with("本地目标已存在") {"destinationExists"}
+        else if status=="cancelled" {"cancelled"}
+        else if e.contains("Partial content mismatch") || e.contains("Resume identity or path mismatch") {"resumeMismatch"}
+        else if status=="complete" {"cleanupWarning"} else {"transferFailed"}
+    }.to_owned());
+    if let Err(error)=tauri::async_runtime::spawn_blocking(move ||journal.finish(status,bytes,total,verify,reason))
+        .await.map_err(|e|e.to_string()).and_then(|r|r) {
+        let note=format!("传输记录未写完整，请核对实际文件 / Transfer receipt incomplete. Verify the file. {error}");
+        progress.error=Some(progress.error.take().map_or_else(||note.clone(),|e|format!("{e} · {note}")));
+    }
 }
 async fn transfer(session: &Session, direction: &str, local: &Path, remote: &str, progress: &mut Progress, partial: &Arc<Mutex<Option<PartialFile>>>, app: &AppHandle, directory: bool, resumable: bool, checkpoint: &Arc<Mutex<Option<resume::Checkpoint>>>) -> Result<Commit, String> {
     if directory { tree::create_directory(session,direction,local,remote).await?; return Ok(Commit::Directory); }

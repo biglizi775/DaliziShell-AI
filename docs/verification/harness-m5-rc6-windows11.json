@@ -1,0 +1,336 @@
+{
+  "date": "2026-11-17",
+  "platform": {
+    "os": "Windows 11 x64",
+    "build": "26300.9974",
+    "cleanGuest": false
+  },
+  "candidate": {
+    "archive": "dalizi-files-0.5.1-windows-x64-harness-m5-rc6.zip",
+    "bytes": 54918916,
+    "sha256": "55387426c7515139c2ccc805ebd72e4c76024916cd2df2422acdd9c74b65f55d",
+    "exeSha256": "dcafed61e24eacd46580d4a140d1fb65af53b340a6e2658310020923f7048f0a",
+    "sourceHead": "de2d71ad09d0ccaaa6ca5bff23ae12b4bf959dfc",
+    "dirty": true,
+    "component": {
+      "id": "harness-0.2.2-rc.3-node24.22.1-win-x64-r2",
+      "manifestSha256": "e4e3be83659bac58a61ab997a264d2f7def45e01d399c0c2f41ca869d1903def",
+      "zipSha256": "576a0c64da03d892ea8ac94b7bfeda905dacd2ed7fb5f8d310fe75c46e069dc2"
+    }
+  },
+  "archiveCompatibility": {
+    "officialInput": {
+      "zipSha256": "bff66169a335bfd2b3e916687f48b0ea7c8ca566a6430cdecb6deaf37eb602a2",
+      "exeSha256": "a8f5d18928eb0b6802a07a5d3f31ed88d847c6f5485c881ed40e6c334d294ac5",
+      "source": "https://github.com/biglizi775/DaliziShell-AI/releases/download/v0.5.1/dalizi-files-0.5.1-windows-x64.zip",
+      "executedLocally": false
+    },
+    "isolatedChatRollback": {
+      "schema": 1,
+      "suite": "desktop-chat-rollback",
+      "utc": "2026-11-16T17:08:14.438Z",
+      "mode": "pinned-rehearsal",
+      "release": "rc6",
+      "oldExeSha256": "12253f2e940c963d526da892ee4290940f1fc4e267aede83a1696ca8c1c1e8d4",
+      "newExeSha256": "2fe716b78e681d19faa50537214d2c73d89ed1ee63dec78a86ad27211384249a",
+      "passed": [
+        "old rejected early inline steps",
+        "original chat and memory at relocated path",
+        "portable preferences across versions",
+        "new receipts and text survive reopens",
+        "explicit early archive conversion preserves original fields and revision",
+        "old reads old and new transcripts",
+        "old edits visible after return; stale write rejected",
+        "old revision edited in place: no obsolete receipts; sibling chat retains its own receipt",
+        "obsolete receipt pruned without removing sibling receipt",
+        "damaged receipts allow transcript reading but prevent replacement",
+        "deletion removed associated receipts"
+      ]
+    },
+    "inspectedPublicHosts": {
+      "executed": false,
+      "inputs": {
+        "baseline": {
+          "zipSha256": "bff66169a335bfd2b3e916687f48b0ea7c8ca566a6430cdecb6deaf37eb602a2",
+          "exeSha256": "a8f5d18928eb0b6802a07a5d3f31ed88d847c6f5485c881ed40e6c334d294ac5"
+        },
+        "candidate": {
+          "zipSha256": "55387426c7515139c2ccc805ebd72e4c76024916cd2df2422acdd9c74b65f55d",
+          "exeSha256": "dcafed61e24eacd46580d4a140d1fb65af53b340a6e2658310020923f7048f0a"
+        },
+        "candidateSource": "recorded-release",
+        "tag": "rc6"
+      }
+    }
+  },
+  "rehearsalExeSha256": [
+    "12253f2e940c963d526da892ee4290940f1fc4e267aede83a1696ca8c1c1e8d4",
+    "2fe716b78e681d19faa50537214d2c73d89ed1ee63dec78a86ad27211384249a"
+  ],
+  "submissionIdentity": {
+    "before": "The RC5 native test host returned A's completed task for the same preview ID with a different question (missing expected rejection).",
+    "nativeChecks": [
+      "Submitting the file form twice yields one model request. Two tabs sharing a project retrieve one task after closing and reopening the submitting tab.",
+      "Selecting a companion file does not attach it to the working folder; swapping panes shows the source of the selection.",
+      "Different questions using an accepted ID are rejected while running, after completion and after restarting. An identical question retrieves the original receipt.",
+      "The loopback request contains the original A snapshot and zero tools. The same-name file and draft in B are unchanged."
+    ],
+    "nodeTestsPassed": 274,
+    "desktopRustTestsPassed": 145,
+    "desktopRustTestsIgnoredByDefault": 2,
+    "nativeSuitesPassed": [
+      "M1",
+      "M2",
+      "M3 WebView2",
+      "M4 SFTP fixtures",
+      "M5 release fixture"
+    ],
+    "releaseFixture": {
+      "component": "harness-0.2.2-rc.3-node24.22.1-win-x64-r2",
+      "packedBytes": 42884693,
+      "startupMs": 834,
+      "firstRequestMs": 4054,
+      "firstReplyWallMs": 6256,
+      "fixtureHoldMs": 772,
+      "hostPeakBytes": 140300288,
+      "nodePeakBytes": 137302016,
+      "nodeAliveAfterExit": 0,
+      "environment": {
+        "readOnlyInstall": true,
+        "guestModelAnswered": true,
+        "closedEndpointFailedMs": 5810
+      },
+      "providerFailures": [
+        {
+          "http": 401,
+          "category": "auth",
+          "requests": 1
+        },
+        {
+          "http": 402,
+          "category": "quota",
+          "requests": 1
+        },
+        {
+          "http": 429,
+          "category": "rate-limit",
+          "requests": 1
+        },
+        {
+          "http": 503,
+          "category": "service",
+          "requests": 1
+        },
+        {
+          "http": "disconnect",
+          "category": "connection",
+          "requests": 1
+        }
+      ],
+      "events": [
+        {
+          "id": 1,
+          "stage": "component-check",
+          "outcome": "failed",
+          "elapsedMs": 0
+        },
+        {
+          "id": 2,
+          "stage": "component-check",
+          "outcome": "failed",
+          "elapsedMs": 298
+        },
+        {
+          "id": 3,
+          "stage": "component-check",
+          "outcome": "ok",
+          "elapsedMs": 406
+        },
+        {
+          "id": 4,
+          "stage": "component-check",
+          "outcome": "ok",
+          "elapsedMs": 388
+        },
+        {
+          "id": 5,
+          "stage": "prepare-runtime",
+          "outcome": "failed",
+          "elapsedMs": 313
+        },
+        {
+          "id": 6,
+          "stage": "task",
+          "outcome": "failed",
+          "elapsedMs": 402
+        },
+        {
+          "id": 7,
+          "stage": "prepare-runtime",
+          "outcome": "ok",
+          "elapsedMs": 2999
+        },
+        {
+          "id": 8,
+          "stage": "task",
+          "outcome": "answered",
+          "elapsedMs": 6103
+        }
+      ]
+    }
+  },
+  "gates": {
+    "cleanWindows10": "pending",
+    "cleanWindows11": "pending",
+    "authenticatedCloudTurn": "pending"
+  },
+  "offlineKit": {
+    "file": "dalizi-m5-rc6-offline-acceptance.zip",
+    "bytes": 66288046,
+    "sha256": "b473200892ae9cd6b30d0da35fa32f2461e5d13510af4221a44c17809871c762",
+    "rehearsal": {
+      "schema": 1,
+      "utc": "2026-11-16T17:07:32.1706736Z",
+      "suite": "offline-start-and-rollback",
+      "mode": "Rehearse",
+      "publicExecutables": false,
+      "environment": {
+        "osBuild": "26300.9974",
+        "windowsFamily": "11",
+        "x64": true,
+        "standardUser": false,
+        "developmentCommandsOnPath": [],
+        "activeAdapterCount": 3,
+        "freshProductProfile": false
+      },
+      "oldZipSha256": "bff66169a335bfd2b3e916687f48b0ea7c8ca566a6430cdecb6deaf37eb602a2",
+      "candidateZipSha256": "55387426c7515139c2ccc805ebd72e4c76024916cd2df2422acdd9c74b65f55d",
+      "componentZipSha256": "576a0c64da03d892ea8ac94b7bfeda905dacd2ed7fb5f8d310fe75c46e069dc2",
+      "stages": [
+        {
+          "stage": "firstStart",
+          "passed": [
+            "browse without model credentials",
+            "complete candidate started without credentials; engine off by default"
+          ],
+          "metrics": {},
+          "webViewTargetReadyMs": 1142,
+          "elapsedMs": 1536
+        },
+        {
+          "stage": "oldCreate",
+          "passed": [
+            "browse without model credentials",
+            "old desktop saved chat, memory and portable preferences"
+          ],
+          "metrics": {},
+          "webViewTargetReadyMs": 1025,
+          "elapsedMs": 1227
+        },
+        {
+          "stage": "newMissing",
+          "passed": [
+            "browse without model credentials",
+            "missing component rejected while files work",
+            "old chat opened after project copy"
+          ],
+          "metrics": {},
+          "webViewTargetReadyMs": 998,
+          "elapsedMs": 1276
+        },
+        {
+          "stage": "newDamaged",
+          "passed": [
+            "browse without model credentials",
+            "damaged sidecar rejected without preventing file browsing"
+          ],
+          "metrics": {},
+          "webViewTargetReadyMs": 946,
+          "elapsedMs": 1215
+        },
+        {
+          "stage": "newFull",
+          "passed": [
+            "browse without model credentials",
+            "unsupported API format rejected before submission",
+            "duplicate sends share one task; a different question cannot reuse its receipt",
+            "A answered after B previewed and closed its same-name file",
+            "A unread result is scoped to A and can be acknowledged independently",
+            "diagnostic preview omits question inputs, endpoint, key and answer",
+            "selected file answered in A while viewing B; engine disabled",
+            "new desktop read old preferences and memory and saved new chat with receipt"
+          ],
+          "metrics": {
+            "firstReplyMs": 5515
+          },
+          "webViewTargetReadyMs": 988,
+          "elapsedMs": 7704
+        },
+        {
+          "stage": "unavailable",
+          "passed": [
+            "browse without model credentials",
+            "closed model endpoint produces a failed task"
+          ],
+          "metrics": {
+            "closedEndpointFailureMs": 5397
+          },
+          "webViewTargetReadyMs": 1011,
+          "elapsedMs": 7355
+        },
+        {
+          "stage": "oldRollback",
+          "passed": [
+            "browse without model credentials",
+            "old desktop read both transcripts and saved an edit"
+          ],
+          "metrics": {},
+          "webViewTargetReadyMs": 992,
+          "elapsedMs": 1220
+        },
+        {
+          "stage": "interrupt",
+          "passed": [
+            "browse without model credentials",
+            "submitted in A and switched to B while request was pending"
+          ],
+          "metrics": {},
+          "webViewTargetReadyMs": 984,
+          "elapsedMs": 5854
+        },
+        {
+          "stage": "newRestore",
+          "passed": [
+            "browse without model credentials",
+            "after restart only the original question retrieves its saved result with the engine disabled",
+            "read answer stays read; failure and interrupted result stay unread after restart",
+            "rollback edit, receipt, A task and disabled engine survived restart"
+          ],
+          "metrics": {},
+          "webViewTargetReadyMs": 971,
+          "elapsedMs": 4456
+        }
+      ],
+      "passed": true,
+      "executedExeSha256": [
+        "12253f2e940c963d526da892ee4290940f1fc4e267aede83a1696ca8c1c1e8d4",
+        "2fe716b78e681d19faa50537214d2c73d89ed1ee63dec78a86ad27211384249a"
+      ],
+      "webView2": "Edg/157.0.4341.46",
+      "readOnlyInstallVerified": true,
+      "hostPeakWorkingSetBytes": 195514368,
+      "nodePeakWorkingSetBytes": 132845568,
+      "nodeAliveAfterExit": 0,
+      "finalStage": "newRestore",
+      "temporaryFilesRemoved": true
+    }
+  },
+  "qaDisc": {
+    "bytes": 66355200,
+    "sha256": "ace31be78530eb1c0cb47028cd3abde6de6c86ab2e6b54380b033710ea02fb47",
+    "volumeLabel": "DALIZI_RC6",
+    "offlineVmwareProbeFileHashesMatched": 7,
+    "serialFrameVerified": true,
+    "windows10And11QaDiscAttachedInPoweredOffConfigurations": true
+  }
+}

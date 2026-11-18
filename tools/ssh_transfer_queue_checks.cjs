@@ -4,10 +4,11 @@ module.exports = async (page, output) => {
   await page.waitForFunction(() => workspaceSessionReady && !state.loading);
   await page.evaluate(async () => {
     closeAiAssistant(); await ensureManagedSshEvents();
-    const el = document.createElement('section'); el.style.cssText = 'position:fixed;left:200px;right:20px;top:200px;height:450px;z-index:30;background:var(--bg)';
-    const viewport = document.createElement('div'); el.append(viewport); document.body.append(el);
-    window.mockTransferOwner = { kind: 'term', connection: 'ssh', key: 'queue-fixture', termId: 2147483648, sshAuthenticated: true, sshConfig: { managed: true, host: 'fixture.test', user: 'tester', port: 22 }, el, termViewport: viewport };
-    state.tabs.push(mockTransferOwner); toggleSshFiles(mockTransferOwner);
+    window.mockTransferOwner = await newSshTab({ managed:true, host:'fixture.test', user:'tester', port:22, infoMode:'posix' });
+  });
+  await page.waitForFunction(()=>curTab()===mockTransferOwner && mockTransferOwner.sshFiles?.ready);
+  await page.evaluate(()=>{
+    mockTransferOwner.sshVerifiedPeer={key:mockTransferOwner.key,id:mockTransferOwner.termId,fingerprint:'fixture-fingerprint'};
   });
   await page.waitForSelector('.ssh-file-row');
   const rows = page.locator('.ssh-file-row');
@@ -38,14 +39,16 @@ module.exports = async (page, output) => {
   await page.setViewportSize({ width: 960, height: 560 }); await page.evaluate(() => applyWorkspaceTheme('dark'));
   assert.equal(await page.evaluate(() => { const r = document.getElementById('sshTaskCenter').getBoundingClientRect(); return r.x >= 0 && r.y >= 0 && r.right <= innerWidth && r.bottom <= innerHeight; }), true);
   await page.screenshot({ path: path.join(output, 'sftp-task-center-compact.png'), animations: 'disabled' });
-  assert.equal(await page.locator('#sshBatchList button').first().evaluate((el) => getComputedStyle(el).color), 'rgb(232, 237, 247)');
+  const style=await page.evaluate(()=>document.documentElement.dataset.visualStyle);
+  assert.equal(await page.locator('#sshBatchList button').first().evaluate((el) => getComputedStyle(el).color),
+    style==='studio' ? 'rgb(241, 238, 226)' : 'rgb(232, 237, 247)');
   await page.locator('[data-tasks-close]').last().click();
   await page.locator('[data-upload]').click(); await page.locator('#sshBatchStart').click();
   // This case tests a disconnect during copying, not cancelling an unstarted queue.
   await page.waitForFunction(() => sshTaskBatches.length === 4 && sshTaskBatches[3].items[0].status === 'running' && !sshTaskBatches[3].items[0].launchPending);
   await page.evaluate(() => { mockTransferOwner.exited = true; disconnectSshQueue(mockTransferOwner); });
   await page.waitForFunction(() => sshBatchDone(sshTaskBatches[3]));
-  await page.evaluate(() => { mockTransferOwner.key = 'new-login'; mockTransferOwner.termId++; mockTransferOwner.exited = false; });
+  await page.evaluate(() => { mockTransferOwner.key = 'new-login'; mockTransferOwner.termId++; mockTransferOwner.exited = false; mockTransferOwner.sshVerifiedPeer={key:mockTransferOwner.key,id:mockTransferOwner.termId,fingerprint:'fixture-fingerprint'}; });
   await page.locator('[data-task-retry]').click(); await page.waitForSelector('#sshBatchReview[open]');
   assert.equal(await page.locator('#sshBatchStart').isDisabled(), true);
   await page.locator('#sshBatchVerified').check(); await page.locator('#sshBatchStart').click();

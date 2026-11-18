@@ -1,0 +1,273 @@
+/*
+ * Dalizi Studio — warm, quiet surfaces with a little more focus.
+ * Opt-in scope preserves the complete classic theme. Geometry used by virtual
+ * rows, grid cells, adjustable columns and split panes is intentionally retained.
+ */
+html[data-visual-style="studio"] {
+  color-scheme: light;
+  --bg: #fffdf7;
+  --bg2: #f3f0e8;
+  --side: #efeee5;
+  --card: #fffefa;
+  --hover: #efeee5;
+  --sel: #e8eee3;
+  --border: #dedfd3;
+  --txt: #171b1a;
+  --txt2: #596457;
+  --txt3: #737b6d;
+  --accent: #477360;
+  --accentDim: #e7ede1;
+  --danger: #b44d42;
+  --menuBg: #fffefa;
+  --radius: 12px;
+  --shadow: 0 22px 64px #27302316, 0 3px 10px #27302309;
+  --studio-gold: #d5ad52;
+  --studio-gold-muted: #f1e6ca;
+  --studio-primary-bg: #171b1a;
+  --studio-primary-fg: #fffdf7;
+  --studio-surface-high: #ffffff;
+  --studio-surface-low: #f5f4ed;
+  --studio-line-soft: #e8e8df;
+  --studio-shadow-soft: 0 5px 18px #27302307;
+  --studio-reader: #e9ece3;
+}
+
+html[data-visual-style="studio"][data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #1c231f;
+  --bg2: #171b1a;
+  --side: #151b17;
+  --card: #242d26;
+  --hover: #2c362d;
+  --sel: #344330;
+  --border: #364034;
+  --txt: #f1eee2;
+  --txt2: #c2c7b5;
+  --txt3: #a2ad97;
+  --accent: #aac5a0;
+  --accentDim: #2e3d2d;
+  --danger: #f0a090;
+  --menuBg: #232c25;
+  --shadow: 0 22px 64px #00000050, 0 3px 12px #00000025;
+  --studio-gold: #dbb968;
+  --studio-gold-muted: #3e3a29;
+  --studio-primary-bg: #d5ad52;
+  --studio-primary-fg: #171b1a;
+  --studio-surface-high: #29322b;
+  --studio-surface-low: #202820;
+  --studio-line-soft: #2c362c;
+  --studio-shadow-soft: 0 5px 18px #00000014;
+  --studio-reader: #131a16;
+}
+
+html[data-visual-style="studio"] body {
+  background: var(--bg2);
+  color: var(--txt);
+  font-family: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+html[data-visual-style="studio"] :is(button,input,select,textarea) { accent-color: var(--accent); }
+html[data-visual-style="studio"] :is(button,input,select,[tabindex]):focus-visible {
+  outline-color: var(--accent);
+}
+
+/* A restrained brand anchor; navigation keeps its original dimensions. */
+html[data-visual-style="studio"] #sidebarShell {
+  background: linear-gradient(165deg, var(--side), var(--studio-surface-low));
+  border-right-color: var(--border);
+}
+html[data-visual-style="studio"] .brand { color: var(--txt); letter-spacing: -.35px; }
+html[data-visual-style="studio"] .brand-mark {
+  background: #171b1a;
+  color: #f3f0e8;
+  border-radius: 12px;
+  box-shadow: 0 5px 13px #171b1a15, inset 0 1px 0 #ffffff12;
+}
+html[data-visual-style="studio"] .brand-mark > span { color: var(--studio-gold); }
+html[data-visual-style="studio"] .brand strong { font-weight: 650; }
+html[data-visual-style="studio"] .brand small { color: var(--txt3); letter-spacing: .4px; }
+html[data-visual-style="studio"] .slabel { color: var(--txt3); letter-spacing: 1px; }
+html[data-visual-style="studio"] .sitem { border-radius: 11px; }
+html[data-visual-style="studio"] .sitem:hover { background: color-mix(in srgb, var(--bg) 65%, var(--side)); }
+html[data-visual-style="studio"] .sitem.on {
+  color: var(--accent);
+  background: var(--accentDim);
+  box-shadow: inset 3px 0 0 var(--studio-gold);
+}
+html[data-visual-style="studio"] .sitem.on svg { color: var(--accent); }
+html[data-visual-style="studio"] .sidebar-bottom { background: color-mix(in srgb, var(--bg) 28%, var(--side)); }
+html[data-visual-style="studio"] .sidebar-bottom button { border-radius: 8px; }
+html[data-visual-style="studio"] .sidebar-bottom button:hover { color: var(--txt); background: var(--hover); }
+html[data-visual-style="studio"] #appVersion { letter-spacing: .5px; color: var(--txt3); }
+
+/* Tabs sit on a warm shelf. The gold underline remains visible when selected. */
+html[data-visual-style="studio"] #workspace { background: var(--bg); }
+html[data-visual-style="studio"] #tabbar { background: var(--bg2); border-bottom-color: var(--border); }
+html[data-visual-style="studio"] #tabbar .tab {
+  border-radius: 10px;
+  border: 1px solid transparent;
+  color: var(--txt3);
+}
+html[data-visual-style="studio"] #tabbar .tab:hover { color: var(--txt2); background: var(--hover); }
+html[data-visual-style="studio"] #tabbar .tab.on {
+  border-color: color-mix(in srgb, var(--border) 65%, transparent);
+  background: var(--card);
+  color: var(--txt);
+  box-shadow: inset 0 -2px 0 var(--studio-gold), 0 2px 5px #171b1a03;
+}
+html[data-visual-style="studio"] #tabbar .tab.on .tnm { font-weight: 600; }
+html[data-visual-style="studio"] #tabbar .tab.on .tic { color: var(--accent); }
+html[data-visual-style="studio"] .tclose { border-radius: 6px; }
+html[data-visual-style="studio"] .tabnew { border-radius: 9px; }
+html[data-visual-style="studio"] #tabScrollTrack { background: var(--studio-line-soft); }
+html[data-visual-style="studio"] #tabScrollThumb { background: color-mix(in srgb, var(--txt3) 48%, var(--bg2)); }
+
+/* Location, search and commands: related controls share one material language. */
+html[data-visual-style="studio"] #navigationShell { background: var(--bg); }
+html[data-visual-style="studio"] #bar1 { border-bottom-color: var(--studio-line-soft); }
+html[data-visual-style="studio"] #crumbs {
+  border-radius: 9px;
+  background: var(--studio-surface-low);
+  border-color: color-mix(in srgb, var(--border) 58%, transparent);
+}
+html[data-visual-style="studio"] #crumbs:hover { border-color: var(--border); }
+html[data-visual-style="studio"] #crumbs:focus-within { border-color: var(--accent); background: var(--card); }
+html[data-visual-style="studio"] #crumbs .chead { color: var(--accent); }
+html[data-visual-style="studio"] #crumbs .cseg { border-radius: 6px; }
+html[data-visual-style="studio"] #crumbs .cseg.cur { font-weight: 600; }
+html[data-visual-style="studio"] #searchWrap {
+  background: var(--card);
+  border-color: var(--border);
+  border-radius: 10px;
+  box-shadow: 0 2px 7px #171b1a03;
+}
+html[data-visual-style="studio"] #searchWrap:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accentDim) 90%, transparent), 0 3px 12px #171b1a05;
+}
+html[data-visual-style="studio"] #searchIcon { color: var(--accent); }
+html[data-visual-style="studio"] #searchMode { color: var(--accent); }
+html[data-visual-style="studio"] #favoritesBar { border-bottom-color: var(--studio-line-soft); background: var(--bg); }
+html[data-visual-style="studio"] #pageHeader {
+  background: linear-gradient(100deg, var(--bg), var(--studio-surface-low));
+}
+html[data-visual-style="studio"] #pageTitle { font-weight: 650; color: var(--txt); letter-spacing: -.6px; }
+html[data-visual-style="studio"] #pageSubtitle { color: var(--txt3); }
+html[data-visual-style="studio"] .page-actions button {
+  background: var(--card);
+  border-radius: 9px;
+  border-color: var(--border);
+  box-shadow: 0 2px 4px #171b1a02;
+}
+html[data-visual-style="studio"] .page-actions button:hover { background: var(--hover); border-color: color-mix(in srgb, var(--accent) 28%, var(--border)); }
+html[data-visual-style="studio"] .page-actions button:is(.on,[aria-pressed="true"]) {
+  background: var(--accentDim);
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 23%, var(--border));
+}
+html[data-visual-style="studio"] #bar2 { border-bottom-color: var(--border); background: var(--bg); }
+html[data-visual-style="studio"] :is(.ibtn,.tbtn) { border-radius: 9px; }
+html[data-visual-style="studio"] #btnNew {
+  background: var(--studio-primary-bg);
+  color: var(--studio-primary-fg);
+  box-shadow: 0 3px 8px #171b1a0b;
+}
+html[data-visual-style="studio"] #btnNew svg { color: var(--studio-gold); }
+html[data-visual-style="studio"][data-theme="dark"] #btnNew svg { color: var(--studio-primary-fg); }
+html[data-visual-style="studio"] #btnNew:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--studio-primary-bg) 88%, var(--accent));
+  color: var(--studio-primary-fg);
+}
+html[data-visual-style="studio"] .filter-chip { border-radius: 16px; color: var(--txt2); }
+html[data-visual-style="studio"] .filter-chip:is(.on,.active,[aria-pressed="true"]) {
+  background: var(--accentDim);
+  color: var(--accent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 8%, transparent);
+}
+html[data-visual-style="studio"] .browser-address { background: var(--card); border-radius: 10px; }
+
+/* Preserve all row/grid dimensions and column templates. */
+html[data-visual-style="studio"] #content { background: var(--bg); }
+html[data-visual-style="studio"] .dhead { background: var(--studio-surface-low); color: var(--txt3); border-bottom-color: var(--border); }
+html[data-visual-style="studio"] .dhead .h.on { color: var(--accent); }
+html[data-visual-style="studio"] .row {
+  border-radius: 9px;
+  border-bottom-color: var(--studio-line-soft);
+  font-size: 13px;
+}
+html[data-visual-style="studio"] .row:hover { background: var(--hover); border-bottom-color: transparent; }
+html[data-visual-style="studio"] .row.sel {
+  background: var(--sel);
+  border-bottom-color: transparent;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 9%, transparent);
+}
+html[data-visual-style="studio"] .row.sel .nm { font-weight: 600; }
+html[data-visual-style="studio"] .row.sel::before { background: var(--studio-gold); }
+html[data-visual-style="studio"] .row :is(.cdate,.ctype,.csize) { color: var(--txt2); }
+html[data-visual-style="studio"] .gcell { border-radius: 14px; }
+html[data-visual-style="studio"] .gcell:hover { background: var(--studio-surface-low); box-shadow: var(--studio-shadow-soft); }
+html[data-visual-style="studio"] .gcell.sel { background: var(--sel); border-color: color-mix(in srgb, var(--accent) 24%, var(--border)); }
+html[data-visual-style="studio"] input.rn { border-radius: 7px; }
+html[data-visual-style="studio"] #status { background: var(--studio-surface-low); border-top-color: var(--border); }
+html[data-visual-style="studio"] :is(.quick-card,.drive-card) {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--studio-shadow-soft);
+}
+html[data-visual-style="studio"] :is(.quick-card,.drive-card):hover { background: var(--studio-surface-low); border-color: color-mix(in srgb, var(--accent) 30%, var(--border)); }
+
+/* The real reader remains alongside the file list, on a gently recessed surface. */
+html[data-visual-style="studio"] #previewPanel {
+  background: var(--studio-surface-low);
+  border-left-color: var(--border);
+  box-shadow: inset 4px 0 14px #171b1a02;
+}
+html[data-visual-style="studio"] .preview-heading { background: var(--studio-surface-low); border-bottom-color: var(--border); color: var(--txt2); }
+html[data-visual-style="studio"] .preview-file-icon { border-radius: 13px; background: var(--card); box-shadow: var(--studio-shadow-soft); }
+html[data-visual-style="studio"] .preview-name { color: var(--txt); font-weight: 600; }
+html[data-visual-style="studio"] .preview-actions button { border-radius: 8px; background: var(--card); }
+html[data-visual-style="studio"] .preview-details { border-top-color: var(--border); }
+html[data-visual-style="studio"] :is(.pdf-toolbar,.sheet-toolbar select,.sheet-viewport) { border-radius: 10px; background: var(--card); }
+html[data-visual-style="studio"] .pdf-toolbar :is(input,select,button) { border-radius: 6px; }
+html[data-visual-style="studio"] .pdf-page-viewport { background: var(--studio-reader); border-radius: 11px; }
+html[data-visual-style="studio"] .pdf-page { box-shadow: 0 3px 14px #171b1a18; }
+html[data-visual-style="studio"] .document-body { color: var(--txt); background: var(--card); border-radius: 11px; box-shadow: var(--studio-shadow-soft); }
+html[data-visual-style="studio"] .sheet-grid th { background: var(--accentDim); color: var(--accent); }
+html[data-visual-style="studio"] .sheet-grid tbody tr:nth-child(even) td { background: var(--studio-surface-low); }
+html[data-visual-style="studio"] .sheet-toolbar button { border-radius: 7px; background: var(--card); }
+
+/* Shared menus, search results and ordinary settings dialogs. */
+html[data-visual-style="studio"] :is(.menu,.quick-search-popover) { border-radius: 15px; background: var(--menuBg); box-shadow: var(--shadow); }
+html[data-visual-style="studio"] .mi { border-radius: 8px; }
+html[data-visual-style="studio"] .mi:hover { background: var(--accentDim); }
+html[data-visual-style="studio"] .quick-heading { background: var(--card); }
+html[data-visual-style="studio"] .quick-result.selected { background: var(--sel); box-shadow: inset 3px 0 0 var(--studio-gold); }
+html[data-visual-style="studio"] :is(.file-settings-dialog,#commandDialog) {
+  border-radius: 20px;
+  background: var(--menuBg);
+  border-color: var(--border);
+  box-shadow: var(--shadow);
+}
+html[data-visual-style="studio"] :is(.file-settings-dialog,#commandDialog)::backdrop {
+  background: #171f1940;
+  backdrop-filter: blur(5px);
+}
+html[data-visual-style="studio"] .file-settings-head { background: var(--studio-surface-low); }
+html[data-visual-style="studio"] .file-settings-head > button { border-radius: 9px; background: var(--card); }
+html[data-visual-style="studio"] .file-settings-head h2 { letter-spacing: -.3px; }
+html[data-visual-style="studio"] .file-settings-footer { background: var(--studio-surface-low); }
+html[data-visual-style="studio"] .file-settings-footer button { border-radius: 9px; }
+html[data-visual-style="studio"] .file-settings-primary {
+  background: var(--studio-primary-bg);
+  color: var(--studio-primary-fg);
+  border-color: var(--studio-primary-bg);
+}
+html[data-visual-style="studio"] .column-option { border-radius: 11px; background: var(--card); }
+html[data-visual-style="studio"] .column-option:has(input:checked) { background: var(--accentDim); }
+html[data-visual-style="studio"] .settings-preference select { border-radius: 9px; background: var(--card); }
+html[data-visual-style="studio"] .settings-tool-icon { border-radius: 10px; background: var(--card); }
+html[data-visual-style="studio"] .command-search { background: var(--studio-surface-low); }
+html[data-visual-style="studio"] .command-item { border-radius: 10px; }
+html[data-visual-style="studio"] .toast { border-radius: 12px; background: var(--menuBg); box-shadow: var(--shadow); }
+html[data-visual-style="studio"] kbd { background: var(--card); border-radius: 5px; }

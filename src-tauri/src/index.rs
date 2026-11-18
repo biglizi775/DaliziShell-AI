@@ -4,9 +4,11 @@
 // Recently validated persistent caches are reused immediately; recursive watchers
 // maintain running-session changes and one delayed startup pass checks offline edits.
 
+#[path = "index_locations.rs"]
+pub(crate) mod locations;
 #[path = "search.rs"]
 mod search;
-pub use search::{SearchResponse, SearchStatus};
+pub use search::{SearchKind, SearchResponse, SearchStatus};
 
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -30,7 +32,7 @@ use windows::Win32::System::Threading::{
 
 use crate::{utf16_to_string, wide};
 
-const SNAPSHOT_VERSION: u32 = 1;
+const SNAPSHOT_VERSION: u32 = 2;
 const MAX_SNAPSHOT_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_SNAPSHOT_ENTRIES: usize = 500_000;
 
@@ -44,18 +46,95 @@ fn path_key(path: &str) -> String {
 
 #[derive(Default)]
 struct SizeIndex {
-    map: RwLock<BTreeMap<String, u64>>,
+    map: RwLock<BTreeMap<String, SizeReading>>,
     revision: AtomicU64,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+enum SizeBasis {
+    Measured,
+    Aggregate,
+    Incomplete,
+    Unknown,
+}
+
+#[derive(Clone, Copy, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct SizeReading {
+    pub(crate) size: u64,
+    verified_at: Option<u64>,
+    basis: SizeBasis,
+    restored: bool,
+    serial: u64,
+}
+
+// Version one stored plain byte counts. Never give a migrated count the
+// timestamp of the migration, the cache file, or the global drive scan.
+#[derive(Serialize, Deserialize)]
+#[serde(untagged)]
+enum StoredSize {
+    Stamped((u64, Option<u64>, SizeBasis)),
+    Legacy(u64),
+}
+impl StoredSize {
+    fn restored(self) -> SizeReading {
+        let (size, verified_at, basis) = match self {
+            Self::Stamped(tuple) => tuple,
+            Self::Legacy(size) => (size, None, SizeBasis::Unknown),
+        };
+        SizeReading {
+            size,
+            verified_at,
+            basis,
+            restored: true,
+            serial: 0,
+        }
+    }
+}
 impl SizeIndex {
     fn get(&self, key: &str) -> Option<u64> {
+        self.reading(key).map(|r| r.size)
+    }
+    fn reading(&self, key: &str) -> Option<SizeReading> {
         self.map.read().unwrap().get(&path_key(key)).copied()
     }
+    #[cfg(test)]
     fn put(&self, key: &str, value: u64) {
+        self.record(key, value, SizeBasis::Measured, search::now_ms());
+    }
+    fn record(&self, key: &str, size: u64, basis: SizeBasis, now: u64) {
         let mut map = self.map.write().unwrap();
-        if map.insert(path_key(key), value) != Some(value) {
-            self.revision.fetch_add(1, Ordering::Relaxed);
+        let key = path_key(key);
+        let old = map.get(&key);
+        let verified_at = if basis == SizeBasis::Measured {
+            Some(now)
+        } else {
+            old.and_then(|r| r.verified_at)
+        };
+        if old.is_some_and(|r| {
+            r.size == size && r.basis == basis && r.verified_at == verified_at && !r.restored
+        }) {
+            return;
+        }
+        let serial = self.revision.fetch_add(1, Ordering::Relaxed) + 1;
+        map.insert(
+            key,
+            SizeReading {
+                size,
+                verified_at,
+                basis,
+                restored: false,
+                serial,
+            },
+        );
+    }
+    fn incomplete(&self, path: &str) {
+        if let Some(reading) = self.map.write().unwrap().get_mut(&path_key(path)) {
+            if reading.basis != SizeBasis::Incomplete {
+                reading.basis = SizeBasis::Incomplete;
+                reading.serial = self.revision.fetch_add(1, Ordering::Relaxed) + 1;
+            }
         }
     }
     fn remove_tree(&self, path: &str) -> Option<u64> {
@@ -75,22 +154,29 @@ impl SizeIndex {
             }
             self.revision.fetch_add(1, Ordering::Relaxed);
         }
-        old
+        old.map(|r| r.size)
     }
     fn lookup_many(&self, paths: &[String]) -> Vec<Option<u64>> {
+        let map = self.map.read().unwrap();
+        paths
+            .iter()
+            .map(|p| map.get(&path_key(p)).map(|r| r.size))
+            .collect()
+    }
+    fn readings(&self, paths: &[String]) -> Vec<Option<SizeReading>> {
         let map = self.map.read().unwrap();
         paths
             .iter()
             .map(|p| map.get(&path_key(p)).copied())
             .collect()
     }
-    fn restore(&self, entries: HashMap<String, u64>) {
+    fn restore(&self, entries: HashMap<String, StoredSize>) {
         let mut entries = entries.into_iter();
         loop {
             let batch: Vec<_> = entries
                 .by_ref()
                 .take(1024)
-                .map(|(path, size)| (path_key(&path), size))
+                .map(|(path, size)| (path_key(&path), size.restored()))
                 .collect();
             if batch.is_empty() {
                 break;
@@ -113,7 +199,12 @@ impl SizeIndex {
                 .read()
                 .unwrap()
                 .iter()
-                .map(|(path, size)| (path.clone(), *size))
+                .map(|(path, r)| {
+                    (
+                        path.clone(),
+                        StoredSize::Stamped((r.size, r.verified_at, r.basis)),
+                    )
+                })
                 .collect(),
         }
     }
@@ -122,7 +213,7 @@ impl SizeIndex {
 #[derive(Serialize, Deserialize)]
 struct Snapshot {
     version: u32,
-    entries: HashMap<String, u64>,
+    entries: HashMap<String, StoredSize>,
 }
 
 fn read_snapshot(path: &Path) -> io::Result<Snapshot> {
@@ -142,8 +233,26 @@ fn read_snapshot(path: &Path) -> io::Result<Snapshot> {
         ));
     }
     let snapshot: Snapshot = serde_json::from_slice(&bytes)?;
-    if snapshot.version != SNAPSHOT_VERSION
+    if !matches!(snapshot.version, 1 | SNAPSHOT_VERSION)
         || snapshot.entries.len() > MAX_SNAPSHOT_ENTRIES
+        || snapshot.entries.values().any(|value| {
+            !matches!(
+                (snapshot.version, value),
+                (1, StoredSize::Legacy(_))
+                    | (
+                        SNAPSHOT_VERSION,
+                        StoredSize::Stamped((_, Some(_), SizeBasis::Measured))
+                    )
+                    | (
+                        SNAPSHOT_VERSION,
+                        StoredSize::Stamped((
+                            _,
+                            _,
+                            SizeBasis::Aggregate | SizeBasis::Incomplete | SizeBasis::Unknown
+                        ))
+                    )
+            )
+        })
         || snapshot
             .entries
             .keys()
@@ -166,16 +275,34 @@ fn write_snapshot(path: &Path, snapshot: &Snapshot) -> io::Result<()> {
             "size cache is too large",
         ));
     }
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
+    persist_cache(path, &bytes)
+}
+
+fn persist_cache(path: &Path, bytes: &[u8]) -> io::Result<()> {
+    let parent = path.parent().ok_or(io::ErrorKind::InvalidInput)?;
+    std::fs::create_dir_all(parent)?;
+    let mut staged = tempfile::NamedTempFile::new_in(parent)?;
+    staged.write_all(bytes)?;
+    staged.as_file().sync_all()?;
+    let mut temp = staged.into_temp_path();
+    // Windows can report ACCESS_DENIED as well as sharing/lock violations while
+    // another handle prevents replacement. Retry only the rename, never the scan.
+    let mut delays = [10, 25, 50, 100].into_iter();
+    loop {
+        match temp.persist(path) {
+            Ok(()) => return Ok(()),
+            Err(failure) => {
+                if matches!(failure.error.raw_os_error(), Some(5 | 32 | 33)) {
+                    if let Some(ms) = delays.next() {
+                        temp = failure.path;
+                        std::thread::sleep(Duration::from_millis(ms));
+                        continue;
+                    }
+                }
+                return Err(failure.error);
+            }
+        }
     }
-    let temp = path.with_extension(format!("{}.tmp", std::process::id()));
-    let mut file = std::fs::File::create(&temp)?;
-    file.write_all(&bytes)?;
-    file.sync_all()?;
-    drop(file);
-    // std::fs::rename uses replace-existing semantics on Windows too.
-    std::fs::rename(temp, path)
 }
 
 static INDEX: OnceLock<SizeIndex> = OnceLock::new();
@@ -243,15 +370,25 @@ impl Changes {
 
 // Commit against the version of this subtree, so unrelated disk writes cannot
 // starve a scan. Holding this small lock closes the version-check/publish race.
-fn publish_scan(path: &str, version: u64, size: u64) -> Option<u64> {
+fn publish_scan(path: &str, version: u64, size: u64, basis: SizeBasis) -> Option<u64> {
     let mut changes = changes().lock().unwrap();
     if changes.version(path) == version {
-        idx().put(path, size);
-        search::names().mark_verified(path, size);
+        idx().record(path, size, basis, search::now_ms());
+        if basis == SizeBasis::Measured {
+            search::names().mark_verified(path, size);
+        }
         Some(size)
     } else {
         changes.retry(path);
-        idx().get(path)
+        None
+    }
+}
+fn incomplete_scan(path: &str, version: u64) {
+    let mut changes = changes().lock().unwrap();
+    if changes.version(path) == version {
+        idx().incomplete(path);
+    } else {
+        changes.retry(path);
     }
 }
 
@@ -261,6 +398,9 @@ fn idx() -> &'static SizeIndex {
 
 pub(crate) fn cached_sizes(paths: &[String]) -> Vec<Option<u64>> {
     idx().lookup_many(paths)
+}
+pub(crate) fn cached_size_readings(paths: &[String]) -> Vec<Option<SizeReading>> {
+    idx().readings(paths)
 }
 
 pub(crate) fn flush_cache() -> io::Result<()> {
@@ -311,8 +451,8 @@ fn start_cache_maintenance(app: AppHandle) {
 // the preload/event-maintenance walks cancel only their own kind.
 static ONDEMAND_GEN: AtomicU64 = AtomicU64::new(0);
 static PRELOAD_GEN: AtomicU64 = AtomicU64::new(0);
-static MAINTENANCE_GEN: AtomicU64 = AtomicU64::new(0);
 static BUSY_WALKS: AtomicUsize = AtomicUsize::new(0);
+static UNWATCHED: AtomicUsize = AtomicUsize::new(0);
 
 fn busy_enter(app: &AppHandle) {
     if BUSY_WALKS.fetch_add(1, Ordering::SeqCst) == 0 {
@@ -408,45 +548,60 @@ fn scan_dir(dir: &str) -> Option<DirScan> {
 
 fn scan_and_index(dir: &str, version: u64) -> Option<(DirScan, bool)> {
     let mut scan = scan_dir(dir)?;
-    let mut changes = changes().lock().unwrap();
-    let unchanged = if changes.version(dir) == version {
-        let (same, removed) = search::names().update(dir, std::mem::take(&mut scan.entries));
-        for path in removed {
-            idx().remove_tree(&path);
-            search::names().remove_tree(&path);
+    // An explicit size request outside the search locations still measures bytes.
+    // Hold the policy read guard through publication, so removing a location
+    // cannot race an old traversal inserting its names back into the search index.
+    let unchanged = locations::with_policy(|policy| {
+        if policy.is_some_and(|p| !p.includes(dir)) {
+            return false;
         }
-        same
-    } else {
-        changes.retry(dir);
-        false
-    };
+        let mut changes = changes().lock().unwrap();
+        if changes.version(dir) == version {
+            let mut entries = std::mem::take(&mut scan.entries);
+            let physical_entries = entries.len();
+            if let Some(hidden) = policy.and_then(|p| p.hidden_children(dir)) {
+                entries.retain(|e| !hidden.contains(&e.folded));
+            }
+            let all_visible = entries.len() == physical_entries;
+            let (same, removed) = search::names().update(dir, entries);
+            for path in removed {
+                idx().remove_tree(&path);
+                search::names().remove_tree(&path);
+            }
+            same && all_visible
+        } else {
+            changes.retry(dir);
+            false
+        }
+    });
     Some((scan, unchanged))
 }
 
-fn scan_allowed(path: &str) -> bool {
-    if path.starts_with("\\\\") || !Path::new(path).is_absolute() {
-        return false;
-    }
+fn scan_allowed(path: &str) -> io::Result<bool> {
+    let Ok(path) = locations::folder_path(path) else {
+        return Ok(false);
+    };
     use std::os::windows::fs::MetadataExt;
-    std::fs::symlink_metadata(path)
-        .is_ok_and(|m| m.is_dir() && m.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT.0 == 0)
-}
-
-/// A failed/incomplete scan never overwrites a known value with zero.
-/// Continue other branches so protected system directories cannot halt a drive preload.
-fn walk_dir(dir: &str, my_gen: u64, slot: &AtomicU64) -> Option<u64> {
-    walk_validated(dir, my_gen, slot).0
+    let ancestors: Vec<_> = Path::new(&path).ancestors().collect();
+    for parent in ancestors.into_iter().rev() {
+        let m = std::fs::symlink_metadata(parent)?;
+        if !m.is_dir() || m.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT.0 != 0 {
+            return Ok(false);
+        }
+    }
+    Ok(true)
 }
 
 // Validate direct children at every level; a parent timestamp alone cannot prove
-// that a descendant file is unchanged. Identical branches reuse their old totals.
+// that a descendant file is unchanged.
 fn walk_validated(dir: &str, my_gen: u64, slot: &AtomicU64) -> (Option<u64>, bool) {
     if slot.load(Ordering::Relaxed) != my_gen {
         return (None, false);
     }
     let version = changes().lock().unwrap().version(dir);
     let Some((scan, mut unchanged)) = scan_and_index(dir, version) else {
-        return (idx().get(dir), false);
+        incomplete_scan(dir, version);
+        return (None, false);
     };
     let mut complete = true;
     let mut children = Vec::with_capacity(scan.subdirs.len());
@@ -465,27 +620,56 @@ fn walk_validated(dir: &str, my_gen: u64, slot: &AtomicU64) -> (Option<u64>, boo
     if slot.load(Ordering::Relaxed) != my_gen {
         return (None, false);
     }
-    if complete && unchanged {
+    if !complete {
+        incomplete_scan(dir, version);
+        return (None, false);
+    }
+    if unchanged {
         let mut changes = changes().lock().unwrap();
-        if changes.version(dir) == version {
-            if let Some(value) = idx()
-                .get(dir)
-                .filter(|value| search::names().verified_size(dir) == Some(*value))
-            {
-                return (Some(value), true);
-            }
-        } else {
+        if changes.version(dir) != version {
             changes.retry(dir);
+            return (None, false);
+        }
+        if let Some(reading) = idx().reading(dir).filter(|r| {
+            r.basis == SizeBasis::Measured && search::names().verified_size(dir) == Some(r.size)
+        }) {
+            idx().record(dir, reading.size, SizeBasis::Measured, search::now_ms());
+            return (Some(reading.size), true);
         }
     }
-    if complete {
-        let total = children.into_iter().fold(scan.files, u64::saturating_add);
-        (publish_scan(dir, version, total), false)
-    } else {
-        if changes().lock().unwrap().version(dir) != version {
-            changes().lock().unwrap().retry(dir);
+    let total = children.into_iter().fold(scan.files, u64::saturating_add);
+    (
+        publish_scan(dir, version, total, SizeBasis::Measured),
+        false,
+    )
+}
+
+fn background_coverage(path: &str) -> locations::Coverage {
+    locations::with_policy(|p| p.map_or(locations::Coverage::Full, |p| p.coverage(path)))
+}
+
+// Traverse visible branches of a partially covered directory for names. Only a
+// completely measured subtree may replace the folder size shown in the file list.
+fn walk_background(dir: &str, gen: u64, slot: &AtomicU64) {
+    if slot.load(Ordering::Relaxed) != gen {
+        return;
+    }
+    match background_coverage(dir) {
+        locations::Coverage::Excluded => {}
+        locations::Coverage::Full => {
+            walk_validated(dir, gen, slot);
         }
-        (idx().get(dir), false)
+        locations::Coverage::Partial => {
+            let version = changes().lock().unwrap().version(dir);
+            if let Some((scan, _)) = scan_and_index(dir, version) {
+                for child in scan.subdirs {
+                    if slot.load(Ordering::Relaxed) != gen {
+                        break;
+                    }
+                    walk_background(&child, gen, slot);
+                }
+            }
+        }
     }
 }
 
@@ -495,27 +679,49 @@ fn smart_recompute(dir: &str, my_gen: u64, slot: &AtomicU64) -> Option<u64> {
     }
     let version = changes().lock().unwrap().version(dir);
     let Some((scan, _)) = scan_and_index(dir, version) else {
+        incomplete_scan(dir, version);
         return idx().get(dir);
     };
     let mut total = scan.files;
     let mut complete = true;
+    let mut basis = SizeBasis::Measured;
     for sd in scan.subdirs {
         if slot.load(Ordering::Relaxed) != my_gen {
             return None;
         }
-        match idx().get(&sd).or_else(|| walk_dir(&sd, my_gen, slot)) {
+        let value = match idx().reading(&sd) {
+            Some(r) if r.basis == SizeBasis::Incomplete => None,
+            Some(r) => {
+                basis = SizeBasis::Aggregate;
+                Some(r.size)
+            }
+            None => walk_validated(&sd, my_gen, slot).0,
+        };
+        match value {
             Some(value) => total = total.saturating_add(value),
             None => complete = false,
         }
     }
+    if slot.load(Ordering::Relaxed) != my_gen {
+        return None;
+    }
     if complete {
-        publish_scan(dir, version, total)
+        publish_scan(dir, version, total, basis)
     } else {
-        if changes().lock().unwrap().version(dir) != version {
-            changes().lock().unwrap().retry(dir);
-        }
+        incomplete_scan(dir, version);
         idx().get(dir)
     }
+}
+
+#[tauri::command]
+pub async fn folder_size_details(
+    view: tauri::Webview,
+    paths: Vec<String>,
+) -> Result<Vec<Option<SizeReading>>, String> {
+    crate::ai::harness_tasks::local(&view)?;
+    tauri::async_runtime::spawn_blocking(move || cached_size_readings(&paths))
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -527,18 +733,49 @@ pub async fn sizes_lookup(paths: Vec<String>) -> Result<Vec<Option<u64>>, String
 
 #[tauri::command]
 pub async fn search_files(
+    view: tauri::Webview,
     query: String,
     limit: Option<usize>,
     scope: Option<String>,
+    paginate: Option<bool>,
+    kind: Option<SearchKind>,
 ) -> Result<SearchResponse, String> {
+    crate::ai::harness_tasks::local(&view)?;
     let generation = search::query_generation();
     tauri::async_runtime::spawn_blocking(move || {
-        search::names().search(&query, scope.as_deref(), limit.unwrap_or(200), || {
-            !search::query_current(generation)
-        })
+        let options = search::SearchOptions {
+            snapshot_id: paginate.unwrap_or(false).then_some(generation),
+            kind,
+        };
+        search::names().find(
+            &query,
+            scope.as_deref(),
+            limit.unwrap_or(200),
+            options,
+            || !search::query_current(generation),
+        )
     })
     .await
     .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+pub async fn search_page(
+    view: tauri::Webview,
+    snapshot_id: u64,
+    page: usize,
+) -> Result<SearchResponse, String> {
+    crate::ai::harness_tasks::local(&view)?;
+    tauri::async_runtime::spawn_blocking(move || search::names().page(snapshot_id, page))
+        .await
+        .map_err(|e| e.to_string())?
+}
+#[tauri::command]
+pub async fn search_release(view: tauri::Webview, snapshot_id: u64) -> Result<(), String> {
+    crate::ai::harness_tasks::local(&view)?;
+    tauri::async_runtime::spawn_blocking(move || search::names().release_pages(snapshot_id))
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -559,8 +796,11 @@ fn rebuild_signal() -> &'static RebuildSignal {
 #[tauri::command]
 pub fn search_rebuild() {
     let signal = rebuild_signal();
-    *signal.pending.lock().unwrap() = true;
+    let mut pending = signal.pending.lock().unwrap();
+    *pending = true;
+    locations::EPOCH.fetch_add(1, Ordering::SeqCst);
     PRELOAD_GEN.fetch_add(1, Ordering::SeqCst);
+    drop(pending);
     signal.ready.notify_one();
 }
 
@@ -628,22 +868,29 @@ fn demand_worker() {
             if !seen.insert(path_key(&path)) {
                 continue;
             }
-            let value = if !scan_allowed(&path) {
-                None
-            } else {
-                (if request.force {
-                    None
-                } else {
-                    idx().get(&path)
-                })
-                .or_else(|| walk_dir(&path, request.slot_gen, &ONDEMAND_GEN))
+            let version = changes().lock().unwrap().version(&path);
+            let info = match scan_allowed(&path) {
+                Ok(true) => {
+                    if request.force
+                        || (idx().reading(&path).is_none()
+                            && background_coverage(&path) == locations::Coverage::Full)
+                    {
+                        walk_validated(&path, request.slot_gen, &ONDEMAND_GEN);
+                    }
+                    idx().reading(&path)
+                }
+                Err(error) if error.kind() != io::ErrorKind::NotFound => {
+                    incomplete_scan(&path, version);
+                    idx().reading(&path)
+                }
+                _ => None,
             };
             if ONDEMAND_GEN.load(Ordering::Relaxed) != request.slot_gen {
                 break;
             }
             let _ = request.app.emit(
                 "dir-size",
-                serde_json::json!({ "gen": request.gen, "path": path, "size": value }),
+                serde_json::json!({ "gen": request.gen, "path": path, "size": info.map(|r| r.size), "info": info }),
             );
         }
         busy_exit(&request.app);
@@ -670,51 +917,94 @@ pub fn startup(app: &AppHandle) {
         let _ = search::names().restore(&search::cache_path(&directory));
     }
     start_cache_maintenance(app.clone());
+    locations::start_monitor();
     let _ = app.emit("index-updated", ());
-    let roots = crate::fixed_drive_roots();
-    start_index_watchers(app, roots.clone());
     let signal = rebuild_signal();
-    let validated = search::names().validated_ms.load(Ordering::Relaxed);
-    let now = search::now_ms();
-    let due = if validated > 0 {
-        validated.saturating_add(search::REVALIDATE_AFTER_MS)
-    } else {
-        now
-    };
-    search::names()
-        .next_validation_ms
-        .store(due.max(now), Ordering::Relaxed);
-    if due > now {
-        let pending = signal.pending.lock().unwrap();
-        let _ =
-            signal
-                .ready
-                .wait_timeout_while(pending, Duration::from_millis(due - now), |pending| {
-                    !*pending
-                });
-    }
+    let mut watchers = Vec::new();
+    let mut watching = 0;
+    let mut first = true;
     loop {
-        *signal.pending.lock().unwrap() = false;
+        let (roots, epoch, gen, requested, selected) = locations::with_policy(|p| {
+            let p = p.unwrap();
+            let mut pending = signal.pending.lock().unwrap();
+            let requested = std::mem::take(&mut *pending);
+            let gen = PRELOAD_GEN.fetch_add(1, Ordering::SeqCst) + 1;
+            (
+                p.roots.clone(),
+                locations::EPOCH.load(Ordering::SeqCst),
+                gen,
+                requested,
+                p.selected_count().is_some(),
+            )
+        });
+        let fixed = crate::fixed_drive_roots();
+        let configured = roots.len();
+        if watching != epoch || requested {
+            locations::monitor_roots(epoch, &roots, selected);
+        }
+        let (roots, unavailable): (Vec<_>, Vec<_>) = roots.into_iter().partition(|root| {
+            fixed
+                .iter()
+                .any(|drive| root.get(..3).is_some_and(|p| p.eq_ignore_ascii_case(drive)))
+                && locations::ordinary_folder(root)
+        });
+        locations::with_policy(|_| {
+            if locations::EPOCH.load(Ordering::SeqCst) == epoch {
+                for root in &unavailable {
+                    search::names().remove_tree(root);
+                }
+            }
+        });
+        if watching != epoch || requested {
+            watchers.clear();
+            watchers = start_index_watchers(app, roots.clone(), epoch);
+            UNWATCHED.store(configured - watchers.len(), Ordering::Relaxed);
+            watching = epoch;
+        }
+        if std::mem::take(&mut first) && !requested && !roots.is_empty() {
+            let due = search::names()
+                .validated_ms
+                .load(Ordering::Relaxed)
+                .saturating_add(search::REVALIDATE_AFTER_MS);
+            let now = search::now_ms();
+            if due > now {
+                search::names()
+                    .next_validation_ms
+                    .store(due, Ordering::Relaxed);
+                let pending = signal.pending.lock().unwrap();
+                let _wait = signal.ready.wait_timeout_while(
+                    pending,
+                    Duration::from_millis(due - now),
+                    |p| !*p,
+                );
+                continue;
+            }
+        }
         search::names().active.store(true, Ordering::Relaxed);
         search::names()
             .next_validation_ms
             .store(0, Ordering::Relaxed);
         let _ = app.emit("index-updated", ());
-        let gen = PRELOAD_GEN.fetch_add(1, Ordering::SeqCst) + 1;
         busy_enter(app);
         for root in &roots {
             if PRELOAD_GEN.load(Ordering::Relaxed) != gen {
                 break;
             }
-            walk_dir(root, gen, &PRELOAD_GEN);
+            walk_background(root, gen, &PRELOAD_GEN);
         }
         busy_exit(app);
-        if PRELOAD_GEN.load(Ordering::Relaxed) == gen {
-            search::names()
-                .validated_ms
-                .store(search::now_ms(), Ordering::Relaxed);
-            search::names().revision.fetch_add(1, Ordering::Relaxed);
-        }
+        locations::with_policy(|_| {
+            if !roots.is_empty()
+                && unavailable.is_empty()
+                && PRELOAD_GEN.load(Ordering::Relaxed) == gen
+                && locations::EPOCH.load(Ordering::SeqCst) == epoch
+            {
+                search::names()
+                    .validated_ms
+                    .store(search::now_ms(), Ordering::Relaxed);
+                search::names().revision.fetch_add(1, Ordering::Relaxed);
+            }
+        });
         search::names().active.store(false, Ordering::Relaxed);
         let _ = app.emit("index-updated", ());
         let _ = flush_cache();
@@ -733,27 +1023,37 @@ enum WatchMsg {
     Dead,
 }
 
-fn start_index_watchers(app: &AppHandle, roots: Vec<String>) {
-    static KEEP: OnceLock<Mutex<Vec<notify::RecommendedWatcher>>> = OnceLock::new();
-    let keep = KEEP.get_or_init(|| Mutex::new(Vec::new()));
-
+fn start_index_watchers(
+    app: &AppHandle,
+    roots: Vec<String>,
+    epoch: u64,
+) -> Vec<notify::RecommendedWatcher> {
     let (tx, rx) = mpsc::sync_channel::<WatchMsg>(1024);
-    let mut guards = keep.lock().unwrap();
+    let mut guards = Vec::new();
     for root in roots.iter() {
         let tx2 = tx.clone();
+        let root_key = path_key(root);
         let Ok(mut w) = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
+            if locations::EPOCH.load(Ordering::SeqCst) != epoch {
+                return;
+            }
             let msg = match res {
-                Ok(ev) => {
-                    if !ev.need_rescan()
-                        && !ev.paths.is_empty()
-                        && ev.paths.iter().all(|p| is_cache_path(p))
-                    {
-                        return;
-                    }
+                Ok(mut ev) => {
                     if ev.need_rescan() {
                         changes().lock().unwrap().record(&[], true, false);
                         WatchMsg::Dead
                     } else {
+                        locations::with_policy(|policy| {
+                            ev.paths.retain(|p| {
+                                let path = p.to_string_lossy();
+                                !is_cache_path(p)
+                                    && locations::within(&path_key(&path), &root_key)
+                                    && policy.is_none_or(|policy| policy.includes(&path))
+                            })
+                        });
+                        if ev.paths.is_empty() {
+                            return;
+                        }
                         let invalidate = matches!(
                             ev.kind,
                             notify::EventKind::Create(_)
@@ -788,20 +1088,29 @@ fn start_index_watchers(app: &AppHandle, roots: Vec<String>) {
         }
         guards.push(w);
     }
-    drop(guards);
-    if keep.lock().unwrap().is_empty() {
-        return;
+    if guards.is_empty() {
+        return guards;
     }
 
     let app = app.clone();
     std::thread::spawn(move || {
         run_lowest_priority();
         loop {
+            if locations::EPOCH.load(Ordering::SeqCst) != epoch {
+                break;
+            }
             // Collect a batch and wait for it to go quiet before recomputing.
             let mut affected = std::mem::take(&mut changes().lock().unwrap().retry);
             let mut dead = WATCH_OVERFLOW.swap(false, Ordering::SeqCst);
+            let collect_current = |affected: &mut HashSet<String>, dead: &mut bool, msg| {
+                locations::with_policy(|_| {
+                    if locations::EPOCH.load(Ordering::SeqCst) == epoch {
+                        collect(affected, dead, msg);
+                    }
+                })
+            };
             match rx.recv_timeout(Duration::from_millis(500)) {
-                Ok(msg) => collect(&mut affected, &mut dead, msg),
+                Ok(msg) => collect_current(&mut affected, &mut dead, msg),
                 Err(mpsc::RecvTimeoutError::Disconnected) => break,
                 Err(mpsc::RecvTimeoutError::Timeout) if affected.is_empty() && !dead => continue,
                 Err(mpsc::RecvTimeoutError::Timeout) => {}
@@ -809,7 +1118,7 @@ fn start_index_watchers(app: &AppHandle, roots: Vec<String>) {
             let deadline = Instant::now() + Duration::from_secs(2);
             while Instant::now() < deadline {
                 match rx.recv_timeout(std::time::Duration::from_millis(700)) {
-                    Ok(m) => collect(&mut affected, &mut dead, m),
+                    Ok(m) => collect_current(&mut affected, &mut dead, m),
                     Err(mpsc::RecvTimeoutError::Disconnected) => break,
                     Err(mpsc::RecvTimeoutError::Timeout) => break,
                 }
@@ -817,19 +1126,30 @@ fn start_index_watchers(app: &AppHandle, roots: Vec<String>) {
             let mut affected: Vec<_> = affected.into_iter().collect();
             affected.sort_by_key(|path| std::cmp::Reverse(path.len()));
             for a in affected {
-                maintain_one(&app, &a);
+                if locations::EPOCH.load(Ordering::SeqCst) != epoch {
+                    return;
+                }
+                if locations::with_policy(|p| p.is_some_and(|p| p.includes(&a))) {
+                    maintain_one(&app, &a, epoch);
+                }
             }
             if dead {
                 // a watcher overflowed: rebuild the indexes of all drives
                 for root in roots.iter() {
-                    let gen = MAINTENANCE_GEN.fetch_add(1, Ordering::SeqCst) + 1;
+                    if locations::EPOCH.load(Ordering::SeqCst) != epoch {
+                        return;
+                    }
+                    if !locations::ordinary_folder(root) {
+                        continue;
+                    }
                     busy_enter(&app);
-                    walk_dir(root, gen, &MAINTENANCE_GEN);
+                    walk_background(root, epoch, &locations::EPOCH);
                     busy_exit(&app);
                 }
             }
         }
     });
+    guards
 }
 
 fn is_cache_path(path: &Path) -> bool {
@@ -851,11 +1171,11 @@ fn collect(affected: &mut HashSet<String>, dead: &mut bool, msg: WatchMsg) {
                 }
                 let path = p.to_string_lossy();
                 let cached = idx().get(&path).is_some();
-                if invalidate || (cached && !p.exists()) {
+                if invalidate || (cached && matches!(p.try_exists(), Ok(false))) {
                     idx().remove_tree(&path);
                     search::names().remove_tree(&path);
                 }
-                if (invalidate || cached) && p.is_dir() {
+                if cached || (invalidate && p.is_dir()) {
                     affected.insert(path.to_string());
                 }
                 // Recompute ancestors bottom-up instead of adding deltas: a concurrent
@@ -874,18 +1194,30 @@ fn collect(affected: &mut HashSet<String>, dead: &mut bool, msg: WatchMsg) {
     }
 }
 
-fn maintain_one(app: &AppHandle, dir: &str) {
-    if !Path::new(dir).is_dir() {
-        idx().remove_tree(dir);
-        search::names().remove_tree(dir);
-        return;
+fn maintain_one(app: &AppHandle, dir: &str, epoch: u64) {
+    let version = changes().lock().unwrap().version(dir);
+    match scan_allowed(dir) {
+        Ok(true) => {}
+        Err(error) if error.kind() != io::ErrorKind::NotFound => {
+            incomplete_scan(dir, version);
+            return;
+        }
+        _ => {
+            idx().remove_tree(dir);
+            search::names().remove_tree(dir);
+            return;
+        }
     }
-    if !scan_allowed(dir) {
-        return;
-    }
-    let gen = MAINTENANCE_GEN.fetch_add(1, Ordering::SeqCst) + 1;
     busy_enter(app);
-    smart_recompute(dir, gen, &MAINTENANCE_GEN);
+    match background_coverage(dir) {
+        locations::Coverage::Excluded => {}
+        locations::Coverage::Partial => {
+            scan_and_index(dir, version);
+        }
+        locations::Coverage::Full => {
+            smart_recompute(dir, epoch, &locations::EPOCH);
+        }
+    }
     busy_exit(app);
 }
 
@@ -912,10 +1244,6 @@ mod tests {
     impl Drop for TempCache {
         fn drop(&mut self) {
             let _ = std::fs::remove_file(self.file());
-            let _ = std::fs::remove_file(
-                self.file()
-                    .with_extension(format!("{}.tmp", std::process::id())),
-            );
             let _ = std::fs::remove_dir(&self.0);
         }
     }
@@ -947,12 +1275,18 @@ mod tests {
     fn restore_merges_batches_without_replacing_live_results() {
         let index = SizeIndex::default();
         index.put(r"C:\live", 200);
-        let mut entries: HashMap<_, _> =
-            (0..2500).map(|n| (format!(r"C:\cached\{n}"), n)).collect();
-        entries.insert("c:/LIVE/".into(), 100);
+        let mut entries: HashMap<_, _> = (0..2500)
+            .map(|n| (format!(r"C:\cached\{n}"), StoredSize::Legacy(n)))
+            .collect();
+        entries.insert("c:/LIVE/".into(), StoredSize::Legacy(100));
         index.restore(entries);
         assert_eq!(index.get(r"C:\live"), Some(200));
         assert_eq!(index.get(r"C:\cached\2499"), Some(2499));
+        assert!(!index.reading(r"C:\live").unwrap().restored);
+        let legacy = index.reading(r"C:\cached\2499").unwrap();
+        assert!(legacy.restored);
+        assert_eq!(legacy.verified_at, None);
+        assert_eq!(legacy.basis, SizeBasis::Unknown);
     }
 
     #[test]
@@ -961,15 +1295,140 @@ mod tests {
         let index = SizeIndex::default();
         index.put(r"C:\test", 123);
         write_snapshot(&temp.file(), &index.snapshot()).unwrap();
-        index.put(r"C:\test", 456);
+        index.record(r"C:\test", 456, SizeBasis::Measured, 1700000000000);
         write_snapshot(&temp.file(), &index.snapshot()).unwrap();
         let restored = SizeIndex::default();
         restored.restore(read_snapshot(&temp.file()).unwrap().entries);
         assert_eq!(restored.get(r"C:\test"), Some(456));
-        assert!(!temp
-            .file()
-            .with_extension(format!("{}.tmp", std::process::id()))
-            .exists());
+        let reading = restored.reading(r"C:\test").unwrap();
+        assert!(reading.restored);
+        assert_eq!(reading.verified_at, Some(1700000000000));
+        assert_eq!(reading.basis, SizeBasis::Measured);
+        assert_eq!(temp.0.read_dir().unwrap().count(), 1);
+    }
+
+    #[test]
+    fn legacy_snapshot_preserves_zero_and_has_no_verification_time() {
+        let temp = TempCache::new();
+        std::fs::write(temp.file(), br#"{"version":1,"entries":{"C:\\old":0}}"#).unwrap();
+        let index = SizeIndex::default();
+        index.restore(read_snapshot(&temp.file()).unwrap().entries);
+        let old = index.reading(r"C:\old").unwrap();
+        assert_eq!(
+            (old.size, old.verified_at, old.basis, old.restored),
+            (0, None, SizeBasis::Unknown, true)
+        );
+        index.incomplete(r"C:\missing");
+        assert!(index.reading(r"C:\missing").is_none());
+        write_snapshot(&temp.file(), &index.snapshot()).unwrap();
+        let migrated = read_snapshot(&temp.file()).unwrap();
+        assert_eq!(migrated.version, SNAPSHOT_VERSION);
+        assert!(matches!(
+            migrated.entries[&path_key(r"C:\old")],
+            StoredSize::Stamped((0, None, SizeBasis::Unknown))
+        ));
+    }
+
+    #[test]
+    fn cached_children_and_incomplete_reads_preserve_last_full_verification() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().to_string_lossy();
+        let child = temp.path().join("child");
+        std::fs::create_dir(&child).unwrap();
+        let slot = AtomicU64::new(1);
+        assert_eq!(walk_validated(&root, 1, &slot).0, Some(0));
+        let full = idx().reading(&root).unwrap();
+        std::fs::write(temp.path().join("new"), b"12").unwrap();
+        assert_eq!(smart_recompute(&root, 1, &slot), Some(2));
+        let aggregate = idx().reading(&root).unwrap();
+        assert_eq!(
+            (aggregate.basis, aggregate.verified_at),
+            (SizeBasis::Aggregate, full.verified_at)
+        );
+        assert!(aggregate.serial > full.serial);
+        idx().incomplete(&child.to_string_lossy());
+        std::fs::write(temp.path().join("new"), b"123").unwrap();
+        assert_eq!(smart_recompute(&root, 1, &slot), Some(2));
+        let partial = idx().reading(&root).unwrap();
+        assert_eq!(
+            (partial.basis, partial.verified_at),
+            (SizeBasis::Incomplete, full.verified_at)
+        );
+        assert_eq!(walk_validated(&root, 1, &slot).0, Some(3));
+        assert_eq!(idx().reading(&root).unwrap().basis, SizeBasis::Measured);
+        idx().remove_tree(&root);
+        search::names().remove_tree(&root);
+    }
+
+    #[test]
+    fn first_scan_after_migration_recounts_even_if_old_name_index_agrees_with_stale_bytes() {
+        let temp = tempfile::tempdir().unwrap();
+        let dir = temp.path().to_string_lossy();
+        std::fs::write(temp.path().join("file"), b"123").unwrap();
+        let version = changes().lock().unwrap().version(&dir);
+        scan_and_index(&dir, version).unwrap();
+        idx().restore(HashMap::from([(dir.to_string(), StoredSize::Legacy(90))]));
+        search::names().mark_verified(&dir, 90);
+        let slot = AtomicU64::new(1);
+        assert_eq!(walk_validated(&dir, 1, &slot), (Some(3), false));
+        assert_eq!(walk_validated(&dir, 1, &slot), (Some(3), true));
+        idx().remove_tree(&dir);
+        search::names().remove_tree(&dir);
+    }
+
+    #[test]
+    fn snapshot_recovers_after_a_brief_windows_sharing_violation() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("folder-sizes-v1.json");
+        let index = SizeIndex::default();
+        index.put(r"C:\test", 123);
+        write_snapshot(&path, &index.snapshot()).unwrap();
+        let lock = std::fs::OpenOptions::new()
+            .read(true)
+            .share_mode(1)
+            .open(&path)
+            .unwrap();
+        index.put(r"C:\test", 456);
+        std::thread::scope(|scope| {
+            scope.spawn(move || {
+                std::thread::sleep(Duration::from_millis(40));
+                drop(lock);
+            });
+            write_snapshot(&path, &index.snapshot()).unwrap();
+        });
+        assert!(matches!(
+            read_snapshot(&path).unwrap().entries[&path_key(r"C:\test")],
+            StoredSize::Stamped((456, Some(_), SizeBasis::Measured))
+        ));
+    }
+
+    #[test]
+    fn locked_search_cache_preserves_previous_bytes_and_cleans_its_staging_file() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("file-names-v1.json");
+        let index = search::NameIndex::default();
+        index.save(&path).unwrap();
+        let previous = std::fs::read(&path).unwrap();
+        let lock = std::fs::OpenOptions::new()
+            .read(true)
+            .share_mode(1)
+            .open(&path)
+            .unwrap();
+        index.update(
+            r"C:\test",
+            vec![search::Entry::new("new.txt".into(), false, 9, 0, false)],
+        );
+        assert!(matches!(
+            index.save(&path).unwrap_err().raw_os_error(),
+            Some(5 | 32 | 33)
+        ));
+        assert_eq!(std::fs::read(&path).unwrap(), previous);
+        assert_eq!(dir.path().read_dir().unwrap().count(), 1);
+        drop(lock);
+        index.save(&path).unwrap();
+        assert_ne!(std::fs::read(&path).unwrap(), previous);
     }
 
     #[test]
@@ -977,7 +1436,8 @@ mod tests {
         let temp = TempCache::new();
         for bytes in [
             br#"{"broken":"#.as_slice(),
-            br#"{"version":2,"entries":{}}"#.as_slice(),
+            br#"{"version":3,"entries":{}}"#.as_slice(),
+            br#"{"version":2,"entries":{"C:\\folder":[3,null,"measured"]}}"#.as_slice(),
             br#"{"version":1,"entries":{"relative":12}}"#.as_slice(),
         ] {
             std::fs::write(temp.file(), bytes).unwrap();
@@ -1069,7 +1529,10 @@ mod tests {
             .lock()
             .unwrap()
             .record(&[temp.0.join("new-file")], false, false);
-        assert_eq!(publish_scan(&path, version, 100), Some(200));
+        let before = idx().reading(&path).unwrap();
+        assert_eq!(publish_scan(&path, version, 100, SizeBasis::Measured), None);
+        assert_eq!(idx().reading(&path).unwrap().serial, before.serial);
+        assert_eq!(idx().get(&path), Some(200));
         assert!(changes().lock().unwrap().retry.contains(&path));
         idx().remove_tree(&path);
     }

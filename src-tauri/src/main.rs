@@ -6,14 +6,18 @@ mod agent_profile;
 mod ai;
 mod archive;
 mod browser;
+mod browser_links;
 mod external_drop;
+mod local_transfer;
 mod index;
+mod windows_runtime;
 mod portable_settings;
 mod preview;
 mod search_query;
 mod ssh;
 mod ssh_credentials;
 mod ssh_managed;
+mod task_journal;
 mod term;
 mod tray;
 
@@ -73,6 +77,8 @@ struct Entry {
     hidden: bool,
     ext: String,
     dir_size: Option<u64>,
+    dir_size_info: Option<index::SizeReading>,
+    dir_size_manual: bool,
     is_reparse: bool,
 }
 
@@ -141,6 +147,8 @@ fn list_dir_blocking(path: &str) -> Result<Vec<Entry>, String> {
                     hidden,
                     ext,
                     dir_size: None,
+                    dir_size_info: None,
+                    dir_size_manual: false,
                     is_reparse: attrs & FILE_ATTRIBUTE_REPARSE_POINT.0 != 0,
                 });
             }
@@ -165,14 +173,18 @@ fn list_dir_blocking(path: &str) -> Result<Vec<Entry>, String> {
                     .into_owned()
             })
             .collect();
-        let sizes = index::cached_sizes(&directory_paths);
-        for (entry, size) in out
+        let sizes = index::cached_size_readings(&directory_paths);
+        index::locations::with_policy(|policy| {
+        for (entry, (size, path)) in out
             .iter_mut()
             .filter(|entry| entry.is_dir && !entry.is_reparse)
-            .zip(sizes)
+            .zip(sizes.into_iter().zip(directory_paths))
         {
-            entry.dir_size = size;
+            entry.dir_size = size.map(|r| r.size);
+            entry.dir_size_info = size;
+            entry.dir_size_manual = policy.is_some_and(|p| p.manual_size(&path));
         }
+        });
         Ok(out)
     }
 }
@@ -432,16 +444,31 @@ fn rename_path(old: String, new: String) -> Result<(), String> {
 
 struct WatchState(Mutex<Option<notify::RecommendedWatcher>>);
 
+fn workspace_background_color(
+    theme: &str,
+    visual_style: Option<&str>,
+) -> Result<tauri::utils::config::Color, String> {
+    use tauri::utils::config::Color;
+    let classic = visual_style == Some("classic");
+    match (theme, classic) {
+        ("dark", true) => Ok(Color(20, 24, 34, 255)),
+        ("light", true) => Ok(Color(246, 247, 251, 255)),
+        ("dark", false) => Ok(Color(23, 27, 26, 255)),
+        ("light", false) => Ok(Color(243, 240, 232, 255)),
+        _ => Err("Invalid workspace theme".into()),
+    }
+}
+
 #[tauri::command]
-fn ui_set_theme(window: tauri::WebviewWindow, theme: String) -> Result<(), String> {
+fn ui_set_theme(
+    window: tauri::WebviewWindow,
+    theme: String,
+    visual_style: Option<String>,
+) -> Result<(), String> {
     if window.label() != "main" {
         return Err("Only the main workspace may change its appearance".into());
     }
-    let color = match theme.as_str() {
-        "dark" => tauri::utils::config::Color(20, 24, 34, 255),
-        "light" => tauri::utils::config::Color(246, 247, 251, 255),
-        _ => return Err("Invalid workspace theme".into()),
-    };
+    let color = workspace_background_color(&theme, visual_style.as_deref())?;
     window
         .set_background_color(Some(color))
         .map_err(|error| error.to_string())
@@ -488,18 +515,28 @@ fn watch(path: String, app: AppHandle, state: State<'_, WatchState>) -> Result<(
     Ok(())
 }
 
-fn main() {
+fn desktop_builder() -> tauri::Builder<tauri::Wry> {
     tauri::Builder::default()
+        .manage(browser_links::BrowserLinks::default())
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            browser_links::receive(app, &args);
+            let _ = tray::show_window(app);
+        }))
         .manage(WatchState(Mutex::new(None)))
+        .manage(ai::harness_tasks::Tasks::default())
+        .manage(ai::harness_tasks::engine::Engine::default())
+        .manage(browser::reference::EngineRevision(ai::harness_tasks::engine::revision))
         .manage(browser::BrowserState::default())
         .manage(portable_settings::PortableState::default())
         .setup(|app| {
+            browser_links::receive(app.handle(), &std::env::args().collect::<Vec<_>>());
             // If the shell cannot create an icon, keep normal taskbar
             // minimization available instead of hiding an unreachable window.
             if let Err(error) = tray::install(app.handle()) {
                 eprintln!("System tray unavailable: {error}");
             }
             agent_profile::init(app.handle());
+            index::locations::init(app.handle())?;
             let handle = app.handle().clone();
             std::thread::spawn(move || index::startup(&handle));
             Ok(())
@@ -515,6 +552,9 @@ fn main() {
             reveal,
             file_op,
             external_drop::external_drop_transfer,
+            local_transfer::local_transfer_plan,
+            local_transfer::local_transfer_inspect,
+            local_transfer::local_transfer_item,
             archive::archive_start,
             archive::archive_progress,
             archive::archive_cancel,
@@ -523,23 +563,63 @@ fn main() {
             rename_path,
             index::dir_sizes,
             index::sizes_lookup,
+            index::folder_size_details,
             index::search_files,
+            index::search_page,
+            index::search_release,
             search_query::search_parse,
             index::search_status,
             index::search_rebuild,
+            index::locations::index_locations_get,
+            index::locations::index_locations_pick,
+            index::locations::index_locations_save,
+            ai::ai_save_key,
+            ai::harness_tasks::harness_prepare,
+            ai::harness_tasks::engine::harness_engine_status,
+            ai::harness_tasks::engine::harness_engine_check,
+            ai::harness_tasks::engine::harness_engine_set,
+            ai::harness_tasks::engine::harness_diag_preview,
+            ai::harness_tasks::engine::harness_diag_save,
+            ai::harness_tasks::harness_quote_preview,
+            ai::harness_tasks::harness_quote_discard,
+            ai::harness_tasks::harness_prepare_web,
+            ai::harness_tasks::harness_prepare_remote,
+            ai::harness_tasks::harness_discard_preview,
+            ai::harness_tasks::harness_submit,
+            ai::harness_tasks::harness_list,
+            ai::harness_tasks::harness_unread_count,
+            ai::harness_tasks::harness_mark_read,
+            ai::harness_tasks::harness_stop,
+            ai::harness_tasks::harness_forget,
+            ai::harness_tasks::history::harness_plan_cleanup,
+            ai::harness_tasks::history::harness_clear_workspace,
+            ai::harness_tasks::review::harness_get_review,
+            ai::harness_tasks::review::harness_apply_review,
+            ai::harness_tasks::review::harness_undo_review,
+            ai::harness_tasks::review::harness_set_edit_mode,
+            ai::agent_project_directory,
+            ai::agent_pick_project,
+            ai::document_edit::ai_undo_document,
+            ai::ai_save_reply,
             ai::ai_plan,
             ai::compaction::ai_compact,
             ai::ai_test_connection,
             ai::ai_cancel,
             ai::ai_discard,
             ai::ai_execute,
+            ai::ai_stop_file_execution,
+            ai::file_history::ai_file_history_list,
+            ai::file_history::ai_file_history_read,
+            ai::file_history::ai_file_history_remove,
             agent_profile::agent_profile,
             agent_profile::conversations::agent_chat_list,
+            agent_profile::conversations::agent_chat_prepare_rollback,
             agent_profile::conversations::agent_chat_read,
             agent_profile::conversations::agent_chat_save,
             agent_profile::conversations::agent_chat_delete,
             agent_profile::conversations::agent_chat_export,
             agent_profile::agent_skill_import,
+            agent_profile::copies::agent_skill_save_copy,
             agent_profile::agent_skill_set,
             agent_profile::agent_skill_remove,
             agent_profile::agent_memory_save,
@@ -554,7 +634,12 @@ fn main() {
             browser::browser_navigate,
             browser::browser_action,
             browser::browser_close,
+            browser::browser_popup_dismiss,
+            browser_links::browser_register_windows,
+            browser_links::browser_link_diagnostics,
+            browser_links::browser_take_links,
             browser::browser_extensions_list,
+            browser::browser_runtime_info,
             browser::browser_extension_set_enabled,
             browser::browser_extension_remove,
             browser::browser_extension_install,
@@ -573,8 +658,17 @@ fn main() {
             ssh_managed::ssh_managed_stats,
             ssh_managed::ssh_managed_status,
             ssh_managed::files::ssh_files_list,
+            ssh_managed::files::pane_preview::ssh_pane_preview,
             ssh_managed::files::ssh_pick_file,
             ssh_managed::files::ssh_file_transfer,
+            ssh_managed::files::history::ssh_history_list,
+            ssh_managed::files::history::ssh_history_remove,
+            ssh_managed::files::recovery::ssh_batch_create,
+            ssh_managed::files::recovery::ssh_batch_list,
+            ssh_managed::files::recovery::ssh_batch_review,
+            ssh_managed::files::recovery::ssh_batch_claim,
+            ssh_managed::files::recovery::ssh_batch_end,
+            ssh_managed::files::recovery::ssh_batch_forget,
             ssh_managed::files::ssh_transfer_status,
             ssh_managed::files::resume::ssh_resume_discard,
             ssh_managed::files::batch::ssh_transfer_prepare,
@@ -587,7 +681,22 @@ fn main() {
             term::term_resize,
             term::term_kill
         ])
-        .build(tauri::generate_context!())
+}
+
+fn main() {
+    let context = tauri::generate_context!();
+    if std::env::args_os().skip(1).eq([std::ffi::OsString::from("--dalizi-build-info")]) {
+        println!("{}", serde_json::json!({
+            "format": "dalizi-files/windows-build-info/v1",
+            "identifier": context.config().identifier,
+            "version": env!("CARGO_PKG_VERSION"),
+            "architecture": std::env::consts::ARCH,
+            "debug": cfg!(debug_assertions),
+            "winpty": "0.4.3",
+        }));
+        return;
+    }
+    desktop_builder().build(context)
         .expect("error while building tauri application")
         .run(|app, event| {
             if matches!(event, tauri::RunEvent::Exit) {
@@ -599,8 +708,27 @@ fn main() {
 }
 
 #[cfg(test)]
+mod native_webview_test;
+#[cfg(test)]
+mod harness_web_tests;
+#[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn workspace_backing_color_matches_style_and_rejects_invalid_theme() {
+        let rgb = |theme, style| {
+            let c = workspace_background_color(theme, style).unwrap();
+            (c.0, c.1, c.2, c.3)
+        };
+        assert_eq!(rgb("light", Some("classic")), (246, 247, 251, 255));
+        assert_eq!(rgb("dark", Some("classic")), (20, 24, 34, 255));
+        assert_eq!(rgb("light", Some("studio")), (243, 240, 232, 255));
+        assert_eq!(rgb("dark", Some("studio")), (23, 27, 26, 255));
+        assert_eq!(rgb("light", None), rgb("light", Some("studio")));
+        assert_eq!(rgb("dark", Some("invalid")), rgb("dark", Some("studio")));
+        assert!(workspace_background_color("invalid", Some("studio")).is_err());
+    }
 
     #[test]
     fn filetime_handles_dates_before_unix_epoch() {

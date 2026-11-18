@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const { readFileSync } = require('node:fs');
 const vm = require('node:vm');
 const source = readFileSync(require('node:path').join(__dirname, '../ui/app.js'), 'utf8');
+const localTasks = readFileSync(require('node:path').join(__dirname, '../ui/local-file-tasks.js'), 'utf8');
 const section = (start, end) => source.slice(source.indexOf(start), source.indexOf(end));
 const deferred = () => {
   let resolve, reject;
@@ -11,6 +12,7 @@ const deferred = () => {
   return { promise, resolve, reject };
 };
 const tick = () => new Promise(setImmediate);
+const inspect = paths => ({ ready: paths.map((_, i) => i), sourceKeys: paths.map(p => 'id-' + p), destinationKey: 'folder' });
 
 function harness(invoke) {
   const tab = { path: 'C:\\A', history: [], hIdx: -1 };
@@ -19,8 +21,11 @@ function harness(invoke) {
     entries: [], roots: {}, selection: new Set(), dirSizes: new Map(), loading: false,
   };
   const noop = () => {};
+  let localSequence = 0;
   const context = vm.createContext({
     state, invoke, Set, Map,
+    requestAnimationFrame: () => 1, locale: 'en', companionFor: () => null, desktopExitPending: false,
+    readLocalHistory: async () => [], createLocalRecord: async () => ++localSequence, writeLocalItem: async () => {}, forgetLocalRecords: async () => {},
     els: { search: { value: '' }, scroller: { scrollTop: 0 } },
     curTab: () => state.tabs[state.tab], isTermTab: (t) => t?.kind === 'term',
     renderAll: noop, renderTabs: noop, renderBar2: noop, applySelectionDom: noop,
@@ -29,7 +34,7 @@ function harness(invoke) {
   });
   vm.runInContext(
     section('async function navigate(', '// Update one row') +
-    section('function copySel()', '/* ============================== rename') +
+    section('function copySel()', '/* ============================== rename') + localTasks +
     '\nfunction requestDirSizes() {}\nfunction renderDirectoryRefresh() { renderAll(); }', context);
   return { state, context, run: (s) => vm.runInContext(s, context) };
 }
@@ -48,6 +53,56 @@ test('late directory response cannot replace a newer navigation', async () => {
   assert.equal(h.state.path, 'B');
   assert.equal(h.state.entries[0].name, 'new.txt');
 });
+
+test('pending and failed navigation retain the requested tab address and cannot use old entries', async () => {
+  const listing = deferred(), actions = [];
+  const h = harness(async (cmd, args) => {
+    if (cmd === 'list_dir') return listing.promise;
+    if (cmd.startsWith('local_transfer')) actions.push(args);
+  });
+  h.state.entries = [{ name: 'old.txt' }];
+  h.state.clipboard = { mode: 'cut', paths: ['C:\\source'] };
+  const request = h.run("navigate('D:\\\\missing')");
+  assert.equal(h.state.tabs[0].path, 'D:\\missing');
+  assert.equal(h.state.entries.length, 0);
+  await h.run('pasteClip()');
+  listing.reject(Error('Directory missing'));
+  await request;
+  assert.match(h.state.error, /Directory missing/);
+  assert.equal(h.state.tabs[0].history[0], 'D:\\missing');
+  await h.run('pasteClip()');
+  assert.deepEqual(actions, []);
+  h.context.invoke = async cmd => cmd === 'list_dir' ? [{ name: 'found.txt' }] : {};
+  await h.run('refresh(true, true)');
+  assert.equal(h.state.error, null);
+  assert.equal(h.state.tabs[0].history.length, 1);
+  assert.equal(h.state.entries[0].name, 'found.txt');
+});
+
+for (const phase of ['create_dir', 'list_dir']) {
+  test('switching tabs during ' + phase + ' keeps the other folder filter and rename state', async () => {
+    const delay = deferred(), calls = [];
+    const h = harness(async (cmd, args) => {
+      calls.push({cmd, args});
+      if (cmd === phase) return delay.promise;
+      if (cmd === 'list_dir') return [{name: 'New folder', isDir: true}];
+    });
+    h.context.t = () => 'New folder';
+    h.context.startRename = () => calls.push({cmd: 'rename'});
+    vm.runInContext(section('async function newFolder()', '/* ============================== menus'), h.context);
+    const request = h.run('newFolder()');
+    await tick();
+    assert.ok(calls.some(call => call.cmd === phase));
+    h.state.tabs.push({path: 'D:\\B', history: [], hIdx: -1}); h.state.tab = 1;
+    h.state.path = 'D:\\B'; h.state.filter = 'B filter'; h.state.gen++; h.state.navToken++;
+    h.state.entries = [{name: 'New folder', isDir: true}];
+    delay.resolve(phase === 'list_dir' ? [{name: 'New folder', isDir: true}] : undefined);
+    await request;
+    assert.equal(h.state.filter, 'B filter');
+    assert.equal(calls.some(call => call.cmd === 'rename'), false);
+    assert.deepEqual(calls.filter(x => x.cmd === 'create_dir').map(x => x.args.path), ['C:\\A\\New folder']);
+  });
+}
 
 for (const [input, expected] of [
   ['C:\\work\\child\\..', 'C:\\work'],
@@ -161,9 +216,9 @@ test('file refresh is a no-op in a browser tab', async () => {
   assert.equal(calls, 0);
 });
 
-test('cancelled move preserves clipboard; successful move clears it', async () => {
+test('undispatched move preserves clipboard; confirmed move clears it', async () => {
   let completed = false;
-  const h = harness((cmd) => Promise.resolve(cmd === 'file_op' ? completed : []));
+  const h = harness((cmd, args) => Promise.resolve(cmd === 'local_transfer_inspect' ? inspect(args.sources) : cmd === 'local_transfer_item' ? { status: completed ? 'complete' : 'failed' } : []));
   const clipboard = { mode: 'cut', paths: ['C:\\source'] };
   h.state.clipboard = clipboard;
   await h.run('pasteClip()');
@@ -177,7 +232,8 @@ test('pending operation rejects duplicate submission and preserves newer clipboa
   const operation = deferred();
   let calls = 0;
   const h = harness((cmd) => {
-    if (cmd === 'file_op') { calls++; return operation.promise; }
+    if (cmd === 'local_transfer_inspect') return Promise.resolve(inspect(['C:\\source']));
+    if (cmd === 'local_transfer_item') { calls++; return operation.promise; }
     return Promise.resolve([]);
   });
   h.state.clipboard = { mode: 'cut', paths: ['C:\\source'] };
@@ -185,8 +241,68 @@ test('pending operation rejects duplicate submission and preserves newer clipboa
   await h.run('pasteClip()');
   const replacement = { mode: 'copy', paths: ['C:\\another'] };
   h.state.clipboard = replacement;
-  operation.resolve(true);
+  operation.resolve({status: 'complete'});
   await pending;
   assert.equal(calls, 1);
   assert.equal(h.state.clipboard, replacement);
 });
+
+test('partial cut retains only undispatched sources and does not replay an uncertain item', async () => {
+  const sent = [];
+  const h = harness(async (cmd, args) => {
+    if (cmd === 'local_transfer_inspect') return inspect(args.sources);
+    if (cmd === 'local_transfer_item') {
+      sent.push(args.source);
+      if (sent.length === 2) throw Error('Lost receipt');
+      return { status: 'complete', target: args.dest };
+    }
+    return [];
+  });
+  h.state.clipboard = { mode: 'cut', paths: ['A', 'B', 'C'] };
+  await h.run('pasteClip()');
+  assert.deepEqual(sent, ['A', 'B']);
+  assert.deepEqual(Array.from(h.state.clipboard.paths), ['C']);
+  assert.deepEqual(Array.from(h.run('localFileBatches[0].items.map(i => i.status)')), ['complete', 'verify', 'stopped']);
+  const recovery = await h.run("queueLocalTransfer('move', ['C'], { path:localFileBatches[0].dest, owner:curTab() }, { clipboard:localFileBatches[0].clipboard, retryItems:[localFileBatches[0].items[2]] })");
+  await recovery.done;
+  assert.deepEqual(sent, ['A', 'B', 'C']);
+  assert.equal(h.state.clipboard, null);
+  assert.equal(h.run('localFileBatches[0].items.some(localRetryable)'), false);
+});
+
+test('multiple local batches serialize dispatch and keep the destination chosen at submission', async () => {
+  const first = deferred(), calls = [];
+  const h = harness(async (cmd, args) => {
+    if (cmd === 'local_transfer_inspect') return inspect(args.sources);
+    if (cmd === 'local_transfer_item') {
+      calls.push([args.source, args.dest]);
+      if (args.source === 'one') return first.promise;
+      return { status:'complete' };
+    }
+    return [];
+  });
+  const a = await h.run("queueLocalTransfer('copy', ['one','two'], { path:'C:/A', owner:curTab() })");
+  const b = await h.run("queueLocalTransfer('copy', ['three'], { path:'C:/B', owner:curTab() })");
+  h.state.path = 'C:/Other';
+  assert.deepEqual(calls, [['one', 'C:/A']]);
+  first.resolve({ status:'failed', message:'Source missing before dispatch' });
+  await Promise.all([a.done, b.done]);
+  assert.deepEqual(calls, [['one', 'C:/A'], ['two','C:/A'], ['three','C:/B']]);
+  assert.deepEqual(Array.from(a.items, i => i.status), ['failed','complete']);
+});
+
+for (const boundary of ['queued','running']) {
+  test('local journal failure during ' + boundary + ' stops subsequent Shell dispatch', async () => {
+    const sent = [];
+    const h = harness(async (cmd, args) => {
+      if (cmd === 'local_transfer_inspect') return inspect(args.sources);
+      if (cmd === 'local_transfer_item') { sent.push(args.source); return { status:'complete' }; }
+      return [];
+    });
+    h.context.writeLocalItem = async (_, before) => { if (before === boundary) throw Error('Storage unavailable'); };
+    const b = await h.run("queueLocalTransfer('copy', ['a','b'], { path:'target', owner:curTab() })");
+    await b.done;
+    assert.deepEqual(sent, boundary === 'queued' ? [] : ['a']);
+    assert.deepEqual(Array.from(b.items, i => i.status), [boundary === 'queued' ? 'failed' : 'verify', 'stopped']);
+  });
+}

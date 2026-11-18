@@ -11,6 +11,10 @@ use tauri::Manager;
 
 #[path = "agent_builtin_skills.rs"]
 mod builtin;
+#[path = "agent_skill_copies.rs"]
+pub mod copies;
+#[path = "agent_roles.rs"]
+pub mod roles;
 #[path = "agent_memory_maintenance.rs"]
 pub mod maintenance;
 #[path = "agent_conversations.rs"]
@@ -26,7 +30,7 @@ const MEMORY_CHARS: usize = 2000;
 const MEMORY_CONTEXT_LIMIT: usize = 8 * 1024;
 const MEMORY_FILE_LIMIT: usize = 1024 * 1024;
 static STORAGE_PATH: OnceLock<PathBuf> = OnceLock::new();
-static STORE: OnceLock<Result<Mutex<Store>, String>> = OnceLock::new();
+static PROFILE_WRITE_LOCK: Mutex<()> = Mutex::new(());
 static NEXT_ID: AtomicU64 = AtomicU64::new(1);
 static LOCAL_MEMORY_LOCK: Mutex<()> = Mutex::new(());
 
@@ -50,10 +54,13 @@ pub struct SkillView {
     source: &'static str,
     version: &'static str,
     availability: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    copy: Option<copies::CopyInfo>,
 }
 impl SkillView {
     fn user(skill: Skill) -> Self {
         Self {
+            copy: copies::info(&skill),
             skill,
             source: "user",
             version: "",
@@ -123,6 +130,7 @@ struct LegacyProfile {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProfileView {
+    pub roles: &'static [roles::AgentRole],
     pub memory_statistics: maintenance::MemoryStatistics,
     pub skills: Vec<SkillView>,
     pub memories: Vec<Memory>,
@@ -200,14 +208,11 @@ pub fn init(app: &tauri::AppHandle) {
     }
 }
 
-fn store() -> Result<&'static Mutex<Store>, String> {
+fn store() -> Result<Store, String> {
     let path = STORAGE_PATH
         .get()
         .ok_or("智能体存储尚未初始化 / Agent storage is not initialized")?;
-    STORE
-        .get_or_init(|| Store::open(path.clone()).map(Mutex::new))
-        .as_ref()
-        .map_err(Clone::clone)
+    Store::open(path.clone())
 }
 
 fn now_ms() -> u64 {
@@ -338,7 +343,7 @@ fn local_metadata(path: &Path, directory: bool) -> Result<Option<fs::Metadata>, 
     }
 }
 
-fn lock_memory_directory(path: &Path) -> Result<File, String> {
+pub(crate) fn lock_memory_directory(path: &Path) -> Result<File, String> {
     use std::os::windows::fs::{MetadataExt, OpenOptionsExt};
     // Keep directory names stable for the short transaction by denying DELETE
     // sharing. WRITE sharing is needed by Windows when renaming child files.
@@ -698,6 +703,7 @@ impl Store {
             None => (Vec::new(), None),
         };
         Ok(ProfileView {
+            roles: roles::CATALOG,
             memory_statistics: maintenance::statistics(&memories),
             skills: skill_views(&self.data)?,
             memories,
@@ -743,7 +749,7 @@ impl Store {
             Ok(())
         })
     }
-    fn remove_skill(&mut self, id: &str) -> Result<(), String> {
+    fn remove_skill(&mut self, id: &str, expected_revision: Option<&str>) -> Result<(), String> {
         if builtin::find(id).is_some() {
             return Err("内置技能不能删除，可以停用 / Built-in skills cannot be removed; disable them instead".into());
         }
@@ -753,6 +759,9 @@ impl Store {
                 .iter()
                 .position(|skill| skill.id == id)
                 .ok_or("技能已不存在 / Skill no longer exists")?;
+            if expected_revision.is_some_and(|expected| copies::revision(&data.skills[index]) != expected) {
+                return Err("副本已变化，请刷新后再移除 / Copy changed. Refresh before removing it.".into());
+            }
             data.skills.remove(index);
             Ok(())
         })
@@ -801,16 +810,27 @@ impl Store {
         &mut self,
         update: impl FnOnce(&mut StoredProfile) -> Result<T, String>,
     ) -> Result<T, String> {
-        let mut next = self.data.clone();
+        use std::os::windows::fs::OpenOptionsExt;
+        use windows::Win32::Storage::FileSystem::FILE_FLAG_DELETE_ON_CLOSE;
+        let directory = self.path.parent().ok_or("Invalid storage path")?;
+        let _thread_lock = PROFILE_WRITE_LOCK.lock().map_err(|_| "Agent profile lock failed")?;
+        fs::create_dir_all(directory).map_err(|e| e.to_string())?;
+        // Creation and exclusive access are atomic. Windows also releases the lock on process exit.
+        let _file_lock = OpenOptions::new().write(true).create_new(true).share_mode(0)
+            .custom_flags(FILE_FLAG_DELETE_ON_CLOSE.0).open(self.path.with_extension("lock"))
+            .map_err(|e| format!("技能配置正在使用或无法写入，请重试 / Skill settings busy or unavailable. Retry: {e}"))?;
+        let mut current = Self::open(self.path.clone())?;
+        if self.legacy_bytes.is_some() && self.legacy_bytes != current.legacy_bytes {
+            return Err("旧版智能体配置已变化，请刷新后重试 / Legacy profile changed. Refresh before migration.".into());
+        }
+        let mut next = std::mem::take(&mut current.data);
         let value = update(&mut next)?;
         validate_profile(&next)?;
         let bytes = serde_json::to_vec_pretty(&next).map_err(|e| e.to_string())?;
         if bytes.len() > STORE_LIMIT {
             return Err("智能体配置超过大小限制 / Agent profile is too large".into());
         }
-        let directory = self.path.parent().ok_or("Invalid storage path")?;
-        fs::create_dir_all(directory).map_err(|e| e.to_string())?;
-        self.backup_legacy()?;
+        current.backup_legacy()?;
         let temporary = directory.join(format!(".agent-profile-{}.tmp", new_id("save")));
         let result = (|| -> Result<(), String> {
             let mut file = OpenOptions::new()
@@ -922,6 +942,7 @@ fn skill_views(data: &StoredProfile) -> Result<Vec<SkillView>, String> {
         skill.enabled = data.builtin_enabled.contains(&skill.id);
         let entry = builtin::find(&skill.id).ok_or("Invalid built-in catalog")?;
         skills.push(SkillView {
+            copy: None,
             skill,
             source: "builtin",
             version: builtin::VERSION,
@@ -1103,12 +1124,20 @@ fn import_skill(path: &str) -> Result<Skill, String> {
     parse_skill(text, &conventional_path(&path))
 }
 
+#[cfg(test)]
 fn context_for(
+    data: &StoredProfile, root: &str, local_memories: &[Memory], skill_ids: &[String], use_memory: bool,
+) -> Result<AgentContext, String> {
+    context_with_recommendations(data, root, local_memories, skill_ids, use_memory, &[])
+}
+
+fn context_with_recommendations(
     data: &StoredProfile,
     root: &str,
     local_memories: &[Memory],
     skill_ids: &[String],
     use_memory: bool,
+    recommendations: &[&str],
 ) -> Result<AgentContext, String> {
     validate_profile(data)?;
     if skill_ids.len() > ACTIVE_SKILLS {
@@ -1119,17 +1148,34 @@ fn context_for(
         learning_enabled: data.learning_enabled,
         ..Default::default()
     };
+    let mut selected = Vec::with_capacity(ACTIVE_SKILLS);
     let mut seen = std::collections::HashSet::new();
-    let mut bytes_left = SKILL_CONTEXT_LIMIT;
-    for (index, id) in skill_ids.iter().enumerate() {
-        if !seen.insert(id) {
+    for id in skill_ids {
+        if !seen.insert(id.as_str()) {
             return Err("技能不能重复 / Duplicate skill selection".into());
         }
-        let skill = selected_skill(data, id)?;
+        selected.push(selected_skill(data, id)?);
+    }
+    if !recommendations.is_empty() {
+        let manual_count = data.builtin_enabled.len() + data.skills.iter().filter(|s| s.enabled).count();
+        if manual_count != selected.len() {
+            return Err("已启用技能发生变化，请重试 / Enabled skills changed. Retry this request.".into());
+        }
+        for &id in recommendations {
+            if selected.len() == ACTIVE_SKILLS { break; }
+            if seen.insert(id) && !selected.iter().any(|skill| copies::represents(skill, id)) {
+                let skill = builtin_skills()?.iter().find(|skill| skill.id == id)
+                    .ok_or("Invalid role skill catalog")?;
+                selected.push(skill.clone());
+            }
+        }
+    }
+    let mut bytes_left = SKILL_CONTEXT_LIMIT;
+    for (index, skill) in selected.iter().enumerate() {
         // Share the remaining text budget so one long skill does not silently
         // crowd every later selected skill out of the request.
         let metadata_bytes = skill.name.len() + skill.description.len();
-        let allowance = (bytes_left / (skill_ids.len() - index)).saturating_sub(metadata_bytes);
+        let allowance = (bytes_left / (selected.len() - index)).saturating_sub(metadata_bytes);
         let (body, truncated) = clip_bytes(&skill.body, allowance);
         bytes_left = bytes_left.saturating_sub(body.len() + metadata_bytes);
         context.truncated |= truncated;
@@ -1171,19 +1217,29 @@ pub fn resolve_context(
     root: &str,
     skill_ids: &[String],
     use_memory: bool,
+    recommendations: &[&str],
+    copy_revisions: &std::collections::HashMap<String, String>,
 ) -> Result<AgentContext, String> {
-    if skill_ids.is_empty() && !use_memory {
+    if skill_ids.is_empty() && !use_memory && recommendations.is_empty() && copy_revisions.is_empty() {
         return Ok(AgentContext::default());
     }
     let root = canonical_root(root)?;
-    let guard = store()?.lock().map_err(|_| "Agent profile lock failed")?;
-    context_from_directory(&guard.data, &root, skill_ids, use_memory)
+    let profile = store()?;
+    copies::verify_selection(&profile.data, skill_ids, copy_revisions)?;
+    directory_context(&profile.data, &root, skill_ids, use_memory, recommendations)
 }
+#[cfg(test)]
 fn context_from_directory(
+    data: &StoredProfile, root: &str, skill_ids: &[String], use_memory: bool,
+) -> Result<AgentContext, String> {
+    directory_context(data, root, skill_ids, use_memory, &[])
+}
+fn directory_context(
     data: &StoredProfile,
     root: &str,
     skill_ids: &[String],
     use_memory: bool,
+    recommendations: &[&str],
 ) -> Result<AgentContext, String> {
     let _lock = LOCAL_MEMORY_LOCK
         .lock()
@@ -1193,12 +1249,12 @@ fn context_from_directory(
     } else {
         Vec::new()
     };
-    context_for(data, root, &memories, skill_ids, use_memory)
+    context_with_recommendations(data, root, &memories, skill_ids, use_memory, recommendations)
 }
 pub fn learning_enabled() -> bool {
     store()
         .ok()
-        .and_then(|store| store.lock().ok().map(|s| s.data.learning_enabled))
+        .map(|store| store.data.learning_enabled)
         .unwrap_or(false)
 }
 
@@ -1218,10 +1274,7 @@ pub async fn agent_profile(root: Option<String>) -> Result<ProfileView, String> 
             .filter(|r| !r.trim().is_empty())
             .map(canonical_root)
             .transpose()?;
-        store()?
-            .lock()
-            .map_err(|_| "Agent profile lock failed")?
-            .view(root.as_deref())
+        store()?.view(root.as_deref())
     })
     .await
 }
@@ -1229,31 +1282,21 @@ pub async fn agent_profile(root: Option<String>) -> Result<ProfileView, String> 
 pub async fn agent_skill_import(path: String) -> Result<SkillView, String> {
     blocking(move || {
         let skill = import_skill(&path)?;
-        store()?
-            .lock()
-            .map_err(|_| "Agent profile lock failed")?
-            .import(skill)
-            .map(SkillView::user)
+        store()?.import(skill).map(SkillView::user)
     })
     .await
 }
 #[tauri::command]
 pub async fn agent_skill_set(id: String, enabled: bool) -> Result<(), String> {
     blocking(move || {
-        store()?
-            .lock()
-            .map_err(|_| "Agent profile lock failed")?
-            .set_skill(&id, enabled)
+        store()?.set_skill(&id, enabled)
     })
     .await
 }
 #[tauri::command]
-pub async fn agent_skill_remove(id: String) -> Result<(), String> {
+pub async fn agent_skill_remove(id: String, expected_revision: Option<String>) -> Result<(), String> {
     blocking(move || {
-        store()?
-            .lock()
-            .map_err(|_| "Agent profile lock failed")?
-            .remove_skill(&id)
+        store()?.remove_skill(&id, expected_revision.as_deref())
     })
     .await
 }
@@ -1306,10 +1349,7 @@ pub async fn agent_memory_import(root: String, contents: Vec<String>) -> Result<
 pub async fn agent_memory_migrate(root: String, ids: Vec<String>) -> Result<(), String> {
     blocking(move || {
         let root = canonical_root(&root)?;
-        let legacy = {
-            let guard = store()?.lock().map_err(|_| "Agent profile lock failed")?;
-            legacy_memories(&guard.data, Some(&root))
-        };
+        let legacy = legacy_memories(&store()?.data, Some(&root));
         let _lock = LOCAL_MEMORY_LOCK
             .lock()
             .map_err(|_| "Local memory lock failed")?;
@@ -1319,18 +1359,15 @@ pub async fn agent_memory_migrate(root: String, ids: Vec<String>) -> Result<(), 
 }
 #[tauri::command]
 pub async fn agent_preferences_set(
-    memory_enabled: bool,
-    learning_enabled: bool,
+    memory_enabled: Option<bool>,
+    learning_enabled: Option<bool>,
 ) -> Result<(), String> {
     blocking(move || {
-        store()?
-            .lock()
-            .map_err(|_| "Agent profile lock failed")?
-            .mutate(|data| {
-                data.memory_enabled = memory_enabled;
-                data.learning_enabled = learning_enabled;
-                Ok(())
-            })
+        store()?.mutate(|data| {
+            if let Some(enabled) = memory_enabled { data.memory_enabled = enabled; }
+            if let Some(enabled) = learning_enabled { data.learning_enabled = enabled; }
+            Ok(())
+        })
     })
     .await
 }
@@ -1577,8 +1614,8 @@ mod tests {
         assert!(storage.set_skill("builtin.code-review", true).is_err());
         assert!(storage.set_skill("builtin.missing", true).is_err());
         assert!(storage.set_skill("missing-user", false).is_err());
-        assert!(storage.remove_skill("builtin.file-organize").is_err());
-        assert!(storage.remove_skill("builtin.missing").is_err());
+        assert!(storage.remove_skill("builtin.file-organize", None).is_err());
+        assert!(storage.remove_skill("builtin.missing", None).is_err());
         assert_eq!(fs::read(&storage.path).unwrap(), before);
         assert_eq!(storage.data.builtin_enabled.len(), 3);
         storage.set_skill(&user.id, false).unwrap();
@@ -1587,12 +1624,49 @@ mod tests {
             storage.set_skill(&user.id, true).is_err(),
             "limit applies in both directions"
         );
-        storage.remove_skill(&user.id).unwrap();
+        storage.remove_skill(&user.id, None).unwrap();
         assert!(storage.data.skills.is_empty());
         assert!(
-            storage.remove_skill(&user.id).is_err(),
+            storage.remove_skill(&user.id, None).is_err(),
             "stale IDs are not silently accepted"
         );
+    }
+
+    #[test]
+    fn role_skills_fill_only_free_slots_and_leave_stored_choices_untouched() {
+        let fixture = Fixture::new();
+        let mut storage = fixture.store();
+        let mut manual = Vec::new();
+        for name in ["one", "two", "three", "four"] {
+            let id = storage.import(skill(name)).unwrap().id;
+            storage.set_skill(&id, true).unwrap();
+            manual.push(id);
+        }
+        let role = roles::find(Some("development")).unwrap();
+        let ids = |context: AgentContext| context.skills.into_iter().map(|s| s.id).collect::<Vec<_>>();
+        let resolve = |store: &Store, manual: &[String], suggestions: &[&str]| {
+            context_with_recommendations(&store.data, r"C:\work", &[], manual, false, suggestions).map(ids)
+        };
+        let bytes = fs::read(&storage.path).unwrap();
+        assert_eq!(resolve(&storage, &manual, role.suggested_skills).unwrap(), manual);
+        assert_eq!(fs::read(&storage.path).unwrap(), bytes);
+        assert!(resolve(&storage, &manual[..3], role.suggested_skills).is_err());
+        let removed = manual.pop().unwrap();
+        storage.set_skill(&removed, false).unwrap();
+        assert!(resolve(&storage, &[removed], role.suggested_skills).is_err());
+        let result = resolve(&storage, &manual, role.suggested_skills).unwrap();
+        assert_eq!(&result[..3], &manual);
+        assert_eq!(result[3], role.suggested_skills[0]);
+        assert_eq!(resolve(&storage, &manual, &[]).unwrap(), manual);
+        storage.set_skill(role.suggested_skills[0], true).unwrap();
+        manual.push(role.suggested_skills[0].into());
+        assert_eq!(resolve(&storage, &manual, role.suggested_skills).unwrap(), manual);
+        let mut role_ids = std::collections::HashSet::new();
+        for preset in roles::CATALOG {
+            assert!(role_ids.insert(preset.id));
+            assert!(preset.suggested_skills.iter().all(|id| builtin::find(id).is_some()));
+        }
+        assert_eq!(role_ids.len(), 8);
     }
 
     #[test]
@@ -1883,6 +1957,17 @@ mod tests {
         let wrong = fixture.0.join("other.md");
         fs::write(&wrong, "# Other").unwrap();
         assert!(import_skill(wrong.to_str().unwrap()).is_err());
+    }
+
+    #[test]
+    fn independent_writers_keep_both_skill_changes() {
+        let fixture = Fixture::new();
+        let mut first = fixture.store();
+        let mut second = fixture.store();
+        first.import(skill("one")).unwrap();
+        second.import(skill("two")).unwrap();
+        let stored = fixture.store();
+        assert_eq!(stored.data.skills.iter().map(|s| s.name.as_str()).collect::<Vec<_>>(), ["one", "two"]);
     }
 
     #[test]
@@ -2252,7 +2337,7 @@ mod tests {
             .memories
             .is_empty());
         assert!(
-            resolve_context("", &[], false).unwrap().skills.is_empty(),
+            resolve_context("", &[], false, &[], &Default::default()).unwrap().skills.is_empty(),
             "old requests do not need initialized storage"
         );
     }

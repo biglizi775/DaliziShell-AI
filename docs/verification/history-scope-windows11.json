@@ -1,0 +1,53 @@
+{
+  "date": "2026-11-17",
+  "scope": "Windows 11 development host with isolated desktop test identities, disposable folders, two loopback SFTP servers and a local model fixture.",
+  "before": "The prior desktop returned three still-actionable rows in the synchronous frame after switching from all directories to an inaccessible pinned directory. The Rust list query is by physical directory identity and rejects that missing path. The previous UI kept its last list on rejection.",
+  "verification": {
+    "frontend": {
+      "passed": 292,
+      "failed": 0
+    },
+    "rustDesktop": {
+      "passed": 151,
+      "failed": 0,
+      "ignoredByDefault": 2,
+      "explicitNativeWebQuotePassed": true
+    },
+    "native": {
+      "fixtureSha256": "a7b40f0ab99cbfcdea70911a6eab17ce89f0d84312acac4e69f3ecefd3e3df17",
+      "checks": [
+        "--history-scope",
+        "M1 local-file routing",
+        "M2 review and undo",
+        "M3 native web quote",
+        "M4 two SFTP servers"
+      ],
+      "historyScopeModelRequests": 1,
+      "observations": [
+        "An active A task was listed with its local folder in the collapsed summary. Switching to an unavailable pinned B removed all rows before the native request returned. The error offered retry and no stop/remove control.",
+        "After creating the missing fixture directory, retry showed the empty B list. The same A task finished with the expected answer from one model request; it remained unread until its result was expanded.",
+        "A remove confirmation originating in the all-directories view could not remove the record after the view changed.",
+        "An M3 quote navigated away from the source web page and closed the original tab. Its all-directories row displayed the chosen local project path; durable source URL and returned text matched the original selection.",
+        "M4 captured only the A server file in two servers with identically named files. After disconnect, the collapsed all-directories row showed the originating remote workspace, including its port. Reconnect, host key rotation and isolated history also passed."
+      ]
+    },
+    "build": "Verified 535 extracted source files, then built with offline MSVC and a shared dependency/target cache. Verified the exact release executable, all ZIP file hashes, the lockfile and the bundled runtime manifest."
+  },
+  "source": {
+    "archive": "dalizi-files-0.5.1-source-a3c23243f21ed676.zip",
+    "sha256": "a3c23243f21ed6765062f6afd646b7688740e5e5e0dc4b575a34695dbad78cfb",
+    "bytes": 3958039,
+    "files": 535
+  },
+  "preview": {
+    "archive": "dalizi-files-0.5.1-windows-x64-preview-history-scope-d663c82617ea.zip",
+    "sha256": "035f4acaaeb2304657fc77af314fceb9036e236275da54ea38edee7808f2ad15",
+    "bytes": 54994561,
+    "entries": 749,
+    "exeSha256": "d663c82617ea6168fc7c05ac401b0707a6b83b357f5dab6eb14b5b1cca28549f",
+    "candidate": null
+  },
+  "limits": [
+    "This build is a development preview. Clean Windows 10 and 11 acceptance and an authenticated model turn remain separate M5 release gates."
+  ]
+}

@@ -2,9 +2,11 @@
 function setSshWorkspaceLayout(tb, layout) {
   if (!tb.sshConfig?.managed || tb.disposed) return;
   const terminalReady = tb.sshTerminalState === 'ready' && !tb.exited;
-  if (layout !== 'files' && !terminalReady) return;
+  const filesOnly = layout === 'files' || layout === 'paired';
+  if (!filesOnly && !terminalReady) return;
   ensureSshFilePanel(tb);
-  tb.sshTerminalVisible = layout !== 'files';
+  if (tb.sshFilesPanel) setSshPairedLayout(tb, layout === 'paired');
+  tb.sshTerminalVisible = !filesOnly;
   if (tb.sshFilesPanel) tb.sshFilesPanel.hidden = layout === 'terminal';
   tb.el.classList.toggle('ssh-files-open', !!tb.sshFilesPanel && !tb.sshFilesPanel.hidden);
   syncManagedTerminalUi(tb);
@@ -16,6 +18,9 @@ function mountSshWorkspace(tb) {
   if (!tb.sshWorkspaceBar) {
     const bar = document.createElement('div'); bar.className = 'ssh-workspace-toolbar';
     bar.innerHTML = `<strong>${esc(ms('SSH 工作区', 'SSH workspace'))}</strong><div class="ssh-layout-options" role="group" aria-label="${esc(ms('工作区布局', 'Workspace layout'))}"><button type="button" data-ssh-layout="split">${esc(ms('分屏', 'Split'))}</button><button type="button" data-ssh-layout="files" data-ssh-files>${esc(ms('文件', 'Files'))}</button><button type="button" data-ssh-layout="terminal" data-ssh-terminal>${esc(ms('终端', 'Terminal'))}</button></div><span class="ssh-toolbar-spacer"></span><button type="button" data-workspace-interrupt title="Ctrl+C">Ctrl+C</button><button type="button" data-workspace-reconnect>${esc(ms('重连', 'Reconnect'))}</button><button type="button" data-workspace-disconnect>${esc(ms('断开', 'Disconnect'))}</button>`;
+    const paired = document.createElement('button'); paired.type = 'button'; paired.dataset.sshLayout = 'paired';
+    paired.textContent = ms('双栏传输', 'Transfer panes');
+    bar.querySelector('[data-ssh-layout="files"]').after(paired);
     bar.querySelectorAll('[data-ssh-layout]').forEach(button => { button.onclick = () => setSshWorkspaceLayout(tb, button.dataset.sshLayout); });
     bar.querySelector('[data-workspace-interrupt]').onclick = () => interruptSshTab(tb);
     bar.querySelector('[data-workspace-reconnect]').onclick = () => reconnectSshTab(tb);
@@ -59,10 +64,10 @@ function mountSshWorkspace(tb) {
   tb.sshTerminalPending.hidden = tb.sshTerminalState !== 'starting' || !!tb.exited;
   const filesShown = !!tb.sshFilesPanel && !tb.sshFilesPanel.hidden;
   tb.el.classList.toggle('ssh-files-hidden', !filesShown);
-  const layout = !tb.sshTerminalVisible ? 'files' : filesShown ? 'split' : 'terminal';
+  const layout = filesShown && tb.sshFiles?.localPane?.open ? 'paired' : !tb.sshTerminalVisible ? 'files' : filesShown ? 'split' : 'terminal';
   for (const button of tb.sshWorkspaceBar.querySelectorAll('[data-ssh-layout]')) {
     button.setAttribute('aria-pressed', String(button.dataset.sshLayout === layout));
-    button.disabled = button.dataset.sshLayout === 'files' ? !tb.sshAuthenticated : !terminalReady;
+    button.disabled = ['files','paired'].includes(button.dataset.sshLayout) ? !tb.sshAuthenticated || tb.exited || tb.sshDisconnectRequested : !terminalReady;
   }
   tb.sshWorkspaceBar.querySelector('[data-workspace-interrupt]').disabled = !terminalReady || !!tb.interruptPromise;
   tb.sshWorkspaceBar.querySelector('[data-workspace-reconnect]').disabled = !!tb.sshReconnecting || !!tb.sshDisconnecting;
@@ -72,12 +77,25 @@ function visibleSshEntries(view) {
   const filter = (view.filter || '').toLocaleLowerCase();
   return view.entries.map((entry,index)=>({entry,index})).filter(({entry})=>!filter||entry.name.toLocaleLowerCase().includes(filter));
 }
+// Shift selects the displayed range, including when a filter hides intervening names.
+function selectSshRange(selection, keys, key, anchor, event) {
+  const start = keys.indexOf(anchor), end = keys.indexOf(key);
+  if (end < 0) return anchor;
+  if (event.shiftKey && start >= 0) {
+    if (!event.ctrlKey) selection.clear();
+    for (const value of keys.slice(Math.min(start,end), Math.max(start,end)+1)) selection.add(value);
+    return anchor;
+  }
+  if (!event.ctrlKey) selection.clear();
+  if (event.ctrlKey && selection.has(key)) selection.delete(key); else selection.add(key);
+  return key;
+}
 function mountSshDirectoryTools(tb) {
   const panel = tb.sshFilesPanel, view = tb.sshFiles;
   const filter = document.createElement('input'); filter.type = 'search'; filter.dataset.remoteFilter = '';
   filter.placeholder = ms('筛选当前目录', 'Filter this folder'); filter.setAttribute('aria-label', filter.placeholder);
   panel.querySelector('.ssh-files-heading strong').after(filter);
-  filter.oninput = () => { view.filter = filter.value; view.selection.clear(); view.selected = -1; renderSshFiles(tb, view.lastStatus || '', view.lastError || false); };
+  filter.oninput = () => { view.filter = filter.value; view.selection.clear(); view.selected = view.anchor = -1; renderSshFiles(tb, view.lastStatus || '', view.lastError || false); };
   const addNav = (attr, text, destination) => {
     const button = document.createElement('button'); button.type = 'button'; button.setAttribute(attr,''); button.textContent = text;
     button.onclick = () => loadSshFiles(tb, destination()); panel.querySelector('[data-path]').before(button);

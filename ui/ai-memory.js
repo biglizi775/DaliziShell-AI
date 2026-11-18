@@ -19,7 +19,7 @@ function estimateAiTokens(text) {
 function aiMemoryMessage(message) {
   if (message.omitHistory || !message.text) return null;
   let facts = '';
-  if (message.plan) facts += '[Plan status: ' + message.planState + '; a proposed plan is not proof of execution.]\n' + aiChars(JSON.stringify(message.plan.actions), 1500) + '\n';
+  if (message.plan) facts += '[Plan status: ' + message.planState + '; a proposed plan is not proof of execution.]\n' + aiChars(JSON.stringify(message.plan.actions, (field, value) => field === 'content' || field === 'original' ? undefined : value), 1500) + '\n';
   if (message.results) facts += '[Local execution results]\n' + aiChars(JSON.stringify(message.results), 1500) + '\n';
   const content = facts + aiChars(message.text, Math.max(0, 8000 - [...facts].length));
   return { role: message.role === 'assistant' ? 'assistant' : 'user', content: aiChars(content, 8000) };
@@ -52,12 +52,12 @@ function aiCompactionCandidates(session, messages = session.messages, force = fa
   }
   return available.slice(0, Math.max(0, available.length - keep));
 }
-async function prepareAiMemory(session, requestId, messages = session.messages, force = false) {
+async function prepareAiMemory(session, requestId, messages = session.messages, force = false, route = {...aiSettings, apiKey:aiSessionKey}) {
   if (!force && !aiMemoryPreferences().autoCompact) return;
   let candidates = aiCompactionCandidates(session, messages, force);
   const current = () => session.requestId === requestId && aiSessions.get(session.key) === session && !session.closed;
   if (!candidates.length || !current()) return;
-  session.compacting = true; session.memoryWarning = ''; renderAiContextMeter();
+  session.compacting = requestId; session.memoryWarning = ''; renderAiContextMeter();
   try {
     while (candidates.length && current()) {
       const batch = []; let characters = 0;
@@ -67,7 +67,7 @@ async function prepareAiMemory(session, requestId, messages = session.messages, 
         batch.push(message); characters += count;
       }
       if (!batch.length) break;
-      const result = await invoke('ai_compact', { request: { requestId, ...aiSettings, apiKey: aiSessionKey, summary: session.conversationSummary || '', history: batch.map(aiMemoryMessage) } });
+      const result = await invoke('ai_compact', { request: { requestId, ...route, summary: session.conversationSummary || '', history: batch.map(aiMemoryMessage) } });
       if (!current()) return;
       if (!result || typeof result.summary !== 'string' || !result.summary.trim() || [...result.summary].length > 6000 || [...result.summary].length >= characters + [...(session.conversationSummary || '')].length) throw new Error(memoryText('摘要无效，原对话已保留', 'Invalid summary; original conversation retained'));
       session.conversationSummary = result.summary;
@@ -78,17 +78,27 @@ async function prepareAiMemory(session, requestId, messages = session.messages, 
       session.revision++;
       candidates = candidates.slice(batch.length);
     }
-  } finally { session.compacting = false; if (typeof scheduleAiArchive === 'function') scheduleAiArchive(session); if (aiCurrentSession() === session) renderAiContextMeter(); }
+  } finally {
+    if (session.compacting === requestId) session.compacting = false;
+    if (typeof scheduleAiArchive === 'function') scheduleAiArchive(session);
+    if (aiCurrentSession() === session) renderAiContextMeter();
+  }
 }
 async function compactAiConversation() {
   const session = aiCurrentSession();
   if (!session || session.requestId || session.running) return;
   if (!aiSettings.endpoint || !aiSettings.model) { toggleAiSettings(true); return; }
   if (!aiCompactionCandidates(session, session.messages, true).length) { toast(memoryText('较早对话不足，近期消息会保留原文', 'Not enough older messages; recent messages stay verbatim')); return; }
-  const requestId = crypto.randomUUID(); session.requestId = requestId; updateAiComposer();
-  try { await prepareAiMemory(session, requestId, session.messages.slice(), true); }
+  const requestId = crypto.randomUUID(), model = aiPublicSettings(aiSettings);
+  session.requestId = requestId; session.requestModel = model;
+  renderAiConversation(); updateAiComposer();
+  try { await prepareAiMemory(session, requestId, session.messages.slice(), true, {...model, apiKey:aiSessionKey}); }
   catch (error) { if (session.requestId === requestId) { session.memoryWarning = String(error); toast(String(error), true); } }
-  finally { if (session.requestId === requestId) session.requestId = null; if (aiCurrentSession() === session) { renderAiConversation(); updateAiComposer(); } }
+  finally {
+    if (session.requestId === requestId) session.requestId = null;
+    if (session.requestModel === model) session.requestModel = null;
+    if (aiCurrentSession() === session) { renderAiConversation(); updateAiComposer(); }
+  }
 }
 function renderAiContextMeter() {
   const meter = $('aiContextMeter'); if (!meter) return;

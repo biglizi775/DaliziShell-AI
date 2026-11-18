@@ -31,6 +31,24 @@ Object.assign(AGENT_PROFILE_TEXT.en, {
 });
 const agentProfileKey = (root) => (root || '').replace(/\//g, '\\').replace(/\\+$/, '').toLowerCase();
 Object.assign(AGENT_PROFILE_TEXT.zh, {
+  createSkillCopy:'创建自定义副本', editSkillCopy:'编辑副本', saveSeparateCopy:'另存为副本', copySource:'自定义副本',
+  copyName:'名称', copyDescription:'用途', copyBody:'技能说明', saveCopy:'保存', copyNamePattern:'{name}（我的版本）',
+  createCopyHint:'在保存前调整说明。新副本保存在「我的技能」里，默认停用。',
+  editCopyHint:'保存后，已启用此副本的对话会在下一轮使用新的说明。',
+  copyLimits:'请填写名称和技能说明。名称最多 100 个字符，用途最多 600 个字符，说明最多 64 KiB。',
+  copyCreated:'已保存到「我的技能」。需要使用时，请勾选「用于对话」。', copyFrom:'源自',
+  copyCapacity:'我的技能已达 32 项。移除一项后可以创建新副本。',
+});
+Object.assign(AGENT_PROFILE_TEXT.en, {
+  createSkillCopy:'Create editable copy', editSkillCopy:'Edit copy', saveSeparateCopy:'Save a separate copy', copySource:'Custom copy',
+  copyName:'Name', copyDescription:'Purpose', copyBody:'Skill instructions', saveCopy:'Save', copyNamePattern:'{name} (my version)',
+  createCopyHint:'Adjust the instructions before saving. New copies appear in My skills and start disabled.',
+  editCopyHint:'When this copy is enabled, the next message will use the saved instructions.',
+  copyLimits:'Enter a name and instructions. Use up to 100 characters for the name, 600 for the purpose and 64 KiB for the instructions.',
+  copyCreated:'Saved in My skills. Select Use in chat when you want to use it.', copyFrom:'Based on',
+  copyCapacity:'My skills has 32 entries. Remove one to create another copy.',
+});
+Object.assign(AGENT_PROFILE_TEXT.zh, {
   exportMemory: '导出记忆', importMemory: '导入记忆', portableMemory: '移动整个文件夹（包括 .dalizi）可携带记忆；也可导出 JSON，在另一目录核对后导入。导出只包含记忆文字，不含路径绑定、技能、密钥或完整对话。',
   importReview: '核对要导入的记忆', importReviewHint: '勾选要保存的条目。相同内容自动跳过；新记忆导入后默认停用，可回到记忆列表逐条启用。', importSelect: '选择全部新条目', importSelected: '导入所选', importInvalid: '不是支持的记忆备份，请使用此软件导出的 JSON 文件。', importLimit: '文件最多 1 MB、100 条记忆，每条最多 2000 字符。', importMemoryEmpty: '请选择至少一条新记忆。', importDone: '已导入 {n} 条记忆，默认停用。', importDuplicate: '已有相同内容', exportDone: '已生成记忆备份，请在下载窗口选择保存位置。',
 });
@@ -41,7 +59,7 @@ Object.assign(AGENT_PROFILE_TEXT.en, {
 Object.assign(AGENT_PROFILE_TEXT.zh, {
   skillHint: '选择内置技能，或导入自己的 SKILL.md。启用的说明随下一条消息发送给模型；内置与我的技能合计最多启用 4 个。',
   builtinSkills: '内置技能', userSkills: '我的技能', builtinSource: '内置', userSource: '我的导入', importOwnSkill: '导入我的技能',
-  builtinHint: '随应用提供，首次使用默认停用。可启停和查看说明，内容随应用更新。', userSkillHint: '你导入的本地说明副本；可移除，原始文件保留。',
+  builtinHint: '随应用提供，首次使用默认停用。可启停和查看说明，内容随应用更新。', userSkillHint: '导入的技能和可编辑副本共用 32 个名额。勾选「用于对话」后生效。',
   skillEnabledCount: '对话已启用 {n} / 4', skillCapabilityHint: '技能不增加执行工具，也不改变当前权限。建议类技能在只读模式下也可使用。',
   skillFileActions: '支持文件整理', skillAdvice: '分析与建议（未接入执行工具）', skillCurrentTools: '按当前对话工具与权限使用说明',
   skillFileActionsHint: '可提出已有文件操作工具支持的整理计划；执行仍遵循当前对话权限。',
@@ -51,7 +69,7 @@ Object.assign(AGENT_PROFILE_TEXT.zh, {
 Object.assign(AGENT_PROFILE_TEXT.en, {
   skillHint: 'Choose built-in skills or import your own SKILL.md. Enabled instructions are sent with your next message. Enable up to 4 across both groups.',
   builtinSkills: 'Built-in skills', userSkills: 'My skills', builtinSource: 'Built-in', userSource: 'Imported', importOwnSkill: 'Import my skill',
-  builtinHint: 'Included with the app and disabled by default on first use. Enable or read them here; app updates provide their content.', userSkillHint: 'Local copies of your imported instructions. Removing a skill keeps its original file.',
+  builtinHint: 'Included with the app and disabled by default on first use. Enable or read them here; app updates provide their content.', userSkillHint: 'Imported files and editable copies share 32 slots. Select Use in chat to enable a skill.',
   skillEnabledCount: '{n} / 4 enabled for chat', skillCapabilityHint: 'Skills add no execution tools and do not change permissions. Advisory skills also work in read-only mode.',
   skillFileActions: 'File organization supported', skillAdvice: 'Analysis and advice (execution tools not connected)', skillCurrentTools: 'Uses the current chat tools and permissions',
   skillFileActionsHint: 'Can propose organization plans supported by existing file tools. Execution follows the current chat permissions.',
@@ -120,9 +138,12 @@ async function getAgentRequestContext(root) {
   const selected = profile.skills.filter((skill) => skill.enabled);
   if (selected.length > 4) throw new Error(agentProfileText('skillLimit'));
   if (profile.memoryEnabled && profile.memoryError) throw new Error(String(profile.memoryError) + '\n' + agentProfileText('memoryErrorHint'));
-  return { skillIds: selected.map((skill) => skill.id), useMemory: !!profile.memoryEnabled, learnMemory: !!profile.learningEnabled };
+  const copies = selected.filter(skill => skill.copy);
+  return { skillIds: selected.map((skill) => skill.id), useMemory: !!profile.memoryEnabled, learnMemory: !!profile.learningEnabled,
+    ...(copies.length ? {copyRevisions:Object.fromEntries(copies.map(skill => [skill.id, skill.copy.revision]))} : {}) };
 }
 function renderAgentContext() {
+  if (typeof renderAgentRole === 'function') renderAgentRole();
   const target = $('aiAgentContext');
   if (!target) return;
   const entry = agentProfileCache.get(agentProfileKey(agentProfileRoot)), profile = entry?.value;
@@ -151,6 +172,7 @@ function initAgentProfile() {
     else if (action === 'refresh') refreshAgentManager();
     else if (action === 'browse') pickAgentSkill();
     else if (action === 'import') importAgentSkill();
+    else if (action === 'copy-skill' || action === 'edit-copy') openAgentSkillEditor(button.dataset.id);
     else if (action === 'view-skill') { agentExpandedSkill = agentExpandedSkill === button.dataset.id ? null : button.dataset.id; renderAgentManager(); }
     else if (action === 'remove-skill') removeAgentSkill(button.dataset.id);
     else if (action === 'add-memory') openAgentMemoryEditor(agentManagerRoot, '', null);
@@ -182,7 +204,7 @@ function initAgentProfile() {
       if (input.checked) agentLegacySelection.add(input.dataset.agentLegacy); else agentLegacySelection.delete(input.dataset.agentLegacy);
       updateAgentLegacyControls();
     } else if (input.id === 'agentUseMemories' || input.id === 'agentLearnMemories') {
-      mutateAgentProfile('agent_preferences_set', { memoryEnabled: input.id === 'agentUseMemories' ? input.checked : !!profile.memoryEnabled, learningEnabled: input.id === 'agentLearnMemories' ? input.checked : !!profile.learningEnabled }, 'updated');
+      mutateAgentProfile('agent_preferences_set', { [input.id === 'agentUseMemories' ? 'memoryEnabled' : 'learningEnabled']: input.checked }, 'updated');
     }
   });
 }
@@ -225,27 +247,33 @@ function renderAgentManager() {
   setAgentProfileStatus(agentProfileStatus, agentProfileError);
   setAgentProfileBusy(agentProfileBusy);
 }
-function renderAgentSkillCard(skill) {
+function renderAgentSkillCard(skill, full) {
   const builtin = agentSkillIsBuiltin(skill), display = agentSkillPresentation(skill);
   const fileActions = skill.availability === 'file-actions';
   const availability = fileActions ? 'file-actions' : 'advice';
   const capability = builtin ? `<span class="agent-skill-badge agent-skill-capability" data-agent-skill-availability="${availability}" title="${esc(agentProfileText(fileActions ? 'skillFileActionsHint' : 'skillAdviceHint'))}">${esc(agentProfileText(fileActions ? 'skillFileActions' : 'skillAdvice'))}</span>` : `<span class="agent-skill-badge agent-skill-scope">${esc(agentProfileText('skillCurrentTools'))}</span>`;
-  return `<article class="agent-skill-card" data-agent-skill-id="${esc(skill.id)}" data-agent-skill-source="${builtin ? 'builtin' : 'user'}"><div class="agent-profile-card-heading"><div><strong>${esc(display.name)}</strong><p>${esc(display.description)}</p></div><label class="agent-use-switch"><input type="checkbox" data-agent-skill="${esc(skill.id)}" aria-label="${esc(agentProfileText('enable') + ': ' + display.name)}"${skill.enabled ? ' checked' : ''}><span>${esc(agentProfileText('enable'))}</span></label></div><div class="agent-skill-badges"><span class="agent-skill-badge${builtin ? ' is-builtin' : ''}">${esc(agentProfileText(builtin ? 'builtinSource' : 'userSource'))}</span>${skill.version ? `<span class="agent-skill-badge agent-skill-version">v${esc(skill.version)}</span>` : ''}${capability}</div>${!builtin && skill.path ? `<code class="agent-profile-path" title="${esc(skill.path)}">${esc(skill.path)}</code>` : ''}<div class="agent-profile-card-actions"><button type="button" data-agent-action="view-skill" data-id="${esc(skill.id)}" aria-expanded="${agentExpandedSkill === skill.id}">${esc(agentProfileText(agentExpandedSkill === skill.id ? 'hide' : 'view'))}</button>${!builtin ? `<button type="button" data-agent-action="remove-skill" data-id="${esc(skill.id)}">${esc(agentProfileText('remove'))}</button>` : ''}</div>${agentExpandedSkill === skill.id ? `<pre class="agent-skill-source">${esc(skill.body || '')}</pre>` : ''}</article>`;
+  const source = skill.copy && currentAgentProfile(agentManagerRoot)?.skills.find(item => item.id === skill.copy.sourceId);
+  const originLabel = skill.copy ? `<small class="agent-profile-note">${esc(agentProfileText('copyFrom'))} ${esc(source ? agentSkillPresentation(source).name : skill.copy.sourceId)} · v${esc(skill.copy.version)}</small>` : '';
+  const atCapacity = builtin && full ? ` disabled data-agent-fixed-disabled="true" title="${esc(agentProfileText('copyCapacity'))}"` : '';
+  const copyAction = builtin || skill.copy ? `<button type="button" data-agent-action="${builtin ? 'copy-skill' : 'edit-copy'}" data-id="${esc(skill.id)}"${atCapacity}>${esc(agentProfileText(builtin ? 'createSkillCopy' : 'editSkillCopy'))}</button>` : '';
+  return `<article class="agent-skill-card" data-agent-skill-id="${esc(skill.id)}" data-agent-skill-source="${builtin ? 'builtin' : 'user'}"><div class="agent-profile-card-heading"><div><strong>${esc(display.name)}</strong><p>${esc(display.description)}</p></div><label class="agent-use-switch"><input type="checkbox" data-agent-skill="${esc(skill.id)}" aria-label="${esc(agentProfileText('enable') + ': ' + display.name)}"${skill.enabled ? ' checked' : ''}><span>${esc(agentProfileText('enable'))}</span></label></div><div class="agent-skill-badges"><span class="agent-skill-badge${builtin ? ' is-builtin' : ''}">${esc(agentProfileText(builtin ? 'builtinSource' : skill.copy ? 'copySource' : 'userSource'))}</span>${skill.version ? `<span class="agent-skill-badge agent-skill-version">v${esc(skill.version)}</span>` : ''}${capability}</div>${originLabel}${!builtin && !skill.copy && skill.path ? `<code class="agent-profile-path" title="${esc(skill.path)}">${esc(skill.path)}</code>` : ''}<div class="agent-profile-card-actions">${copyAction}<button type="button" data-agent-action="view-skill" data-id="${esc(skill.id)}" aria-expanded="${agentExpandedSkill === skill.id}">${esc(agentProfileText(agentExpandedSkill === skill.id ? 'hide' : 'view'))}</button>${!builtin ? `<button type="button" data-agent-action="remove-skill" data-id="${esc(skill.id)}">${esc(agentProfileText('remove'))}</button>` : ''}</div>${agentExpandedSkill === skill.id ? `<pre class="agent-skill-source">${esc(skill.body || '')}</pre>` : ''}</article>`;
 }
 function renderAgentSkills(profile) {
+  const full = profile.skills.filter(skill => !agentSkillIsBuiltin(skill)).length >= 32;
   const importPath = $('agentSkillPath')?.value || '';
   const enabled = profile.skills.filter((skill) => skill.enabled).length;
   const groups = ['builtin', 'user'].map((source) => {
     const builtin = source === 'builtin', skills = profile.skills.filter((skill) => agentSkillIsBuiltin(skill) === builtin);
     const empty = `<div class="agent-profile-empty"><strong>${esc(agentProfileText(builtin ? 'builtinEmpty' : 'skillEmpty'))}</strong>${builtin ? '' : `<p>${esc(agentProfileText('skillEmptyHint'))}</p>`}</div>`;
-    return `<section class="agent-skill-group" data-agent-skill-group="${source}" aria-labelledby="agentSkillGroup-${source}"><div class="agent-skill-group-heading"><h3 id="agentSkillGroup-${source}">${esc(agentProfileText(builtin ? 'builtinSkills' : 'userSkills'))}</h3><span>${skills.length}</span></div><p class="agent-profile-note">${esc(agentProfileText(builtin ? 'builtinHint' : 'userSkillHint'))}</p><div class="agent-profile-list">${skills.length ? skills.map(renderAgentSkillCard).join('') : empty}</div></section>`;
+    return `<section class="agent-skill-group" data-agent-skill-group="${source}" aria-labelledby="agentSkillGroup-${source}"><div class="agent-skill-group-heading"><h3 id="agentSkillGroup-${source}">${esc(agentProfileText(builtin ? 'builtinSkills' : 'userSkills'))}</h3><span>${skills.length}${builtin ? '' : ' / 32'}</span></div><p class="agent-profile-note">${esc(agentProfileText(builtin ? 'builtinHint' : 'userSkillHint'))}</p><div class="agent-profile-list">${skills.length ? skills.map(skill => renderAgentSkillCard(skill, full)).join('') : empty}</div></section>`;
   }).join('');
   return `<p class="agent-profile-description">${esc(agentProfileText('skillHint'))}</p><div class="agent-skill-summary"><strong id="agentSkillEnabledCount">${esc(agentProfileText('skillEnabledCount').replace('{n}', enabled))}</strong><p>${esc(agentProfileText('skillCapabilityHint'))}</p></div><section class="agent-skill-import" aria-labelledby="agentSkillImportTitle"><h3 id="agentSkillImportTitle">${esc(agentProfileText('importOwnSkill'))}</h3><div class="agent-import"><label class="agent-visually-hidden" for="agentSkillPath">${esc(agentProfileText('skillPath'))}</label><input id="agentSkillPath" autocomplete="off" spellcheck="false" placeholder="C:\\Skills\\organize\\SKILL.md" value="${esc(importPath)}"><button type="button" data-agent-action="browse" class="agent-profile-secondary">${esc(agentProfileText('choose'))}</button><button type="button" data-agent-action="import" class="agent-profile-primary">${esc(agentProfileText('import'))}</button></div><p class="agent-profile-note">${esc(agentProfileText('skillScope'))}</p></section>${groups}`;
 }
 async function removeAgentSkill(id) {
   const skill = currentAgentProfile(agentManagerRoot)?.skills.find((item) => item.id === id);
+  if (!skill) { await refreshAgentManager(); return false; }
   if (agentSkillIsBuiltin(skill)) { setAgentProfileStatus(agentProfileText('builtinRemoveDenied'), true); return false; }
-  return mutateAgentProfile('agent_skill_remove', { id }, 'removed');
+  return mutateAgentProfile('agent_skill_remove', { id, ...(skill.copy ? {expectedRevision:skill.copy.revision} : {}) }, 'removed');
 }
 function setAgentProfileBusy(busy) {
   agentProfileBusy = busy;
@@ -346,7 +374,7 @@ function parseAgentMemoryBackup(text) {
   try { value = JSON.parse(text); } catch { throw new Error(agentProfileText('importInvalid')); }
   // Automatic maintenance backups keep IDs and enable states for a full local
   // snapshot. The reviewed import deliberately imports only their contents.
-  if (value && value.version === 1 && !Object.hasOwn(value, 'format') && Array.isArray(value.memories) &&
+  if (value && value.version === 1 && !Object.prototype.hasOwnProperty.call(value, 'format') && Array.isArray(value.memories) &&
       Object.keys(value).every((key) => ['version', 'memories'].includes(key))) {
     if (value.memories.length > 100) throw new Error(agentProfileText('importLimit'));
     const ids = new Set();

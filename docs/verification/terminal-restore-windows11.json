@@ -1,0 +1,39 @@
+{
+  "date": "2026-11-17",
+  "host": "Windows 11 x64, build 26300",
+  "scope": "Isolated Tauri desktop fixture, disposable local folders and loopback SSH/model services",
+  "before": "Persisting four mixed tab types saved only file and web tabs. The active SSH tab and PowerShell starting folder disappeared.",
+  "observations": [
+    "Windows closed a real process containing file, PowerShell, browser and authenticated SSH tabs. Relaunch restored their order, selected the SSH tab and left the background browser unloaded.",
+    "PowerShell and SSH had no terminal instance or process ID on restoration. SSH server counters for TCP connections and authentication attempts did not change during restart, focus changes, opening and cancelling sign-in, or closed-tab recovery.",
+    "A wrong SSH password returned to the same sign-in form, with an empty secret field and the user's remember-secret choice intact. Entering the correct test password authenticated in the original slot without duplicating the saved profile.",
+    "A missing PowerShell starting directory produced a visible error. Restoring the directory and clicking Start again created a new shell in that directory, verified by writing a marker there. Closing and reopening this tab returned it to its slot without a process.",
+    "Connecting without saving the profile stored an anonymous SSH slot. Reopening it showed a blank host and an unchecked save-profile box.",
+    "Unit tests checked OpenSSH compatibility routing, manual restoration, duplicate sessions, invalid references, missing profiles, recent-tab ordering and exclusion of runtime and credential fields."
+  ],
+  "verification": {
+    "frontendPassed": 298,
+    "pythonPassed": 11,
+    "rustDesktop": { "passed": 151, "ignoredByDefault": 2, "explicitNativeWebQuotePassed": true },
+    "desktopFixtureSha256": "16dc3a32ec4515156019ddade4d813cbf484d490dba0316c0c7d66acebc1b09d",
+    "desktopSuite": "tools/verify_harness_desktop.ps1 including mixed terminal restore, local chat and archive flows, and Harness M1 through M4",
+    "modelFixture": "tools/ai_api_smoke.cjs --workbench, three API formats and workbench restart",
+    "sourceFilesVerifiedBeforeOfflineReleaseBuild": 547,
+    "packagedFileDigestsVerified": 748
+  },
+  "source": {
+    "archive": "dalizi-files-0.5.1-source-bbe3f45d111abe66.zip",
+    "sha256": "bbe3f45d111abe66d7d8004ee6ba4cb1eba1d67bc300022f93f9dfc74550d960"
+  },
+  "preview": {
+    "archive": "dalizi-files-0.5.1-windows-x64-preview-terminal-restore-f88673c6b202.zip",
+    "bytes": 54998256,
+    "sha256": "ce681fc0ce550e4e7a14ad2eb1ee21022db2218eda15a5712f70175161d1fcc5",
+    "exeSha256": "f88673c6b2022658efeb56b4f3e7225d6ac17689e534a014568f10f0105bfac5",
+    "componentSha256": "576a0c64da03d892ea8ac94b7bfeda905dacd2ed7fb5f8d310fe75c46e069dc2",
+    "entries": 749,
+    "candidate": null,
+    "baseline": "M5 RC7"
+  },
+  "remainingReleaseGates": ["clean Windows 10", "clean Windows 11", "authenticated cloud round-trip"]
+}

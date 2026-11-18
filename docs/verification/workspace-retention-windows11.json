@@ -1,0 +1,58 @@
+{
+  "date": "2026-11-17",
+  "scope": "Windows 11 development host, isolated desktop and generated folders; loopback model only.",
+  "before": "Navigation past the session-cache limit erased unsent drafts or discarded a saved but unconfirmed plan. Manual saving being disabled did not protect an unsaved transcript.",
+  "verification": {
+    "frontend": {
+      "passed": 283,
+      "failed": 0,
+      "checks": [
+        "Two tabs with the same path keep distinct unsent drafts after 40 folder visits; no writes to settings or IPC for the drafts.",
+        "28 unfinished drafts survive 50 empty folder visits. Clearing the drafts restores the usual cache bound.",
+        "An actionable plan, manually unsaved text and a read-only session survive pressure; saved idle conversations later become reclaimable.",
+        "A simulated suspended timer cannot permit a late confirmation. The callback for an old plan cannot expire a new plan."
+      ]
+    },
+    "rustDesktop": {
+      "passed": 151,
+      "failed": 0,
+      "ignoredByDefault": 2
+    },
+    "native": {
+      "identity": "com.dalizi.files.harness-m1-test",
+      "exeSha256": "9c7f494d971536f11903780d836328546ab395de1959980c81778251b95711a5",
+      "foldersVisited": 32,
+      "residentSessionsAfterVisits": 24,
+      "modelRequests": 1,
+      "returnedPlanIdMatched": true,
+      "hostPlanLifetimeMs": 900000,
+      "observations": [
+        "Two file tabs for A stayed distinct. An unsent draft in the first A tab and a separate B draft were recovered; the pending plan came back only in the second A tab.",
+        "The saved A chat archive was byte-identical across navigation. No chat archive existed in B or in the 32 idle folders.",
+        "The output file was absent on return. Manual confirmation wrote the expected text only in A without a second model request."
+      ],
+      "pinnedAutoNativeRegressionPassed": true
+    },
+    "build": "Verified 524 extracted source files against their SHA-256 inventory. Offline MSVC release build used a shared dependency/target cache. The exact resulting binary, all archived file hashes and the runtime manifest pin were verified."
+  },
+  "source": {
+    "archive": "dalizi-files-0.5.1-source-2d3dbc061ae11fb9.zip",
+    "sha256": "2d3dbc061ae11fb9ef762d1e93410257777184d00e06781e35e9587875e362fd",
+    "files": 524,
+    "bytes": 3936824
+  },
+  "preview": {
+    "archive": "dalizi-files-0.5.1-windows-x64-preview-workspace-retention-13ff17c27c25.zip",
+    "sha256": "e97e22b90871310134e625bb0f2ebe1556dc46746f0100de04f07da6caea2c28",
+    "bytes": 54872579,
+    "exeSha256": "13ff17c27c25620d90af797cb1c2c41625d7b437062cbd380f2971b785840c95",
+    "exeBytes": 26178048,
+    "entries": 749,
+    "candidate": null
+  },
+  "limits": [
+    "Drafts remain in memory, not on disk. Deliberate close of a following tab or application restart is outside the retention guarantee.",
+    "The expiry test used a controlled clock; native checks observed the actual host duration, not a 15-minute soak.",
+    "Frozen RC6 still requires clean Windows 10, clean Windows 11 and an authenticated provider turn."
+  ]
+}

@@ -1,0 +1,50 @@
+{
+  "date": "2026-11-17",
+  "scope": "Windows 11 x64, test-only native desktop identifier, disposable folders and loopback model providers.",
+  "feature": "A02: independent per-folder receipts for saving replies and undoing document edits",
+  "before": "A targeted test held the short creation lock while two saves submitted. Both commands returned Windows error 80 before either could attempt a file operation.",
+  "observations": [
+    "Actual GUI: cancelling the save editor created no receipt. Submitting an existing filename preserved the original and the editable draft. Submitting a different name added a separate successful receipt and the chat notice opened that record.",
+    "Actual GUI: the file menu undo rejected an externally edited document and recorded the conflict. After restoring the reviewed bytes, undo from the chat result restored the original content and recorded success. The four direct receipts were still present and identical after restarting the native application; opening the undo receipt did not call the model.",
+    "A Rust child process exited without unwinding after undo restored the file and before the result was flushed. Reading the directory left the restored bytes in place and reported an unconfirmed outcome.",
+    "The concurrency test now waits for a short-lived journal creation lock. Of two concurrent saves to the same filename one succeeded, the other recorded failure, and the winner bytes remained intact.",
+    "Tests verified legacy IPC string / null / rejection responses, v1 plan + v2 direct record parsing, explicit user authorization in auto mode, read-only rejection, invalid or reserved paths, blocked journal, unchanged external edits, and absence of document content from journal files."
+  ],
+  "tests": {
+    "rustHarnessClientPassed": 12,
+    "frontendPassed": 307,
+    "pythonPassed": 11,
+    "rustDesktopDefaultPassed": 168,
+    "rustDesktopDefaultIgnored": 2,
+    "explicitIgnoredTestsPassed": [
+      "native_web_quote",
+      "real_openssh_conpty_loopback_auth_info_resize_and_exit"
+    ],
+    "nativeDesktop": "tools/verify_harness_desktop.ps1, including --file-history and M1-M4",
+    "modelFormats": "tools/ai_api_smoke.cjs --workbench with loopback providers",
+    "fixtureSha256": "9253d5a851de6658e4f7b686050e0c835e9897b7705f5da73b794e67ef9ffea5"
+  },
+  "source": {
+    "archive": "dalizi-files-0.5.1-source-10d2a8b02f8ae3d2.zip",
+    "sha256": "10d2a8b02f8ae3d28fd70e250a4758b36c0f92b37643888577257105166d6747",
+    "filesVerifiedBeforeOfflineBuild": 567
+  },
+  "preview": {
+    "archive": "dalizi-files-0.5.1-windows-x64-preview-document-history-0806a0cc9d2e.zip",
+    "bytes": 55161483,
+    "sha256": "c588ad48a461c0157827828f0aa65eb0569781e5d44c136c2c74700362760dd7",
+    "exeSha256": "0806a0cc9d2ed1ff9264010682ad7a288dc68039c9702e6ef741381e3c19f7b1",
+    "componentSha256": "576a0c64da03d892ea8ac94b7bfeda905dacd2ed7fb5f8d310fe75c46e069dc2",
+    "entries": 749,
+    "perFileHashesVerified": 748,
+    "candidate": null
+  },
+  "remainingScope": [
+    "cross-tool history for Harness and SFTP; SFTP transfer queues are currently session-only"
+  ],
+  "remainingReleaseGates": [
+    "clean Windows 10",
+    "clean Windows 11",
+    "authenticated cloud turn"
+  ]
+}

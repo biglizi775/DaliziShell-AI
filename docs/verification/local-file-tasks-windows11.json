@@ -1,0 +1,55 @@
+{
+  "scope": "Local copy and move task queue in the Windows desktop workspace",
+  "machine": "Windows 11 x64 26H2, build 26300.9974",
+  "source": {
+    "archive": "dalizi-files-0.5.1-source-ab03bb9deb7fc92c.zip",
+    "sha256": "ab03bb9deb7fc92ca2dd59628db2647f0cc406a5dd92aed5f0d1f9127086d6a2",
+    "filesVerifiedBeforeBuild": 586
+  },
+  "preview": {
+    "archive": "dalizi-files-0.5.1-windows-x64-preview-local-file-tasks-3cea9ad7a6e4.zip",
+    "sha256": "2476ca2770d8b85634feb2e30ad9fa412e4a5f08fdbec33d6316647c7cbe6c7d",
+    "exeSha256": "3cea9ad7a6e4ab04ff4215b7af7353592e8ab32ecaca97f1b27416de45d41427",
+    "componentSha256": "576a0c64da03d892ea8ac94b7bfeda905dacd2ed7fb5f8d310fe75c46e069dc2",
+    "perFileHashesVerified": 748,
+    "bytes": 55304189
+  },
+  "tests": {
+    "javascript": 309,
+    "python": 11,
+    "rustMain": 173,
+    "rustAuxiliary": 23,
+    "rustHarnessClient": 12,
+    "rustMainIgnored": 2,
+    "webviewDesktop": "tools/search_drop_smoke.cjs (isolated debug identifier)",
+    "browser": [
+      "tools/ui_smoke.cjs",
+      "tools/ui_smoke.cjs --panes",
+      "tools/ui_smoke.cjs --transfers"
+    ]
+  },
+  "results": [
+    "Actual Windows Shell receipts captured the renamed destination for a colliding file and a moved directory. Recursive copy and move retained nested contents.",
+    "After the first top-level copy was dispatched, the following two items stopped. Selecting one item per retry created two new reviewed batches. Every destination file existed exactly once and the original batch had no retryable items left.",
+    "External-drop event payloads were simulated in WebView2. The Windows Shell performed the copy, move and collision handling. Source/destination bytes and paths were checked on disk.",
+    "Dual-pane copy and move refreshed the relevant folders. Cutting and pasting moved the real file and cleared its original clipboard selection.",
+    "Deferred IPC tests covered an ambiguous in-flight item, stopping undispatched tasks, retry without replaying successful items, partial cut clipboard cleanup, preservation of a replacement clipboard, and serial dispatch with frozen destinations."
+  ],
+  "fixture": {
+    "path": "src-tauri/target/search-drop-smoke-foWshQ",
+    "exeSha256": "4053883eaed2ac7037b5c4d39b4a12c2ef6539d28c8524d52fe6a270b70412b1",
+    "screenshot": "native-local-tasks.png",
+    "screenshotSha256": "81c3bafe18f7dcbfc1c3daa8adb9729f5f3e7401aa5302dd865ace08b1496adc",
+    "collisionNewName": "同名样本 - 副本.txt",
+    "verifiedFiles": {
+      "batch-1.txt": "d496dd74ea684c42ee895cdf1b2e7b22bb478b12caaf11619a0c295f2678d354",
+      "batch-2.txt": "3d12a40128f96be50f7b152db282836bf967c9ff42e210697a938bd4397dceae",
+      "batch-3.txt": "49e1a48fb3e527af9d73f2ec2dd0616164d6f54220bf754509d2bfa567ec72fc"
+    }
+  },
+  "limits": [
+    "Local transfer history covers the current process session and keeps the latest 40 finished batches.",
+    "The task center stops undispatched items. Cancellation inside the currently executing item uses the Windows Shell progress window. Its physical cancel button and a physical Explorer drag were not manually exercised in this run.",
+    "Compression and deletion retain separate workflows. Clean Windows 10 and Windows 11 installation acceptance remains separate from this development-machine preview."
+  ]
+}

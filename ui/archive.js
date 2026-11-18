@@ -80,7 +80,7 @@ function openArchiveDialog() {
     if (job.running) job.timer = setTimeout(poll, 300);
   };
   $('archiveForm').addEventListener('submit', async (event) => {
-    event.preventDefault(); if (job.running || fileOpBusy || job.output) return;
+    event.preventDefault(); if (job.running || fileOpBusy || localPlanning || job.output) return;
     let request;
     try { request = archiveRequest({ name: $('archiveName').value, directory: $('archiveDirectory').value, format: $('archiveFormat').value, level: $('archiveLevel').value, encrypt: $('archiveEncrypt').checked, password: $('archivePassword').value, confirm: $('archiveConfirm').value, encryptNames: $('archiveEncryptNames').checked }, sources); }
     catch (error) { $('archiveStatus').textContent = error.message; return; }

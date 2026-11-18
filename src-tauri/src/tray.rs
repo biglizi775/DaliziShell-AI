@@ -11,7 +11,7 @@ const HIDE_ID: &str = "dalizi-tray-hide";
 const EXIT_ID: &str = "dalizi-tray-exit";
 
 pub fn show_window(app: &AppHandle) -> tauri::Result<()> {
-    if let Some(window) = app.get_webview_window("main") {
+    if let Some(window) = app.get_window("main") {
         // Unminimize first so the subsequent resize event does not hide it
         // again. Windows also restores the pre-minimize maximized state.
         window.unminimize()?;
@@ -24,11 +24,22 @@ pub fn show_window(app: &AppHandle) -> tauri::Result<()> {
 pub fn hide_window(app: &AppHandle) -> tauri::Result<()> {
     // Do not hide if there is no recovery entry in the notification area.
     if app.tray_by_id(TRAY_ID).is_some() {
-        if let Some(window) = app.get_webview_window("main") {
+        if let Some(window) = app.get_window("main") {
             window.hide()?;
         }
     }
     Ok(())
+}
+
+pub fn request_exit(app: &AppHandle) -> tauri::Result<()> {
+    if let Some(window) = app.get_window("main") {
+        // The main webview may need to show a write conflict before it can close.
+        show_window(app)?;
+        window.close()
+    } else {
+        app.exit(0);
+        Ok(())
+    }
 }
 
 pub fn install(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
@@ -49,12 +60,7 @@ pub fn install(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
             let result = match event.id().as_ref() {
                 SHOW_ID => show_window(app),
                 HIDE_ID => hide_window(app),
-                EXIT_ID => {
-                    // Go through Tauri's RunEvent::Exit cleanup (terminals,
-                    // browser sessions and index cache), never process::exit.
-                    app.exit(0);
-                    Ok(())
-                }
+                EXIT_ID => request_exit(app),
                 _ => Ok(()),
             };
             if let Err(error) = result {
@@ -79,11 +85,11 @@ pub fn install(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
 
     // Register only after successful icon creation. The AppHandle retains the
     // icon resource for the lifetime of the application.
-    if let Some(window) = app.get_webview_window("main") {
+    if let Some(window) = app.get_window("main") {
         let handle = app.clone();
         window.on_window_event(move |event| {
             if matches!(event, WindowEvent::Resized(_)) {
-                if let Some(window) = handle.get_webview_window("main") {
+                if let Some(window) = handle.get_window("main") {
                     if window.is_minimized().unwrap_or(false) {
                         if let Err(error) = hide_window(&handle) {
                             eprintln!("Cannot minimize to system tray: {error}");

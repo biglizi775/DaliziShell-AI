@@ -25,6 +25,26 @@ function harness(initial = {}) {
   return { state, storage, calls, events, run: (s) => vm.runInContext(s, context), context };
 }
 const saved = { version: 1, updatedAt: 100, active: 1, tabs: [{ kind: 'files', path: 'D:\\项目 A' }, { kind: 'files', path: 'C:\\Work' }, { kind: 'browser', url: 'https://example.org/docs', title: 'Docs' }] };
+test('mixed sessions keep terminal slots, initial directories and saved profile references only', async () => {
+  const h = harness();
+  h.state.tabs.push({ kind: 'term', connection: 'local', cwd: 'C:\\Work', input: 'previous command' },
+    { kind: 'browser', url: 'https://example.org/', title: 'Docs' },
+    { kind: 'term', connection: 'ssh', sshProfileId: 'profile-1', sshAuth: { secret: 'password' }, termId: 12 },
+    { kind: 'term', connection: 'ssh', sshConfig: { host: 'private.test', identityFile: 'private-key' } });
+  h.state.tab = 3;
+  h.run('workspaceSessionReady=true; persistWorkspaceSession()');
+  const snapshot = h.storage.get('workspaceSession');
+  assert.deepEqual(snapshot.tabs, [{ kind: 'files', path: null }, { kind: 'terminal', cwd: 'C:\\Work' },
+    { kind: 'browser', url: 'https://example.org/', title: 'Docs' }, { kind: 'ssh', profileId: 'profile-1' }, { kind: 'ssh', profileId: null }]);
+  assert.equal(snapshot.active, 3);
+  h.context.readSshProfiles = () => [];
+  h.context.snapshot = snapshot;
+  await h.run('loadWorkspaceTabs(snapshot)');
+  assert.equal(h.run('curTab().pendingTerminal'), true);
+  assert.equal(h.run('curTab().connection'), 'ssh');
+  assert.deepEqual(h.calls, ['render']);
+  assert.equal(h.state.tabs[1].termId, null);
+});
 test('favorites validate destinations, deduplicate case-insensitive folders and preserve names', () => {
   const h = harness();
   for (const value of ['javascript:alert(1)', 'file:///C:/secret', 'https://name:password@example.com/', 'relative/path', '\\\\?\\C:\\x', 'C:\\x:stream', 'C:\\bad\0name']) {
@@ -62,6 +82,26 @@ test('manual restoration remains available when automatic restoration is off and
   assert.equal(h.state.tabs.length, 1);
   await h.run('restorePreviousWorkspace()'); assert.equal(h.state.tabs.length, 3);
   await h.run('restorePreviousWorkspace()'); assert.equal(h.state.tabs.length, 3);
+});
+test('manual mixed restore matches named sessions only, keeps duplicates and strips unexpected fields', async () => {
+  const existing = { kind: 'term', connection: 'ssh', sshProfileId: 'saved-1', termId: 27 };
+  const h = harness();
+  h.context.readSshProfiles = () => [];
+  h.state.tabs = [existing, { kind: 'term', connection: 'ssh', termId: 28 }];
+  h.context.raw = { version: 1, active: 4, tabs: [
+    { kind: 'terminal', cwd: 'relative', command: 'discard' }, { kind: 'ssh', profileId: 'saved-1' },
+    { kind: 'ssh', profileId: 'saved-1', auth: 'discard' }, { kind: 'ssh', profileId: 'unsafe /', host: 'discard' },
+    { kind: 'terminal', cwd: null, input: 'discard' }] };
+  const clean = plain(h.run('normalizeWorkspaceSession(raw)'));
+  assert.equal(clean.active, 3);
+  assert.deepEqual(clean.tabs, [{ kind: 'ssh', profileId: 'saved-1' }, { kind: 'ssh', profileId: 'saved-1' },
+    { kind: 'ssh', profileId: null }, { kind: 'terminal', cwd: null }]);
+  await h.run('loadWorkspaceTabs(normalizeWorkspaceSession(raw), true)');
+  assert.equal(h.state.tabs.length, 5);
+  assert.equal(h.state.tabs[0], existing); assert.equal(existing.termId, 27);
+  assert.equal(h.state.tabs[2].sshConfig.label, '');
+  assert.equal(h.state.tab, 4); assert.equal(h.state.tabs[4].termId, null);
+  assert.deepEqual(h.calls, ['render']);
 });
 test('manual restoration reuses an existing folder without losing intentional duplicate tabs', async () => {
   const h = harness({ workspaceSession: { ...saved, tabs: [...saved.tabs, saved.tabs[1]], active: 3 }, workspacePreferences: { restoreOnStartup: false }, lastPath: 'C:\\Work' });

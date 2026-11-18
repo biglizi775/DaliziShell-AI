@@ -19,8 +19,8 @@
         "center": true,
         "resizable": true,
         "dragDropEnabled": true,
-        "theme": "dark",
-        "backgroundColor": "#f6f7fb"
+        "theme": "light",
+        "backgroundColor": "#f3f0e8"
       }
     ],
     "security": {

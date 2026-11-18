@@ -1,12 +1,12 @@
 //! Preparing a batch only validates and describes files; it never transfers them.
 use super::{leaf, remote_path};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::{
     collections::HashSet,
     path::{Path, PathBuf},
 };
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BatchFile {
     pub(super) name: String,
@@ -127,10 +127,15 @@ pub async fn ssh_pick_upload_files() -> Result<Vec<String>, String> {
     .map_err(|e| e.to_string())?
 }
 #[tauri::command]
-pub async fn ssh_pick_download_directory() -> Result<Option<String>, String> {
-    tauri::async_runtime::spawn_blocking(|| {
-        Ok(rfd::FileDialog::new()
-            .set_title("选择批量下载保存目录 / Download folder")
+pub async fn ssh_pick_download_directory(directory: Option<String>) -> Result<Option<String>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut dialog = rfd::FileDialog::new().set_title("选择本地目录 / Choose local folder");
+        if let Some(path) = directory.map(PathBuf::from) {
+            if crate::preview::ordinary_path(&path) && path.is_dir() {
+                dialog = dialog.set_directory(path);
+            }
+        }
+        Ok(dialog
             .pick_folder()
             .map(|p| p.to_string_lossy().into()))
     })

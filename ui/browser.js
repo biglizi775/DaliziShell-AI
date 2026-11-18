@@ -35,11 +35,12 @@ function createBrowserTabState(url, title = '') {
 
 function renderBrowserSessionState(tb) {
   if (!tb || curTab() !== tb) return;
-  els.browserHost.innerHTML = tb.browserReady ? '' : `<div class="browser-session-state preview-empty" role="status"><strong>${browserText(tb.error ? '网页未能打开' : '正在打开网页…', tb.error ? 'Could not open this page' : 'Opening page…')}</strong><small>${esc(tb.error || tb.url || '')}</small>${tb.error ? `<button type="button" data-browser-retry>${browserText('重试', 'Retry')}</button>` : ''}</div>`;
+  const retry = tb.error && !tb.popupFailed ? `<button type="button" data-browser-retry>${browserText('重试', 'Retry')}</button>` : '';
+  els.browserHost.innerHTML = tb.browserReady ? '' : `<div class="browser-session-state preview-empty" role="status"><strong>${browserText(tb.error ? '网页未能打开' : '正在打开网页…', tb.error ? 'Could not open this page' : 'Opening page…')}</strong><small>${esc(tb.error || tb.url || '')}</small>${retry}</div>`;
 }
 
 function rememberUrl(url, title = '') {
-  if (!browserSettings().recordHistory) return;
+  if (!browserSettings().recordHistory || browserAuthorizationUrl(url)) return;
   if (!url || !/^https?:\/\//i.test(url)) return;
   const history = store.get('urlHistory', []);
   const next = history.filter((item) => item.url !== url);
@@ -61,12 +62,16 @@ function updateBrowserUi(tb) {
 function onBrowserPage(ev) {
   const payload = ev.payload || {};
   const tb = browserTabFor(payload.key);
-  if (!tb) return;
   if (payload.phase === 'new-window') {
-    if (browserSettings().allowNewWindows) newBrowserTab(payload.url);
-    else toast(browserText('已阻止网页打开新标签，可在浏览器设置中允许。', 'New tab blocked. Allow it in Browser settings.'));
+    if (tb && browserSettings().allowNewWindows) {
+      void newBrowserTab(payload.url, { popupKey: payload.popupKey, openerKey: tb.key });
+    } else {
+      if (payload.popupKey) void invoke('browser_popup_dismiss', { key: payload.popupKey }).catch(() => {});
+      if (tb) toast(browserText('已阻止网页打开新标签，可在浏览器设置中允许。', 'New tab blocked. Allow it in Browser settings.'));
+    }
     return;
   }
+  if (!tb) return;
   if (tb.pendingNavigation) {
     if (payload.url !== tb.pendingNavigation) {
       // After the requested navigation starts, another navigating event may
@@ -101,7 +106,15 @@ function onBrowserPage(ev) {
 }
 
 browserEventsReady = Promise.all([
-  listen('browser-page', onBrowserPage),
+  listen('browser-page', onBrowserPage, { target: 'main' }),
+  listen('browser-popup-close', ({ payload: key }) => {
+    const tab = browserTabFor(key);
+    if (!tab?.openerKey) return;
+    const opener = browserTabFor(tab.openerKey);
+    if (opener && curTab() === tab) switchTab(state.tabs.indexOf(opener));
+    if (state.tabs.length === 1) newTab(null);
+    closeTab(state.tabs.indexOf(tab));
+  }, { target: 'main' }),
   listen('browser-settings-error', (event) => toast(String(event.payload), true)),
 ]).catch(() => null);
 
@@ -165,7 +178,14 @@ function ensureBrowserTab(tb, retry = false) {
       }
       await syncBrowserBounds();
     } catch (error) {
-      if (!tb.disposed) { tb.error = String(error); toast(tb.error, true); }
+      if (tb.key.startsWith('popup-')) {
+        await invoke('browser_popup_dismiss', { key: tb.key }).catch(() => {});
+        tb.popupFailed = true;
+      }
+      if (!tb.disposed) {
+        tb.error = tb.popupFailed ? browserText('请返回原网页，重新打开弹窗。', 'Return to the original page and open the popup again.') + ' ' + String(error) : String(error);
+        toast(tb.error, true);
+      }
     } finally {
       tb.browserStarting = false; tb.browserPromise = null;
       if (!tb.disposed) updateBrowserUi(tb);
@@ -176,10 +196,12 @@ function ensureBrowserTab(tb, retry = false) {
   return tb.browserPromise;
 }
 
-async function newBrowserTab(url = browserNewTabUrl()) {
+async function newBrowserTab(url = browserNewTabUrl(), { popupKey, openerKey, windowsLink } = {}) {
   let resolved;
-  try { resolved = cleanBrowserUrl(url); } catch (error) { toast(String(error), true); return null; }
+  try { resolved = popupKey || windowsLink ? url : cleanBrowserUrl(url); } catch (error) { toast(String(error), true); return null; }
   const tb = createBrowserTabState(resolved);
+  if (popupKey) tb.key = popupKey;
+  if (openerKey) tb.openerKey = openerKey;
   state.navToken++;
   state.tabs.push(tb); state.tab = state.tabs.length - 1;
   if (typeof persistBrowserSession === 'function') persistBrowserSession();
@@ -190,6 +212,7 @@ async function newBrowserTab(url = browserNewTabUrl()) {
 function closeBrowserTab(tb) {
   if (!tb || !isBrowserTab(tb)) return;
   tb.disposed = true;
+  if (tb.openerKey && !tb.browserReady) void invoke('browser_popup_dismiss', { key: tb.key }).catch(() => {});
   browserAppliedBounds.delete(tb.key);
   if (tb.browserReady) invoke('browser_close', { key: tb.key }).catch(() => {});
   tb.browserReady = false;
@@ -199,6 +222,7 @@ function closeBrowserTab(tb) {
 function browserAction(action) {
   const tb = curTab();
   if (!isBrowserTab(tb)) return;
+  if (tb.popupFailed && action === 'reload') { toast(tb.error, true); return; }
   if (!tb.browserReady) { if (action === 'reload') return ensureBrowserTab(tb, true); return; }
   if (action === 'reload' && tb.pendingNavigation) return navigateBrowserTab(tb, tb.pendingNavigation, tb.navigationRevision);
   if (action === 'back' || action === 'forward') {
@@ -224,6 +248,9 @@ function browserNavigate(value) {
   if (!isBrowserTab(tb)) return;
   let url;
   try { url = cleanBrowserUrl(value); } catch (error) { toast(String(error), true); return; }
+  if (tb.popupFailed) {
+    tb.key = crypto.randomUUID().replace(/-/g, ''); delete tb.openerKey; delete tb.popupFailed;
+  }
   tb.navigationRevision = (tb.navigationRevision || 0) + 1;
   tb.pendingNavigation = url; tb.pendingNavigationStarted = false; tb.navigationError = null;
   tb.url = url; tb.title = '';
@@ -252,6 +279,21 @@ function showBrowserHistory() {
   const urls = store.get('urlHistory', []).slice(0, 50);
   dialog.innerHTML = `<header><div><span class="browser-history-eyebrow">DALIZI / HISTORY</span><h2>访问历史</h2></div><button type="button" data-history-close>×</button></header><div class="browser-history-body"><section><h3>文件夹路径</h3>${folders.length ? folders.map((item) => `<button class="browser-history-item" data-history-folder="${esc(item.path)}"><strong>${esc(basename(item.path))}</strong><small>${esc(item.path)}</small></button>`).join('') : '<p class="empty-note">暂无文件夹访问记录</p>'}</section><section><h3>网页地址</h3>${urls.length ? urls.map((item) => `<button class="browser-history-item" data-history-url="${esc(item.url)}"><strong>${esc(item.title || item.url)}</strong><small>${esc(item.url)}</small></button>`).join('') : '<p class="empty-note">暂无网页访问记录</p>'}</section></div>`;
   dialog.showModal();
+}
+
+async function startWindowsBrowserLinks() {
+  // Subscribe before draining so activations during startup or session restore
+  // arrive exactly once, including when the workbench was hidden in the tray.
+  let delivery = Promise.resolve();
+  const drain = () => {
+    delivery = delivery.then(async () => {
+      const urls = await invoke('browser_take_links');
+      for (const url of urls || []) await newBrowserTab(url, { windowsLink: true });
+    }).catch((error) => toast(String(error), true));
+    return delivery;
+  };
+  await listen('browser-links-ready', drain, { target: 'main' });
+  return drain();
 }
 
 function configureBrowserExtension() { openBrowserExtensions(); }

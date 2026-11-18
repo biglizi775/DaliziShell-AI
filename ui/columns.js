@@ -86,9 +86,10 @@ function columnValue(entry, key) {
 function renderColumnCells(entry) {
   return visibleColumns().map((key) => {
     const value = columnValue(entry, key);
+    const title = key === 'size' && entry.isDir ? folderSizeVerification(entry) : value;
     return key === 'name'
       ? `<div class="c cname">${fileIcon(entry)}<span class="nm" title="${esc(entry.name)}">${esc(entry.name)}</span></div>`
-      : `<div class="c c${key}" title="${esc(value)}">${esc(value)}</div>`;
+      : `<div class="c c${key}" title="${esc(title)}">${esc(value)}</div>`;
   }).join('');
 }
 
@@ -228,20 +229,44 @@ function propertySizeValue(entry) {
   const bytes = entry.isDir ? entry.dirSize : entry.size;
   return columnValue(entry, 'size') + (Number.isFinite(bytes) ? ` (${bytes.toLocaleString()} ${columnText('字节', 'bytes')})` : '');
 }
+function folderSizeVerification(entry) {
+  if (!canMeasureDirectory(entry)) return columnText('此位置不扫描文件夹大小', 'Folder sizes are not scanned here');
+  const manual = columnText('索引排除范围影响此目录，按 F5 核验完整大小', 'Index exclusions affect this folder. Press F5 to measure its full size');
+  if (entry.dirSizeManual && entry.dirSize == null && !entry.dirSizeUnavailable) return manual;
+  if (entry.dirSize == null) return entry.dirSizeUnavailable
+    ? columnText('无法完整读取文件夹', 'Could not read the entire folder')
+    : columnText('等待完成扫描', 'Awaiting a completed scan');
+  const info = entry.dirSizeInfo;
+  const labels = [];
+  if (entry.dirSizeManual) labels.push(manual);
+  if (info?.restored) labels.push(columnText('上次运行的缓存', 'Cached from a previous run'));
+  if (entry.dirSizeUnavailable || info?.basis === 'incomplete') labels.push(columnText('未能完整读取，保留上次数值', 'Incomplete scan, previous size retained'));
+  else if (info?.basis === 'aggregate') labels.push(columnText('按子目录缓存汇总', 'Total includes cached subfolder sizes'));
+  else if (info?.basis === 'measured' && !info.restored) labels.push(columnText('本次运行已完整核验', 'Fully verified this run'));
+  if (Number.isFinite(info?.verifiedAt)) {
+    const time = new Date(info.verifiedAt).toLocaleString(locale === 'zh' ? 'zh-CN' : 'en-US');
+    labels.push(columnText('上次完整核验 ', 'Last fully verified ') + time);
+  } else labels.push(columnText('尚无完整核验时间', 'No full verification time recorded'));
+  return labels.join(' · ');
+}
 function refreshEntryPropertySize() {
   const dialog = document.getElementById('entryProperties');
   if (!dialog?.open || !dialog.dataset.propertyPath) return;
   const entry = state.sizeEntries?.get(dialog.dataset.propertyPath);
   const cell = dialog.querySelector('[data-property-size]');
   if (entry && cell) cell.textContent = propertySizeValue(entry);
+  const verification = dialog.querySelector('[data-property-verification]');
+  if (entry && verification) verification.textContent = folderSizeVerification(entry);
 }
 function showEntryProperties(entry) {
+  const verification = entry.isDir ? `<div><dt>${columnText('大小核验', 'Size verification')}</dt><dd data-property-verification>${esc(folderSizeVerification(entry))}</dd></div>` : '';
   const rows = COLUMN_KEYS.map((key) => {
     const value = key === 'size' ? propertySizeValue(entry) : columnValue(entry, key);
-    return `<div><dt>${esc(columnLabel(key))}</dt><dd${key === 'size' ? ' data-property-size' : ''}>${esc(value)}</dd></div>`;
+    return `<div><dt>${esc(columnLabel(key))}</dt><dd${key === 'size' ? ' data-property-size' : ''}>${esc(value)}</dd></div>` + (key === 'size' ? verification : '');
   }).join('');
+  const refreshHint = entry.isDir && canMeasureDirectory(entry) ? columnText(' 回到列表后按 F5 可重新核验当前列表的文件夹。', ' Press F5 in the list to recheck its folders.') : '';
   const dialog = columnDialog('entryProperties', columnText('属性', 'Properties'),
-    `<div class="file-settings-body"><div class="file-property-identity">${fileIcon(entry, true)}<div><strong>${esc(entry.name)}</strong><span>${esc(typeLabel(entry))}</span></div></div><dl class="file-property-list">${rows}</dl><p class="file-settings-note">${columnText('访问日期由文件系统维护，可能延迟更新。文件夹大小使用后台缓存。', 'Access times are maintained by the file system and may update later. Folder sizes use the background cache.')}</p></div>`,
+    `<div class="file-settings-body"><div class="file-property-identity">${fileIcon(entry, true)}<div><strong>${esc(entry.name)}</strong><span>${esc(typeLabel(entry))}</span></div></div><dl class="file-property-list">${rows}</dl><p class="file-settings-note">${columnText('访问日期由文件系统维护，可能延迟更新。', 'Access times are maintained by the file system and may update later.')}${refreshHint}</p></div>`,
     `<button type="button" id="propertyColumns" class="file-settings-secondary">${columnText('选择显示列…', 'Choose columns…')}</button><span class="file-settings-spacer"></span><button type="button" data-close-dialog class="file-settings-primary">${columnText('完成', 'Done')}</button>`);
   if (dialog && entry.isDir) dialog.dataset.propertyPath = sizePathKey(join(state.path, entry.name));
   dialog?.querySelector('#propertyColumns').addEventListener('click', () => { dialog.close(); openColumnPicker(); });

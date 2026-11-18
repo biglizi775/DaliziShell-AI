@@ -189,7 +189,8 @@ test('quick actions distinguish SSH tabs from local PowerShell and activate the 
     document: { documentElement: { dataset: {} } }, IC: {}, SUN_ICON: '',
     toggleTheme() {}, paintCommandSelection() {}, openSshConnect: () => calls.push('connect'), switchTab: (i) => calls.push(i),
   });
-  vm.runInContext('let commandItems = [];\n' + section(workspace, 'function renderCommands()', 'function paintCommandSelection()'), context);
+  vm.runInContext('let commandItems = [];\n' + section(app, 'function fileListingReady()', 'function normalizeNavigationPath(') +
+    section(workspace, 'function renderCommands()', 'function paintCommandSelection()'), context);
   vm.runInContext('renderCommands()', context);
   const items = vm.runInContext('commandItems', context);
   const remote = items.find((item) => item.title === 'ops-box <prod>');

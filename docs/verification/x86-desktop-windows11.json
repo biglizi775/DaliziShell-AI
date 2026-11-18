@@ -1,0 +1,74 @@
+{
+  "scope": "Windows x86 desktop preview and WOW64 verification on the development machine",
+  "source": {
+    "archive": "dalizi-files-0.5.1-source-16b04631762b3a0c.zip",
+    "sha256": "16b04631762b3a0c1de5cb6c2701da738517962b9e98c27a374cc1f4a61c6d64",
+    "filesVerified": 624
+  },
+  "preview": {
+    "archive": "dalizi-files-0.5.1-windows-x86-preview-x86-desktop-5b95103c0c3c.zip",
+    "sha256": "9432cee4732be062903e8e59383ddc3f944ec2e8503804748d6f330af3c5b0b3",
+    "exeSha256": "5b95103c0c3c7bfc79e76675b6e4a1d6c76ef328c782f4d3338ef6164e25d970",
+    "bytes": 11679069,
+    "perFileHashesVerified": 744,
+    "licenses": 389,
+    "buildInfoFromExtractedExe": {
+      "architecture": "x86",
+      "debug": false,
+      "identifier": "com.dalizi.files",
+      "version": "0.5.1"
+    },
+    "checkerFromExtractedZip": {
+      "windows": "Microsoft Windows 11 家庭版 中文版",
+      "productType": 1,
+      "installationType": "Client",
+      "architecture": "x64",
+      "build": 26300,
+      "webView2": "157.0.4341.46",
+      "packageArchitecture": "x86",
+      "result": "wow64-needs-test"
+    }
+  },
+  "ptyFix": {
+    "upstreamCrate": "portable-pty 0.9.0",
+    "crateSha256": "b4a596a2b3d2752d94f51fac2d4a96737b8705dddd311a32b9af47211f08671e",
+    "changedVendorFiles": [
+      "src/win/psuedocon.rs"
+    ],
+    "before": "i686 debug terminal process exited 0xc0000005",
+    "after": "Two simultaneous sessions passed startup, command output and resize in i686 debug, i686 release and x64 debug."
+  },
+  "testApplication": {
+    "metadata": {
+      "architecture": "x86",
+      "debug": false,
+      "identifier": "com.dalizi.files.index-scope-test-x86-release-20261117",
+      "version": "0.5.1"
+    },
+    "exeSha256": "e7b1b54d79da0ba1225895e3908a20a88e30d432e91d4717799b6ee420942aef",
+    "desktopFixture": "search-drop-smoke-JVpspZ",
+    "snapshotSha256": "c110d0ecb91415d6f6410e560b22718b2060c0b4e38594d9e5df74872c5d3d6a",
+    "sshFixture": "ssh-managed-smoke-LtuifD",
+    "chatFixture": "ai-api-smoke-yuMiau"
+  },
+  "tests": {
+    "javascript": 317,
+    "python": 14,
+    "rustMainPerArchitecture": 186,
+    "rustMainIgnoredPerArchitecture": 2,
+    "rustAdditionalTargetExecutionsPerArchitecture": 27,
+    "x86HarnessClient": 12
+  },
+  "results": [
+    "Release-mode x86 desktop loaded and closed a real loopback page using the native browser. The engine panel showed unsupported architecture, disabled component controls and rejected enabling the x64 component through IPC.",
+    "Native file navigation, dual-pane copy and move, search pagination, persistent exclusions, folder sizes and restart or interruption recovery passed.",
+    "Loopback SSH and SFTP passed authentication, PTY, file transfers, conflicts, cancellation and recovery with a generated test host.",
+    "The original chat engine streamed all three configured API wire formats against local fixtures and restored sessions after restart.",
+    "The ZIP verifier checked every payload digest, dependency notices and PE architecture. The extracted production EXE reported its effective application identifier without opening a user profile. Packaging rejected a debug host and a request to include the x64 component."
+  ],
+  "limits": [
+    "Physical host was Windows 11 x64. WOW64 executed the 32-bit desktop. No native 32-bit Windows installation, clean Windows 10 or 11 guest, older Windows, Arm or Server acceptance was performed.",
+    "The user-facing workflow tests used a release-mode binary with an isolated application identifier. The production ZIP executable was checked separately through its build-info entry point.",
+    "Node 24.22.1 supplies no Windows x86 release for the pinned Harness. The preview provides the original chat engine and does not ship the standalone Harness component. Model and SSH fixtures ran on loopback."
+  ]
+}

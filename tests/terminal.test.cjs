@@ -38,7 +38,8 @@ function harness(invoke) {
     document: { createElement: element },
     els: { termHost: { appendChild() {} } },
   });
-  vm.runInContext(section('function switchTab(', '// ---- embedded terminal') + section('async function newTermTab(', 'function renderTabs()') +
+  vm.runInContext(section('function tabLocalFolder(', 'function normalizeNavigationPath(') +
+    section('function switchTab(', '// ---- embedded terminal') + section('async function newTermTab(', 'function renderTabs()') +
     section('function onTermOutput(', 'const terminalEventsReady ='), context);
   return { state, context, calls, notices, copied, loadSsh: () => vm.runInContext(readFileSync(require('node:path').join(__dirname, '../ui/ssh.js'), 'utf8'), context), run: (s) => vm.runInContext(s, context) };
 }

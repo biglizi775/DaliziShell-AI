@@ -3,14 +3,16 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 function harness() {
-  const a = { path: 'C:\\A' }, b = { kind: 'terminal', termId: 42 }, c = { kind: 'browser', url: 'https://example.test/' };
+  const a = { path: 'C:\\A' }, b = { kind: 'term', connection: 'ssh', termId: 42, sshConfig: { host: 'private.test' } }, c = { kind: 'browser', url: 'https://example.test/' };
   const state = { tabs: [a, b, c], tab: 1 }, calls = [];
   const context = vm.createContext({ state, a, b, c, privacy: true, locale: 'zh', $: () => null, curTab: () => state.tabs[state.tab],
-    isTermTab: (t) => t?.kind === 'terminal', isBrowserTab: (t) => t?.kind === 'browser', browserSettings: () => ({ recordHistory: context.privacy }),
+    isTermTab: (t) => t?.kind === 'term', isBrowserTab: (t) => t?.kind === 'browser', browserSettings: () => ({ recordHistory: context.privacy }),
+    window: { addEventListener() {} }, crypto: { randomUUID: () => 'new-tab' }, switchTab(i) { state.tab = i; },
     placeFolder: (p) => /^[a-z]:\\/i.test(p) ? p : null, placeTarget: (url) => /^https?:/.test(url) ? { kind: 'browser', url } : null,
     renderTabs: () => calls.push('render'), newTab: (path) => calls.push({ path }), newBrowserTab: (url) => calls.push({ url }),
   });
-  vm.runInContext(fs.readFileSync(require('node:path').join(__dirname, '../ui/tab-management.js'), 'utf8'), context);
+  for (const name of ['places.js', 'tab-management.js']) vm.runInContext(fs.readFileSync(require('node:path').join(__dirname, '../ui', name), 'utf8'), context);
+  vm.runInContext('placeTarget = url => ({ kind: "browser", url }); placeFolder = path => path;', context);
   return { state, calls, a, b, c, run: (code) => vm.runInContext(code, context) };
 }
 test('reordering retains active session and tab identity without restarting processes', () => {
@@ -20,8 +22,13 @@ test('reordering retains active session and tab identity without restarting proc
   h.run('moveWorkbenchTab(b, 2)'); assert.equal(h.state.tabs[h.state.tab], h.b);
 });
 test('closed tab history is bounded and never stores terminal connections or disabled URL history', async () => {
-  const h = harness(); h.run('rememberClosedTab(a); rememberClosedTab(b); rememberClosedTab(c)'); assert.equal(h.run('recentlyClosedTabs.length'), 2);
+  const h = harness(); h.run('rememberClosedTab(a); rememberClosedTab(b); rememberClosedTab(c)'); assert.equal(h.run('recentlyClosedTabs.length'), 3);
+  assert.deepEqual(JSON.parse(h.run('JSON.stringify(recentlyClosedTabs[1])')), { kind: 'ssh', profileId: null, index: 1 });
   await h.run('reopenClosedTab()'); assert.deepEqual(h.calls.at(-1), { url: h.c.url });
+  h.state.tabs.splice(1, 1); h.state.tab = 0;
+  await h.run('reopenClosedTab()');
+  assert.equal(h.state.tab, 1); assert.equal(h.state.tabs[1].pendingTerminal, true);
+  assert.equal(h.state.tabs[1].termId, null);
   h.run('rememberClosedTab(c); privacy = false; clearClosedBrowserTabs(); rememberClosedTab(c)');
   assert.equal(h.run('recentlyClosedTabs.length'), 1); await h.run('reopenClosedTab()'); assert.deepEqual(h.calls.at(-1), { path: h.a.path });
   h.run('for (let i = 0; i < 25; i++) rememberClosedTab({ path: "C:\\\\folder" + i })'); assert.equal(h.run('recentlyClosedTabs.length'), 20);

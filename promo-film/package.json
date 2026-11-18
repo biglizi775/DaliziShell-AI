@@ -1,0 +1,1 @@
+{"name":"dalizi-motion-film","private":true,"type":"module","scripts":{"start":"node tools/serve.mjs","render":"node tools/render.mjs","verify":"node tools/verify.mjs"}}

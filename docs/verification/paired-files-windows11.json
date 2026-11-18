@@ -1,0 +1,64 @@
+{
+  "date": "2026-11-17",
+  "scope": "Windows 11 x64. Disposable local directories, generated loopback SFTP service, native MSVC/Tauri/WebView2 desktop; browser UI mocks used for delayed IPC and host/tab-switch races.",
+  "feature": "A09: an authenticated SSH tab can show local and remote folders side by side, preview both, and enqueue reviewed uploads and downloads.",
+  "verified": [
+    "Native transfer through the displayed controls uploaded a file and directory tree, preserved an empty directory and the exact UTF-8 content, and refreshed the remote list. Cancelling the download review created no file; confirmation downloaded into the displayed local destination and refreshed its listing.",
+    "Native local and remote same.txt previews displayed different original text, including literal HTML markup on the local side. A multibyte UTF-8 sequence cut at 64 KiB remained well-formed. Changing local directory left the remote preview open. Side-by-side geometry and both scroll regions passed at 960x560 and 1280x800.",
+    "Browser checks on an SFTP-only session covered 100-row pagination, link exclusion, Shift selection after filtering on both sides, local navigation superseding a delayed listing and selection changes invalidating a delayed preview. Switching hosts during preparation left the second tab blank and suppressed the old review. Opening a separate local file tab did not change the original remote path.",
+    "Regression coverage included single-pane picker transfers, reconnect, no-overwrite, partial files, queue recovery after ordinary close and process kill, M1-M4 Harness workspace isolation, browser references and three loopback API formats."
+  ],
+  "tests": {
+    "javascript": 307,
+    "python": 11,
+    "rustMain": 172,
+    "rustAuxiliaryTargets": 23,
+    "rustHarnessClient": 12,
+    "explicitIgnoredTests": [
+      "native_web_quote",
+      "real_openssh_conpty_loopback_auth_info_resize_and_exit"
+    ],
+    "pairedNative": "tools/ssh_paired_native.cjs invoked by tools/ssh_managed_smoke.cjs",
+    "pairedBrowser": "tools/ssh_paired_checks.cjs invoked by tools/ui_smoke.cjs --ssh-files",
+    "otherBrowser": [
+      "tools/ui_smoke.cjs --transfers",
+      "tools/ui_smoke.cjs --panes"
+    ],
+    "nativeDesktop": "tools/verify_harness_desktop.ps1",
+    "loopbackProviderCompatibility": "tools/ai_api_smoke.cjs --workbench",
+    "pairedFixtureSha256": "85aaf8f63a25a6bd09f20d76b0030d33e874a4760a9591d5bcc784475d72b6d7",
+    "desktopFixtureSha256": "35276d7ea5c909b666b287b7a8f128bf14a99620b8f95ed92644730035122368"
+  },
+  "fixtureEvidence": {
+    "uploadedSha256": {
+      "plain.txt": "ed2ee09dc7d57f260756afac824a55794225528d575353b0368992af19f5c1de",
+      "子目录/report.txt": "1bec8937132b194581169af992a3319ec910358f8eb8cbd85432d1bd2718b2ba"
+    },
+    "downloadedSha256": "25e1147ff3c1088a7efb5ebd59fdbbe53a25835ed89b4f30c3cadd00a0ec58b0",
+    "screenshots": [
+      "paired-files-960.png",
+      "paired-files-1280.png"
+    ],
+    "directory": "src-tauri/target/ssh-managed-smoke-2716Fc"
+  },
+  "source": {
+    "archive": "dalizi-files-0.5.1-source-428d1a02594bb9cd.zip",
+    "sha256": "428d1a02594bb9cdb224d4e102878a279e7aa54c69ee3cfb66e8b3745fe32d28",
+    "filesVerifiedBeforeOfflineBuild": 582
+  },
+  "preview": {
+    "archive": "dalizi-files-0.5.1-windows-x64-preview-paired-files-9539077b7b97.zip",
+    "bytes": 55257345,
+    "sha256": "0ad9b5bbfb6c9de438bc67f3862909adca3fb54530b21d957df101488b0f14ec",
+    "exeSha256": "9539077b7b973aa3b67d53f6849511e6242908de87fdd999c06d09dca4d3e72b",
+    "componentSha256": "576a0c64da03d892ea8ac94b7bfeda905dacd2ed7fb5f8d310fe75c46e069dc2",
+    "entries": 749,
+    "perFileHashesVerified": 748,
+    "candidate": null
+  },
+  "limits": [
+    "Pane previews display at most 64 KiB of ordinary text per side.",
+    "The local folder choice belongs to the current authenticated tab and resets on a new login.",
+    "Clean Windows 10/11 release acceptance and authenticated production-provider verification are separate gates."
+  ]
+}

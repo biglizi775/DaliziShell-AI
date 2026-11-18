@@ -1,0 +1,44 @@
+{
+  "schema": 1,
+  "utc": "2026-11-16T17:21:46.414953+00:00",
+  "scope": "Packaged Windows PowerShell cloud acceptance tool, exercised locally only.",
+  "release": "rc6",
+  "tool": {
+    "file": "dalizi-m5-rc6-cloud-check.zip",
+    "bytes": 13628,
+    "sha256": "e56ddd0b884bda9df4e550cad9a744c8687abd37ce604a6105c7294630ab9eec"
+  },
+  "candidate": "55387426c7515139c2ccc805ebd72e4c76024916cd2df2422acdd9c74b65f55d",
+  "checkedOnDevelopmentHost": {
+    "inspect": true,
+    "differentReleaseRefused": true,
+    "liveWithoutTestAccountConfirmationRefusedBeforeLaunch": true,
+    "nativeRehearsal": {
+      "isolatedExeSha256": "2fe716b78e681d19faa50537214d2c73d89ed1ee63dec78a86ad27211384249a",
+      "model": "loopback",
+      "modelRequests": 1,
+      "firstReceiptUnread": true,
+      "sameResultReadAfterRestart": true,
+      "officialEndpointVerifierRejectedLoopback": true,
+      "liveReportCreated": false
+    }
+  },
+  "aggregateWithNoReports": {
+    "release": "rc6",
+    "candidateZipSha256": "55387426c7515139c2ccc805ebd72e4c76024916cd2df2422acdd9c74b65f55d",
+    "checks": {
+      "cleanWindows10": {
+        "status": "missing"
+      },
+      "cleanWindows11": {
+        "status": "missing"
+      },
+      "authenticatedCloudTurn": {
+        "status": "missing"
+      }
+    },
+    "allEvidencePassed": false
+  },
+  "unchangedOfflineKitSha256": "b473200892ae9cd6b30d0da35fa32f2461e5d13510af4221a44c17809871c762",
+  "actualCloudCallPerformed": false
+}

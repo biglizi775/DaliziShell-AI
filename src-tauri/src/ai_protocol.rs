@@ -47,8 +47,9 @@ pub fn convert_body(format: ApiFormat, mut body: Value) -> Value {
         }
     }
 }
-pub fn headers(format: ApiFormat, key: &str) -> String {
-    let mut headers = "Content-Type: application/json\r\nAccept: application/json\r\n".to_owned();
+pub fn headers(format: ApiFormat, key: &str, streaming: bool) -> String {
+    let accept = if streaming { "text/event-stream, application/json" } else { "application/json" };
+    let mut headers = format!("Content-Type: application/json\r\nAccept: {accept}\r\n");
     if format == ApiFormat::Messages {
         headers.push_str("anthropic-version: 2023-06-01\r\n");
         if !key.is_empty() { headers.push_str(&format!("x-api-key: {key}\r\n")); }
@@ -137,10 +138,10 @@ mod tests {
     }
     #[test]
     fn authentication_headers_match_format() {
-        let headers = headers(ApiFormat::Messages, "test-only");
+        let headers = headers(ApiFormat::Messages, "test-only", false);
         assert!(headers.contains("x-api-key: test-only\r\n")); assert!(headers.contains("anthropic-version: 2023-06-01"));
         assert!(!headers.contains("Authorization"));
-        assert!(super::headers(ApiFormat::Responses, "test-only").contains("Authorization: Bearer test-only"));
-        assert!(!super::headers(ApiFormat::Completions, "").contains("Authorization"));
+        assert!(super::headers(ApiFormat::Responses, "test-only", false).contains("Authorization: Bearer test-only"));
+        assert!(!super::headers(ApiFormat::Completions, "", false).contains("Authorization"));
     }
 }

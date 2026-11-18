@@ -1,0 +1,25 @@
+# Overlay for the pinned sdk-minimal profile. Removing the tool producers is
+# necessary even when the session's filesystem policy says read-only.
+- id: llm-retry
+  disabled: true
+- id: tool-fs
+  disabled: true
+- id: tool-working-directory
+  disabled: true
+- id: persistent-pwsh
+  disabled: true
+- id: persistent-bash
+  disabled: true
+- id: terminal-pwsh
+  disabled: true
+- id: terminal-bash
+  disabled: true
+- id: pty
+  disabled: true
+- id: subprocess
+  disabled: true
+- id: mcp-resources
+  disabled: true
+- id: sandbox-policy
+  config:
+    mode: read-only

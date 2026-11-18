@@ -10,14 +10,21 @@
 
 use std::collections::HashMap;
 use std::io::{Read, Write};
+use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, TryLockError};
 use std::time::Duration;
 
-use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
+use portable_pty::{Child, CommandBuilder, MasterPty, PtySize};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
+use windows::Win32::Foundation::HANDLE;
+use windows::Win32::System::JobObjects::{
+    AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation,
+    SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+    JOB_OBJECT_LIMIT_SILENT_BREAKAWAY_OK,
+};
 
 #[derive(Serialize, Clone)]
 struct TermOutEvent {
@@ -43,28 +50,37 @@ struct TermSession {
 
 static NEXT_ID: AtomicU32 = AtomicU32::new(1);
 static SHUTTING_DOWN: AtomicBool = AtomicBool::new(false);
+static TERMINAL_JOB: OnceLock<OwnedHandle> = OnceLock::new();
+
+fn terminal_job() -> Result<&'static OwnedHandle, String> {
+    if let Some(job) = TERMINAL_JOB.get() {
+        return Ok(job);
+    }
+    // The desktop exclusively owns this unnamed, non-inheritable handle. Windows
+    // closes it on process death even when the normal exit handler cannot run.
+    let handle = unsafe { CreateJobObjectW(None, None) }
+        .map_err(|error| format!("create terminal job: {error}"))?;
+    let owned = unsafe { OwnedHandle::from_raw_handle(handle.0) };
+    let mut limits = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
+    // The shell / SSH client is ours. Programs independently launched by the user
+    // keep their normal lifetime, including GUI programs opened from the shell.
+    limits.BasicLimitInformation.LimitFlags =
+        JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE | JOB_OBJECT_LIMIT_SILENT_BREAKAWAY_OK;
+    unsafe {
+        SetInformationJobObject(
+            handle,
+            JobObjectExtendedLimitInformation,
+            (&raw const limits).cast(),
+            std::mem::size_of_val(&limits) as u32,
+        )
+    }
+    .map_err(|error| format!("configure terminal job: {error}"))?;
+    Ok(TERMINAL_JOB.get_or_init(|| owned))
+}
 static SESSIONS: OnceLock<Mutex<HashMap<u32, Arc<TermSession>>>> = OnceLock::new();
 
 fn sessions() -> &'static Mutex<HashMap<u32, Arc<TermSession>>> {
     SESSIONS.get_or_init(|| Mutex::new(HashMap::new()))
-}
-
-/// Prefer PowerShell 7 (fixed location or anywhere on PATH); fall back to
-/// built-in Windows PowerShell.
-fn find_shell() -> String {
-    const PW7: &str = r"C:\Program Files\PowerShell\7\pwsh.exe";
-    if Path::new(PW7).exists() {
-        return PW7.to_string();
-    }
-    if let Some(path) = std::env::var_os("PATH") {
-        for dir in std::env::split_paths(&path) {
-            let candidate = dir.join("pwsh.exe");
-            if candidate.is_file() {
-                return candidate.to_string_lossy().into_owned();
-            }
-        }
-    }
-    r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe".to_string()
 }
 
 /// Reader thread: forwards output as `term-out` events (carrying incomplete
@@ -217,7 +233,7 @@ fn start_session(
             return Err(format!("terminal directory does not exist: {c}"));
         }
     }
-    let mut cmd = CommandBuilder::new(find_shell());
+    let mut cmd = CommandBuilder::new(crate::windows_runtime::powershell()?);
     cmd.arg("-NoLogo");
     if let Some(c) = cwd.as_ref().filter(|c| !c.is_empty()) {
         cmd.cwd(c);
@@ -241,9 +257,7 @@ pub(crate) fn start_command(
         pixel_width: 0,
         pixel_height: 0,
     };
-    let pair = native_pty_system()
-        .openpty(size)
-        .map_err(|e| format!("openpty: {}", e))?;
+    let pair = crate::windows_runtime::open_pty(size)?;
     let portable_pty::PtyPair { master, slave } = pair;
     // Acquire fallible I/O handles before spawning, so failures cannot orphan a shell.
     let reader = master
@@ -252,9 +266,27 @@ pub(crate) fn start_command(
     let writer = master
         .take_writer()
         .map_err(|e| format!("pty writer: {}", e))?;
-    let child = slave
+    let job = terminal_job()?;
+    let mut child = slave
         .spawn_command(cmd)
         .map_err(|e| format!("spawn terminal: {}", e))?;
+    // portable-pty keeps the actual child handle alive here, so no PID lookup
+    // can bind a recycled or unrelated process.
+    let assignment = child
+        .as_raw_handle()
+        .ok_or_else(|| "missing terminal process handle".to_string())
+        .and_then(|child_handle| {
+            unsafe { AssignProcessToJobObject(HANDLE(job.as_raw_handle()), HANDLE(child_handle)) }
+                .map_err(|error| format!("attach terminal to desktop lifetime: {error}"))
+        });
+    if let Err(error) = assignment {
+        if !matches!(child.try_wait(), Ok(Some(_))) {
+            child
+                .kill()
+                .map_err(|cleanup| format!("{error}; terminal cleanup: {cleanup}"))?;
+            return Err(error);
+        }
+    }
     drop(slave); // recommended: the slave is not needed after spawning
 
     let session = Arc::new(TermSession {
@@ -481,7 +513,7 @@ pub fn shutdown() {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use portable_pty::{ChildKiller, ExitStatus};
+    use portable_pty::{native_pty_system, ChildKiller, ExitStatus};
 
     #[derive(Clone, Debug)]
     struct TerminationFixture {

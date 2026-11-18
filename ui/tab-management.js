@@ -65,9 +65,13 @@ function scrollDraggedTabs() {
   }
 }
 function rememberClosedTab(tab) {
-  if (!tab || isTermTab(tab)) return;
+  if (!tab) return;
   let item;
-  if (isBrowserTab(tab)) {
+  if (isTermTab(tab)) {
+    const descriptor = workspaceTabItem(tab);
+    if (!descriptor) return;
+    item = { ...descriptor, index: state.tabs.indexOf(tab) };
+  } else if (isBrowserTab(tab)) {
     if (!browserSettings().recordHistory) return;
     const target = placeTarget(tab.pendingNavigation || tab.url);
     if (target?.kind !== 'browser') return;
@@ -93,7 +97,14 @@ async function reopenClosedTab() {
   if (!item) return;
   // Recreate UI identity. Terminal processes, credentials and AI permissions are never replayed.
   if (item.kind === 'browser') await newBrowserTab(item.url);
+  else if (item.kind === 'terminal' || item.kind === 'ssh') openPendingTerminalTab(item, item.index);
   else await newTab(item.path);
+}
+function openPendingTerminalTab(item, index = state.tabs.length) {
+  const active = curTab(), slot = Math.max(0, Math.min(index, state.tabs.length));
+  state.tabs.splice(slot, 0, pendingTerminalTab(item));
+  state.tab = state.tabs.indexOf(active);
+  switchTab(slot);
 }
 function moveWorkbenchTab(tab, targetIndex) {
   const from = state.tabs.indexOf(tab), active = curTab();

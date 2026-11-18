@@ -171,7 +171,7 @@ pub(super) async fn prepare_tree(
                 entry_kind: if m.is_dir() { "directory" } else { "file" }.into(),
             });
             if m.is_dir() {
-                let listing = ssh_files_list(id, path.clone()).await?;
+                let listing = ssh_files_list(id, path.clone(), None).await?;
                 if listing.truncated {
                     return Err("目录过大，请缩小范围 / Directory truncated".into());
                 }

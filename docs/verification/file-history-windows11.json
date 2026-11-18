@@ -1,0 +1,50 @@
+{
+  "date": "2026-11-17",
+  "scope": "Windows 11 x64, test-only native desktop identifier, disposable folders and loopback model providers.",
+  "feature": "A02: durable per-folder receipts for submitted local Agent file plans",
+  "observations": [
+    "Rust child process exited without unwinding after its second file effect and before writing that outcome. Recovery preserved the first success, marked the second step unconfirmed and showed no start for the third step. The changed directory remained and the third target was never created.",
+    "A stop request during the first operation preserved its successful outcome and skipped both later operations. A blocked journal prevented any file operation from starting.",
+    "Native WebView2: no journal before confirmation. Three-step plan stopped on a destination collision, with completed, failed and skipped rows. No document body, prompt or endpoint appeared in the journal.",
+    "Native WebView2: after restart with a simulated torn final entry, the other folder had no records. The original folder showed confirmed and unconfirmed outcomes. Stale removal was rejected; removal after refresh preserved the real files. Reading history generated zero model requests.",
+    "Live files could not be removed. Bounded retention, ordered pagination, local relative paths, explicit cleanup and disabled chat auto-save were covered by regression tests or the native fixture."
+  ],
+  "tests": {
+    "rustHarnessClientPassed": 12,
+    "frontendPassed": 307,
+    "pythonPassed": 11,
+    "rustDesktopDefaultPassed": 164,
+    "rustDesktopDefaultIgnored": 2,
+    "explicitIgnoredTestsPassed": [
+      "native_web_quote",
+      "real_openssh_conpty_loopback_auth_info_resize_and_exit"
+    ],
+    "nativeDesktop": "tools/verify_harness_desktop.ps1, including --file-history and M1-M4",
+    "modelFormats": "tools/ai_api_smoke.cjs --workbench with loopback providers",
+    "fixtureSha256": "cae019f30f9440d86cb0ae58f00a1a6efaea098cb2fb5e0f0512b5b2ba40ccdc"
+  },
+  "source": {
+    "archive": "dalizi-files-0.5.1-source-753aa0d8d3889e66.zip",
+    "sha256": "753aa0d8d3889e66d6ac887fa5ad8361d50c623bca99dd66816120438fa4ce07",
+    "filesVerifiedBeforeOfflineBuild": 565
+  },
+  "preview": {
+    "archive": "dalizi-files-0.5.1-windows-x64-preview-file-history-adb3fed0ca26.zip",
+    "bytes": 55126559,
+    "sha256": "ada5eea70fa29a30c5603e8017bdda6e36463e92bc2658825b652113a0ec3a64",
+    "exeSha256": "adb3fed0ca26dd5e55995393324a5702960c5765125cf87c292bfdbedcfd62ad",
+    "componentSha256": "576a0c64da03d892ea8ac94b7bfeda905dacd2ed7fb5f8d310fe75c46e069dc2",
+    "entries": 749,
+    "perFileHashesVerified": 748,
+    "candidate": null
+  },
+  "remainingScope": [
+    "independent receipts for saving replies and undoing edits",
+    "cross-tool history for Harness and SFTP"
+  ],
+  "remainingReleaseGates": [
+    "clean Windows 10",
+    "clean Windows 11",
+    "authenticated cloud turn"
+  ]
+}

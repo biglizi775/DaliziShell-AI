@@ -1,0 +1,46 @@
+{
+  "scope": "F01 immutable paged indexed searches and F03 Shell file-move receipt correction",
+  "machine": "Windows 11 x64 26H2, build 26300.9974",
+  "source": {
+    "archive": "dalizi-files-0.5.1-source-4d710d79a2f2e005.zip",
+    "sha256": "4d710d79a2f2e005ea1f884df643675dc777e00be5f0d6ab03f68d77f4338e08",
+    "filesVerifiedBeforeBuild": 593
+  },
+  "preview": {
+    "archive": "dalizi-files-0.5.1-windows-x64-preview-search-pages-15916106d9ba.zip",
+    "sha256": "1275daf6e7bae6be66b51c6a12b96a24f33fa422e1bfaf4f724d3c803fbf20e1",
+    "exeSha256": "15916106d9ba7d3cb436c22f4d3ab95806aa4bdaf35989cd5b2269003b93b32b",
+    "componentSha256": "576a0c64da03d892ea8ac94b7bfeda905dacd2ed7fb5f8d310fe75c46e069dc2",
+    "perFileHashesVerified": 748,
+    "bytes": 55329125
+  },
+  "tests": {
+    "javascript": 314,
+    "python": 11,
+    "rustMain": 176,
+    "rustAuxiliaryTargets": 23,
+    "rustHarnessClient": 12,
+    "rustMainIgnored": 2,
+    "nativeDesktop": "tools/search_drop_smoke.cjs invoking tools/search_page_checks.cjs and tools/local_task_recovery_smoke.cjs",
+    "browser": [
+      "tools/ui_smoke.cjs"
+    ],
+    "fixture": {
+      "directory": "src-tauri/target/search-drop-smoke-aY8RYo",
+      "debugExeSha256": "389a26c292aeb44dfc45dbc5850fc546dd40a53bc94b0913a7f2c79adf1d01cb",
+      "screenshot": "native-search-pages.png",
+      "screenshotSha256": "a8673b5a73eb35e820c4e76e1a8727099f6ce4f243f09786c261fb942e56ba24"
+    }
+  },
+  "results": [
+    "On real Windows with an isolated WebView2 profile, a scoped OR expression with the Files filter matched exactly 421 files across two directories. The first and second pages each contained 200 distinct expected paths, the third contained the remaining 21. The matching directory and a sibling scope were excluded.",
+    "Removed the first file and added two during paging. The old snapshot retained its original order, total and first page. Explicit refresh switched to a new snapshot with 422 files. Everywhere included the sibling file (423). Jump and reveal from the final page opened a new tab and selected the expected physical file.",
+    "Rust tests checked out-of-range and overflowing page numbers, stale handles, newer snapshot lifetime, cancellation, metadata and OR filters. JavaScript tests verified that late query/page replies cannot populate a different tab and the current page survives a retryable IPC error.",
+    "A failing native test reproduced a completed same-volume file move reported as uncertain with Windows HRESULT 0x00270008. The fix verifies the original directory entry is missing and the Shell-reported target has the original type. Four real move batches (including collision, dual-pane and cut/paste) returned complete receipts. Existing uncertain-receipt crash handling, selective retry and durable recovery still passed."
+  ],
+  "limits": [
+    "A result set represents indexed entries at search time. It does not pin or lock source files on disk.",
+    "The current scanner caps coverage at one million filename entries. Configurable index locations and more detailed size freshness are still F01 work.",
+    "Desktop smoke tests used the isolated debug identifier on a development machine. Clean Windows installation and real production-provider acceptance remain separate gates."
+  ]
+}

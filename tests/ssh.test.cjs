@@ -19,7 +19,7 @@ function harness(options = {}) {
     store: { get: (_key, fallback) => options.profiles || fallback, set: (key, value) => saved.push({ key, value }) },
     invoke: async (cmd, args) => { calls.push({ cmd, args }); return options.invoke ? options.invoke(cmd, args) : { available: true, path: 'C:\\Windows\\System32\\OpenSSH\\ssh.exe', version: 'OpenSSH_for_Windows' }; },
     listen: (name, fn) => { listeners.push({ name, fn }); return options.listen ? options.listen(name, fn) : Promise.resolve(() => {}); },
-    newTermTab: async (cwd, config) => { opened.push({ cwd, config }); return options.start ? options.start(cwd, config) : 'new-tab-result'; },
+    newTermTab: async (cwd, config, owner, profileId) => { opened.push({ cwd, config, owner, profileId }); return options.start ? options.start(cwd, config) : 'new-tab-result'; },
     restartSshTermSession: async (target) => { restarted.push({ target, config: { ...target.sshConfig } }); target.key = 'restarted-' + ++serial; target.exited = false; return target; },
     document: { body: { appendChild() {} }, createElement: element },
     navigator: { clipboard: { writeText: async (value) => copied.push(value) } },
@@ -152,6 +152,19 @@ test('opening and saving a connection cannot start SSH, and form errors prevent 
   assert.equal(await h.run('submitSshForm(false)'), true);
   assert.equal(h.saved.length, 1); assert.equal(h.opened.length, 0); assert.equal(h.calls.some((call) => call.cmd === 'ssh_start'), false);
   assert.equal(h.saved[0].value[0].infoMode, 'shell');
+});
+
+test('OpenSSH compatibility starts in the restored slot only on confirmed login', async () => {
+  const profile = { ...config(), id: 'saved-1', managed: false };
+  const h = harness({ profiles: [profile] });
+  h.context.profile = profile;
+  h.context.owner = { kind: 'term', connection: 'ssh', pendingTerminal: true };
+  h.run('openSshConnect(profile, owner)'); await tick();
+  assert.deepEqual(h.opened, []);
+  assert.equal(await h.run('submitSshForm(true)'), true);
+  assert.equal(h.opened[0].owner, h.context.owner);
+  assert.equal(h.opened[0].profileId, 'saved-1');
+  assert.equal(h.opened[0].config.managed, false);
 });
 
 test('editing a field clears its shown error without exposing untouched required fields', async () => {

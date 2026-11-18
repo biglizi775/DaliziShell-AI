@@ -10,3 +10,4 @@
 *.icc binary
 *.zip binary
 *.pdf binary
+resources/release-notices/texts/*.txt -text

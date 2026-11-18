@@ -21,7 +21,7 @@ function harness(saved = null) {
   const context = vm.createContext({
     store: { get: () => saved, set: (key, value) => writes.push([key, structuredClone(value)]) },
     state, els, document: { body: { classList } },
-    locale: 'zh', esc: (value) => String(value), Date,
+    locale: 'zh', esc: (value) => String(value), Date, canMeasureDirectory: (e) => e.isDir && !e.isReparse,
     fmtDate: (value) => `date:${value}`, fmtSize: (value) => `${value} B`,
     folderSizeLabel: (entry) => entry.dirSize == null ? '…' : `${entry.dirSize} B`,
     typeLabel: (entry) => entry.isDir ? '文件夹' : entry.ext || '文件',
@@ -183,7 +183,8 @@ test('new metadata sort keys keep folders first and compare underlying values', 
 test('background size batches update an open properties dialog only for its matching folder', () => {
   const h = harness(), frames = [];
   const sizeCell = { textContent: 'calculatingSize' };
-  const dialog = { open: true, dataset: { propertyPath: 'c:\\docs\\folder' }, querySelector: () => sizeCell };
+  const verification = { textContent: '' };
+  const dialog = { open: true, dataset: { propertyPath: 'c:\\docs\\folder' }, querySelector: (s) => s === '[data-property-size]' ? sizeCell : verification };
   h.context.document.getElementById = () => dialog;
   Object.assign(h.context, {
     curTab: () => ({}), isTermTab: () => false, canMeasureDirectory: () => true,
@@ -200,6 +201,10 @@ test('background size batches update an open properties dialog only for its matc
   h.run("queueDirSize(7, 'C:\\\\Docs\\\\folder', 2048)");
   frames.shift()();
   assert.equal(sizeCell.textContent, '2048 B (2,048 字节)');
+  assert.match(verification.textContent, /尚无完整核验时间/);
+  h.run("queueDirSize(7, 'C:\\\\Docs\\\\folder', 2048, {size:2048, serial:2, basis:'measured', verifiedAt:1700000000000})");
+  frames.shift()();
+  assert.match(verification.textContent, /本次运行已完整核验.*2023/);
   const other = { name: 'folder', isDir: true, dirSize: 99 };
   h.state.sizeEntries = new Map([['c:\\other\\folder', other]]);
   h.run("queueDirSize(7, 'C:\\\\other\\\\folder', 50)");
@@ -215,4 +220,20 @@ test('background size batches update an open properties dialog only for its matc
   h.run("queueDirSize(7, 'C:\\\\Docs\\\\folder', null)");
   frames.shift()();
   assert.equal(sizeCell.textContent, 'sizeUnavailable', 'failed measurement replaces the calculating label');
+});
+
+test('folder tooltips distinguish restored, aggregate, incomplete, legacy and excluded locations', () => {
+  const h = harness();
+  const label = (info, extra = {}) => {
+    h.context.entry = { isDir:true, dirSize:0, dirSizeInfo:info, ...extra };
+    return h.run('folderSizeVerification(entry)');
+  };
+  assert.match(label({ restored:true, basis:'measured', verifiedAt:1700000000000 }), /^上次运行的缓存 · 上次完整核验 .*2023/);
+  assert.match(label({ basis:'aggregate', verifiedAt:1700000000000 }), /^按子目录缓存汇总 · 上次完整核验/);
+  assert.match(label({ restored:true, basis:'incomplete', verifiedAt:null }), /未能完整读取，保留上次数值 · 尚无完整核验时间/);
+  assert.match(label({ restored:true, basis:'unknown', verifiedAt:null }), /^上次运行的缓存 · 尚无完整核验时间$/);
+  assert.match(label(null, { isReparse:true }), /此位置不扫描/);
+  h.run("locale = 'en'");
+  assert.match(label({ basis:'measured', verifiedAt:1700000000000 }), /Fully verified this run.*2023/);
+  assert.match(h.run('renderColumnCells(entry)'), /title="Fully verified this run/);
 });

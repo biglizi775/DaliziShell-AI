@@ -33,7 +33,11 @@ fn absolute(value: &str) -> Result<PathBuf, String> {
     std::fs::canonicalize(value)
         .map_err(|e| format!("无法访问拖入的项目 / Cannot access dropped item: {value}: {e}"))
 }
-fn prepare(kind: &str, sources: &[String], dest: &str) -> Result<(Vec<String>, usize), String> {
+pub(crate) fn prepare(
+    kind: &str,
+    sources: &[String],
+    dest: &str,
+) -> Result<(Vec<String>, usize), String> {
     if !matches!(kind, "move" | "copy") || sources.is_empty() || sources.len() > 1000 {
         return Err(
             "每次拖入 1–1000 个项目，支持移动或复制 / Drop 1–1000 items to move or copy".into(),

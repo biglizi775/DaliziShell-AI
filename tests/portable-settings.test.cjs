@@ -4,13 +4,15 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
 const source = fs.readFileSync(path.join(__dirname, '../ui/portable-settings.js'), 'utf8');
+const themeSource = fs.readFileSync(path.join(__dirname, '../ui/theme.js'), 'utf8');
 const plain = (value) => JSON.parse(JSON.stringify(value));
 function harness(initial = {}, invoke = async () => null) {
   const storage = new Map(Object.entries(initial).map(([k, v]) => ['df.' + k, JSON.stringify(v)]));
   const notices = [], calls = [];
   const context = vm.createContext({ console, URL, Date, Map, Set, crypto: require('node:crypto').webcrypto,
-    locale: 'en', dfmt: null, previewOpen: false, agentFloating: false, aiPanelOpen: true, columnLayout: {}, aiSettings: {}, aiModelPresets: [],
+    locale: 'en', dfmt: null, previewOpen: false, agentFloating: false, aiPanelOpen: true, columnLayout: {}, aiSettings: {}, aiModelPresets: [], aiSessionKey: "", aiFormatOf: v => v.apiFormat || "openai-completions",
     state: { viewMode: 'details', sortKey: 'name', sortDir: 1, showHidden: false }, PLACE_LIMIT: 100,
+    document: { documentElement: { dataset: {} } },
     localStorage: { getItem: (key) => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value), removeItem: (key) => storage.delete(key) },
     store: { get: (k, d) => storage.has('df.' + k) ? JSON.parse(storage.get('df.' + k)) : d },
     $: () => null, toast: (...args) => notices.push(args), normalizeColumns: (v) => v,
@@ -19,7 +21,7 @@ function harness(initial = {}, invoke = async () => null) {
     readFavorites: () => JSON.parse(storage.get('df.favorites') || '{"items":[]}').items,
     invoke: async (cmd, args) => { calls.push({ cmd, args: args && plain(args) }); return invoke(cmd, args); },
   });
-  vm.runInContext(source, context);
+  vm.runInContext(themeSource + '\n' + source, context);
   return { context, storage, notices, calls, run: (s) => vm.runInContext(s, context), get: (key) => JSON.parse(storage.get('df.' + key) || 'null') };
 }
 const folder = { id: 'folder', kind: 'files', path: 'D:\\Local', name: 'Local' };
@@ -44,6 +46,38 @@ test('disabled or corrupt files leave local settings untouched and never auto-sa
     h.run('portableSettingsChanged("theme")');
     assert.equal(h.get('theme'), 'light'); assert.equal(h.calls.length, 1);
   }
+});
+
+test('portable visual style survives import, hydration and queued export independently of theme', async () => {
+  const h = harness({ visualStyle: 'studio', theme: 'light' }, async (cmd, args) =>
+    cmd === 'portable_settings_load' ? { enabled: true, settings: { visualStyle: 'classic', theme: 'dark' } }
+      : { enabled: args.enabled, updatedAt: 1 });
+  await h.run('initPortableSettings()');
+  assert.equal(h.get('visualStyle'), 'classic');
+  assert.equal(h.context.document.documentElement.dataset.visualStyle, 'classic');
+  assert.equal(h.get('theme'), 'dark');
+  assert.equal(h.run('portableSnapshot().visualStyle'), 'classic');
+  h.storage.set('df.visualStyle', '"studio"');
+  h.run('portableSettingsChanged("visualStyle")');
+  await h.run('writePortableQueue()');
+  const saved = h.calls.find((c) => c.cmd === 'portable_settings_save').args.settings;
+  assert.equal(saved.visualStyle, 'studio');
+  assert.equal(saved.theme, 'dark');
+});
+
+test('invalid portable visual styles fall back to studio while older files preserve the local choice', () => {
+  const h = harness({ visualStyle: 'classic', theme: 'dark' });
+  h.run('applyPortableSettings({locale:"zh"})');
+  assert.equal(h.get('visualStyle'), 'classic');
+  for (const invalid of ['future', '', null, {}, 1, true, ['classic']]) {
+    h.context.input = { visualStyle: invalid };
+    h.run('applyPortableSettings(input); hydratePortablePreferences()');
+    assert.equal(h.get('visualStyle'), 'studio');
+    assert.equal(h.context.document.documentElement.dataset.visualStyle, 'studio');
+    assert.equal(h.get('theme'), 'dark');
+  }
+  h.storage.set('df.visualStyle', '"future"');
+  assert.equal(h.run('portableSnapshot().visualStyle'), 'studio');
 });
 
 test('portable import is all-or-nothing when localStorage fails', () => {

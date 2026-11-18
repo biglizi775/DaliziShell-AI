@@ -21,6 +21,29 @@ function harness(handler = async () => profile()) {
   return { context, calls, get, created, notices, run: (code) => vm.runInContext(code, context) };
 }
 const tick = () => new Promise(setImmediate);
+test('personal copies show a versioned source and send revisions only for enabled copies', async () => {
+  const copy = {source:'user', id:'copy-saved', name:'My notes', path:'builtin://documentation/0.9.0/SKILL.md', body:'Draft',
+    description:'My workflow', enabled:true, copy:{sourceId:'builtin.documentation',version:'0.9.0',revision:'hash'}};
+  const h = harness(async () => profile({skills:[builtinSkill('documentation'), copy, {...copy,id:'copy-off',enabled:false}]}));
+  await h.run("openAgentProfile('skills')");
+  const markup = h.get('agentProfileBody').innerHTML;
+  assert.match(markup, /data-agent-action="copy-skill" data-id="builtin.documentation"/);
+  assert.match(markup, /data-agent-action="edit-copy" data-id="copy-saved"/);
+  assert.match(markup, /Based on Documentation · v0.9.0/);
+  assert.doesNotMatch(markup, /builtin:\/\//);
+  const context = await h.run('getAgentRequestContext(null)');
+  assert.deepEqual(Object.entries(context.copyRevisions), [['copy-saved','hash']]);
+  assert.deepEqual([...context.skillIds], ['copy-saved']);
+});
+test('a full personal library keeps editors available and disables creating another copy', async () => {
+  const users = Array.from({length:32}, (_, i) => ({id:'copy-' + i,name:'Saved',source:'user',copy:{sourceId:'builtin.file-organize',version:'1',revision:'rev'}}));
+  const h = harness(async () => profile({skills:[builtinSkill(), ...users]}));
+  await h.run("openAgentProfile('skills')");
+  const markup = h.get('agentProfileBody').innerHTML;
+  assert.match(markup, /data-agent-action="copy-skill" data-id="builtin.file-organize" disabled/);
+  assert.match(markup, /data-agent-action="edit-copy" data-id="copy-0">/);
+  assert.match(markup, /32 \/ 32/);
+});
 test('automatic full memory backups import only reviewed content and reject injected metadata', () => {
   const h = harness();
   h.context.backup = { version: 1, memories: [{ id: 'a', content: 'Keep project names', enabled: true, updatedAt: 4 }, { id: 'b', content: 'Keep project names', enabled: false, updatedAt: 5 }] };

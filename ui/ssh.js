@@ -51,7 +51,10 @@ function sshAddress(config) {
   const value = sshSafeConfig(config), host = value.host.includes(':') ? '[' + value.host + ']' : value.host;
   return value.user + '@' + host + ':' + value.port;
 }
-function sshTabTitle(tb) { return 'SSH · ' + (tb.sshConfig?.label || tb.sshConfig?.host || '') + (tb.exited ? ' ⏹' : tb.starting ? ' …' : ''); }
+function sshTabTitle(tb) {
+  const label = tb.sshConfig?.label || tb.sshConfig?.host;
+  return (label ? 'SSH · ' + label : 'SSH') + (tb.exited ? ' ⏹' : tb.starting ? ' …' : '');
+}
 function readSshProfiles() {
   const values = store.get(sshProfileStoreKey, []);
   sshProfiles = (Array.isArray(values) ? values : []).slice(0, 50).flatMap((item) => {
@@ -118,7 +121,7 @@ async function checkSshClient() {
   try { const result = await invoke('ssh_check_client', {}); if (check !== sshClientCheck) return; sshClient = result; renderSshClient(); }
   catch (error) { if (check === sshClientCheck) { sshClient = { available: false }; renderSshClient(String(error)); } }
 }
-function openSshConnect(prefill) {
+function openSshConnect(prefill, owner = null) {
   if (sshDialog?.open) { if (prefill && !sshDialogBusy) { sshSelectedProfile = null; fillSshForm(prefill); } sshDialog.focus(); return; }
   if (!sshDialog) {
     sshDialog = document.createElement('dialog'); sshDialog.id = 'sshConnectDialog'; sshDialog.className = 'ssh-connect-dialog'; document.body.appendChild(sshDialog);
@@ -126,6 +129,7 @@ function openSshConnect(prefill) {
     sshDialog.addEventListener('input', refreshSshFieldValidation);
     sshDialog.addEventListener('change', refreshSshFieldValidation);
     sshDialog.addEventListener('cancel', (event) => { if (sshDialogBusy) event.preventDefault(); });
+    sshDialog.addEventListener('close', () => { if (!sshDialog.open) sshDialog.restoreOwner = null; });
     sshDialog.addEventListener('click', (event) => {
       if (sshDialogBusy) return;
       const saved = event.target.closest('[data-ssh-profile]'), remove = event.target.closest('[data-ssh-remove]'), action = event.target.closest('[data-ssh-dialog]')?.dataset.sshDialog;
@@ -142,7 +146,10 @@ function openSshConnect(prefill) {
   sshDialog.setAttribute('aria-labelledby', 'sshConnectTitle'); sshDialog.setAttribute('aria-describedby', 'sshConnectIntro');
   sshDialog.innerHTML = `<header class="ssh-dialog-heading"><div><span>REMOTE WORKSPACE</span><h2 id="sshConnectTitle">${esc(sshText('title'))}</h2><p id="sshConnectIntro">${esc(sshText('intro'))}</p></div><button type="button" data-ssh-dialog="close" class="ssh-close" aria-label="${esc(sshText('cancel'))}">×</button></header><div class="ssh-dialog-main"><aside class="ssh-saved"><div class="ssh-saved-heading"><h3>${esc(sshText('saved'))}</h3><button type="button" data-ssh-dialog="new" title="${esc(sshText('new'))}" aria-label="${esc(sshText('new'))}">＋</button></div><div id="sshSavedList"></div></aside><form id="sshConnectForm" novalidate><div class="ssh-form-body"><div id="sshClientStatus" class="ssh-client-status" role="status"></div><div class="ssh-field">${field('label', 'sshLabel', 'text', sshText('labelHint'))}</div><div class="ssh-form-row host-row"><div class="ssh-field">${field('host', 'sshHost', 'text', '192.168.1.100')}</div><div class="ssh-field">${field('port', 'sshPort', 'number', '22')}</div></div><div class="ssh-field">${field('user', 'sshUser', 'text', 'ubuntu')}</div><div class="ssh-field">${field('identity', 'sshIdentity', 'text', 'C:\\Users\\me\\.ssh\\id_ed25519')}<small>${esc(sshText('identityHint'))}</small></div><div class="ssh-field"><label for="sshMode">${esc(sshText('mode'))}</label><select id="sshMode" aria-describedby="sshModeError sshModeHint"><option value="posix">${esc(sshText('posix'))}</option><option value="shell">${esc(sshText('shell'))}</option></select><small id="sshModeError" class="ssh-field-error" hidden></small><small id="sshModeHint">${esc(sshText('modeHint'))}</small></div><p class="ssh-security-note">${esc(sshText('security'))}</p><label class="ssh-remember"><input id="sshRemember" type="checkbox">${esc(sshText('remember'))}</label></div></form></div><footer class="ssh-dialog-footer"><span id="sshDialogStatus" role="status" aria-live="polite"></span><button type="button" data-ssh-dialog="save" class="ssh-secondary">${esc(sshText('save'))}</button><button type="submit" form="sshConnectForm" id="sshConnect" class="ssh-primary">${esc(sshText('connect'))}</button></footer>`;
   $('sshPort').min = '1'; $('sshPort').max = '65535'; $('sshPort').step = '1'; $('sshLabel').maxLength = 80;
-  readSshProfiles(); sshSelectedProfile = null; sshDialogBusy = false; fillSshForm(prefill); sshDialog.showModal(); $('sshHost').focus(); checkSshClient();
+  readSshProfiles(); sshSelectedProfile = sshProfiles.find(profile => profile.id === prefill?.id)?.id || null;
+  sshDialog.restoreOwner = owner; sshDialogBusy = false; fillSshForm(prefill);
+  if (owner && !sshSelectedProfile) $('sshRemember').checked = false;
+  sshDialog.showModal(); $('sshHost').focus(); checkSshClient();
 }
 async function submitSshForm(connect) {
   if (sshDialogBusy) return false;
@@ -151,10 +158,16 @@ async function submitSshForm(connect) {
   if (typeof submitManagedSsh === 'function' && $('sshManagedMode')?.checked) return submitManagedSsh(config, connect);
   config.managed = false;
   if (connect && !sshClient?.available) { setSshDialogStatus(sshText('clientMissing'), true); return false; }
-  if (!connect || $('sshRemember').checked) { saveSshProfile(config); renderSshSaved(); }
+  let profileId = null;
+  if (!connect || $('sshRemember').checked) { profileId = saveSshProfile(config).id; renderSshSaved(); }
   if (!connect) { setSshDialogStatus(sshText('savedNotice')); return true; }
   setSshDialogBusy(true); setSshDialogStatus(sshText('launching'));
-  try { await ensureSshEvents(); sshDialog.close(); await newSshTab(config); return true; }
+  const owner = sshDialog.restoreOwner;
+  try {
+    await ensureSshEvents(); sshDialog.close();
+    const tab = await newSshTab(config, null, owner, profileId);
+    return !!tab && !tab.exited;
+  }
   catch (error) { if (sshDialog.open) setSshDialogStatus(String(error), true); else toast(String(error), true); return false; }
   finally { setSshDialogBusy(false); }
 }
@@ -162,12 +175,12 @@ function ensureSshEvents() {
   if (!sshEventsPromise) sshEventsPromise = listen('ssh-info', onSshInfo).catch((error) => { sshEventsPromise = null; throw error; });
   return sshEventsPromise;
 }
-async function newSshTab(value, auth) {
+async function newSshTab(value, auth, owner = null, profileId = null) {
   const { config, errors } = validateSshConfig(value);
   if (Object.keys(errors).length) throw new Error(sshText(Object.values(errors)[0]));
   await ensureSshEvents();
   if (config.managed && typeof ensureManagedSshEvents === 'function') await ensureManagedSshEvents();
-  return newTermTab(null, auth ? { ...config, auth } : config);
+  return newTermTab(null, auth ? { ...config, auth } : config, owner, profileId);
 }
 function onSshInfo(event) {
   const payload = event?.payload; if (!payload || !Number.isInteger(payload.id) || payload.id < 0 || typeof payload.key !== 'string' || !payload.info) return;
@@ -324,6 +337,7 @@ function disconnectSshTab(tb) {
 
 function reconnectSshTab(tb) {
   if (!isSshTab(tb) || tb.disposed || tb.sshReconnecting || tb.sshDisconnecting) return Promise.resolve(false);
+  if (tb.pendingTerminal) { startPendingTerminal(tb); return Promise.resolve(false); }
   tb.sshReconnecting = true; tb.input = ''; syncSshInfo(tb);
   return (async () => {
     try {

@@ -1,0 +1,605 @@
+{
+  "source": "ui/index.html and unchanged production CSS/JavaScript",
+  "backend": "deterministic demo-only Tauri IPC fixture",
+  "width": 1600,
+  "height": 740,
+  "frames": [
+    {
+      "name": "local-workspace",
+      "file": "actual-ui/local-workspace.png",
+      "description": "真实文件工作区：三个目录标签与原始列表列宽",
+      "targets": {
+        "tabs": {
+          "x": 220,
+          "y": 0,
+          "width": 1380,
+          "height": 52,
+          "cx": 910,
+          "cy": 26
+        },
+        "files": {
+          "x": 220,
+          "y": 270,
+          "width": 1380,
+          "height": 440,
+          "cx": 910,
+          "cy": 490
+        },
+        "terminalButton": {
+          "x": 1264.625,
+          "y": 170.5,
+          "width": 98.875,
+          "height": 33,
+          "cx": 1314.0625,
+          "cy": 187
+        },
+        "previewButton": {
+          "x": 1502,
+          "y": 170.5,
+          "width": 30,
+          "height": 33,
+          "cx": 1517,
+          "cy": 187
+        },
+        "dualButton": {
+          "x": 1435,
+          "y": 170.5,
+          "width": 60,
+          "height": 33,
+          "cx": 1465,
+          "cy": 187
+        },
+        "search": {
+          "x": 1239,
+          "y": 66,
+          "width": 300,
+          "height": 35,
+          "cx": 1389,
+          "cy": 83.5
+        }
+      }
+    },
+    {
+      "name": "local-selected",
+      "file": "actual-ui/local-selected.png",
+      "description": "选中产品说明，保留真实行选中样式",
+      "targets": {
+        "selected": {
+          "x": 236,
+          "y": 441,
+          "width": 1348,
+          "height": 44,
+          "cx": 910,
+          "cy": 463
+        },
+        "files": {
+          "x": 220,
+          "y": 270,
+          "width": 1380,
+          "height": 440,
+          "cx": 910,
+          "cy": 490
+        },
+        "terminalButton": {
+          "x": 1264.625,
+          "y": 170.5,
+          "width": 98.875,
+          "height": 33,
+          "cx": 1314.0625,
+          "cy": 187
+        }
+      }
+    },
+    {
+      "name": "local-terminal",
+      "file": "actual-ui/local-terminal.png",
+      "description": "真实 PowerShell 标签与 xterm.js 渲染",
+      "targets": {
+        "tabs": {
+          "x": 220,
+          "y": 0,
+          "width": 1380,
+          "height": 52,
+          "cx": 910,
+          "cy": 26
+        },
+        "terminal": {
+          "x": 220,
+          "y": 152,
+          "width": 1380,
+          "height": 558,
+          "cx": 910,
+          "cy": 431
+        },
+        "activeTab": {
+          "x": 630,
+          "y": 7,
+          "width": 190.28125,
+          "height": 36,
+          "cx": 725.140625,
+          "cy": 25
+        }
+      }
+    },
+    {
+      "name": "local-dual",
+      "file": "actual-ui/local-dual.png",
+      "description": "同一窗口中的真实左右目录面板",
+      "targets": {
+        "left": {
+          "x": 220,
+          "y": 270,
+          "width": 800.40625,
+          "height": 440,
+          "cx": 620.203125,
+          "cy": 490
+        },
+        "right": {
+          "x": 1020.40625,
+          "y": 270,
+          "width": 579.59375,
+          "height": 440,
+          "cx": 1310.203125,
+          "cy": 490
+        },
+        "copy": {
+          "x": 1035.40625,
+          "y": 375.5,
+          "width": 27.5,
+          "height": 30.5,
+          "cx": 1049.15625,
+          "cy": 390.75
+        }
+      }
+    },
+    {
+      "name": "local-dual-selected",
+      "file": "actual-ui/local-dual-selected.png",
+      "description": "真实三文件多选和跨面板传输按钮",
+      "targets": {
+        "left": {
+          "x": 220,
+          "y": 270,
+          "width": 800.40625,
+          "height": 440,
+          "cx": 620.203125,
+          "cy": 490
+        },
+        "right": {
+          "x": 1020.40625,
+          "y": 270,
+          "width": 579.59375,
+          "height": 440,
+          "cx": 1310.203125,
+          "cy": 490
+        },
+        "copy": {
+          "x": 1035.40625,
+          "y": 375.5,
+          "width": 27.5,
+          "height": 30.5,
+          "cx": 1049.15625,
+          "cy": 390.75
+        }
+      }
+    },
+    {
+      "name": "local-copy-dialog",
+      "file": "actual-ui/local-copy-dialog.png",
+      "description": "原始跨面板文件操作确认对话框",
+      "targets": {
+        "dialog": {
+          "x": 490,
+          "y": 207.015625,
+          "width": 620,
+          "height": 325.953125,
+          "cx": 800,
+          "cy": 369.9921875
+        },
+        "copy": {
+          "x": 898,
+          "y": 481.96875,
+          "width": 88,
+          "height": 34,
+          "cx": 942,
+          "cy": 498.96875
+        },
+        "move": {
+          "x": 995,
+          "y": 481.96875,
+          "width": 90,
+          "height": 34,
+          "cx": 1040,
+          "cy": 498.96875
+        }
+      }
+    },
+    {
+      "name": "local-copy-complete",
+      "file": "actual-ui/local-copy-complete.png",
+      "description": "后端模拟复制结果，经真实列表渲染更新目标目录",
+      "targets": {
+        "left": {
+          "x": 220,
+          "y": 270,
+          "width": 800.40625,
+          "height": 440,
+          "cx": 620.203125,
+          "cy": 490
+        },
+        "right": {
+          "x": 1020.40625,
+          "y": 270,
+          "width": 579.59375,
+          "height": 440,
+          "cx": 1310.203125,
+          "cy": 490
+        }
+      }
+    },
+    {
+      "name": "local-search",
+      "file": "actual-ui/local-search.png",
+      "description": "真实统一搜索框、范围选择与结果浮层",
+      "targets": {
+        "search": {
+          "x": 1239,
+          "y": 66,
+          "width": 300,
+          "height": 35,
+          "cx": 1389,
+          "cy": 83.5
+        },
+        "results": {
+          "x": 799,
+          "y": 108,
+          "width": 740,
+          "height": 540,
+          "cx": 1169,
+          "cy": 378
+        },
+        "firstResult": {
+          "x": 800,
+          "y": 259.5,
+          "width": 738,
+          "height": 55,
+          "cx": 1169,
+          "cy": 287
+        },
+        "reveal": {
+          "x": 1466,
+          "y": 272,
+          "width": 28,
+          "height": 29,
+          "cx": 1480,
+          "cy": 286.5
+        }
+      }
+    },
+    {
+      "name": "local-pdf",
+      "file": "actual-ui/local-pdf.png",
+      "description": "真实 PDF.js 预览与翻页/缩放控件，文档由代码生成",
+      "targets": {
+        "files": {
+          "x": 220,
+          "y": 270,
+          "width": 980,
+          "height": 440,
+          "cx": 710,
+          "cy": 490
+        },
+        "preview": {
+          "x": 1200,
+          "y": 270,
+          "width": 400,
+          "height": 440,
+          "cx": 1400,
+          "cy": 490
+        },
+        "next": {
+          "x": 1321.234375,
+          "y": 490,
+          "width": 27,
+          "height": 29,
+          "cx": 1334.734375,
+          "cy": 504.5
+        },
+        "wide": {
+          "x": 1532,
+          "y": 450,
+          "width": 50,
+          "height": 23,
+          "cx": 1557,
+          "cy": 461.5
+        }
+      }
+    },
+    {
+      "name": "local-pdf-page2",
+      "file": "actual-ui/local-pdf-page2.png",
+      "description": "真实 PDF 翻到第二页",
+      "targets": {
+        "preview": {
+          "x": 1200,
+          "y": 270,
+          "width": 400,
+          "height": 440,
+          "cx": 1400,
+          "cy": 490
+        },
+        "previous": {
+          "x": 1227,
+          "y": 490,
+          "width": 27,
+          "height": 29,
+          "cx": 1240.5,
+          "cy": 504.5
+        }
+      }
+    },
+    {
+      "name": "local-word",
+      "file": "actual-ui/local-word.png",
+      "description": "真实 Word 正文预览",
+      "targets": {
+        "preview": {
+          "x": 1200,
+          "y": 270,
+          "width": 400,
+          "height": 440,
+          "cx": 1400,
+          "cy": 490
+        },
+        "files": {
+          "x": 220,
+          "y": 270,
+          "width": 980,
+          "height": 440,
+          "cx": 710,
+          "cy": 490
+        }
+      }
+    },
+    {
+      "name": "local-sheet",
+      "file": "actual-ui/local-sheet.png",
+      "description": "真实 Excel 工作表值预览",
+      "targets": {
+        "preview": {
+          "x": 1200,
+          "y": 270,
+          "width": 400,
+          "height": 440,
+          "cx": 1400,
+          "cy": 490
+        },
+        "sheet": {
+          "x": 1219,
+          "y": 522.1875,
+          "width": 245.171875,
+          "height": 31,
+          "cx": 1341.5859375,
+          "cy": 537.6875
+        },
+        "table": {
+          "x": 1220,
+          "y": 566.1875,
+          "width": 361,
+          "height": 252,
+          "cx": 1400.5,
+          "cy": 692.1875
+        }
+      }
+    },
+    {
+      "name": "local-sheet-index",
+      "file": "actual-ui/local-sheet-index.png",
+      "description": "真实工作表切换至素材索引",
+      "targets": {
+        "preview": {
+          "x": 1200,
+          "y": 270,
+          "width": 400,
+          "height": 440,
+          "cx": 1400,
+          "cy": 490
+        },
+        "sheet": {
+          "x": 1219,
+          "y": 522.1875,
+          "width": 245.171875,
+          "height": 31,
+          "cx": 1341.5859375,
+          "cy": 537.6875
+        },
+        "table": {
+          "x": 1220,
+          "y": 566.1875,
+          "width": 361,
+          "height": 157.5,
+          "cx": 1400.5,
+          "cy": 644.9375
+        }
+      }
+    }
+  ],
+  "shots": [
+    {
+      "file": "local-workspace.png",
+      "chapter": 1,
+      "at": 0,
+      "caption": "多个目录标签，在同一个窗口里保持工作脉络。",
+      "focus": {
+        "x": 220,
+        "y": 0,
+        "w": 1380,
+        "h": 52
+      },
+      "cursor": {
+        "x": 910,
+        "y": 26
+      }
+    },
+    {
+      "file": "local-terminal.png",
+      "chapter": 1,
+      "at": 4,
+      "caption": "PowerShell 在当前目录打开，无需离开工作区。",
+      "focus": {
+        "x": 220,
+        "y": 152,
+        "w": 1380,
+        "h": 558
+      },
+      "cursor": {
+        "x": 910,
+        "y": 431
+      }
+    },
+    {
+      "file": "local-selected.png",
+      "chapter": 1,
+      "at": 8,
+      "caption": "回到文件列表，接着完成手上的工作。",
+      "focus": {
+        "x": 220,
+        "y": 270,
+        "w": 1380,
+        "h": 440
+      },
+      "cursor": {
+        "x": 910,
+        "y": 490
+      }
+    },
+    {
+      "file": "local-dual.png",
+      "chapter": 2,
+      "at": 0,
+      "caption": "打开双面板，同时查看来源与去向。",
+      "focus": {
+        "x": 1020.40625,
+        "y": 270,
+        "w": 579.59375,
+        "h": 440
+      },
+      "cursor": {
+        "x": 1310.203125,
+        "y": 490
+      }
+    },
+    {
+      "file": "local-dual-selected.png",
+      "chapter": 2,
+      "at": 3,
+      "caption": "多选要交付的文件。",
+      "focus": {
+        "x": 220,
+        "y": 270,
+        "w": 800.40625,
+        "h": 440
+      },
+      "cursor": {
+        "x": 620.203125,
+        "y": 490
+      }
+    },
+    {
+      "file": "local-copy-dialog.png",
+      "chapter": 2,
+      "at": 6,
+      "caption": "核对目标，再确认复制。",
+      "focus": {
+        "x": 490,
+        "y": 207.015625,
+        "w": 620,
+        "h": 325.953125
+      },
+      "cursor": {
+        "x": 800,
+        "y": 369.9921875
+      }
+    },
+    {
+      "file": "local-copy-complete.png",
+      "chapter": 2,
+      "at": 9,
+      "caption": "文件到达目标目录。",
+      "focus": {
+        "x": 1020.40625,
+        "y": 270,
+        "w": 579.59375,
+        "h": 440
+      },
+      "cursor": {
+        "x": 1310.203125,
+        "y": 490
+      }
+    },
+    {
+      "file": "local-search.png",
+      "chapter": 3,
+      "at": 0,
+      "caption": "使用真实搜索框与文件名条件。",
+      "focus": {
+        "x": 799,
+        "y": 108,
+        "w": 740,
+        "h": 540
+      },
+      "cursor": {
+        "x": 1169,
+        "y": 378
+      }
+    },
+    {
+      "file": "local-pdf.png",
+      "chapter": 3,
+      "at": 3,
+      "caption": "在 PDF 预览面板直接阅读。",
+      "focus": {
+        "x": 1200,
+        "y": 270,
+        "w": 400,
+        "h": 440
+      },
+      "cursor": {
+        "x": 1400,
+        "y": 490
+      }
+    },
+    {
+      "file": "local-sheet.png",
+      "chapter": 3,
+      "at": 6,
+      "caption": "查看工作表数据。",
+      "focus": {
+        "x": 1200,
+        "y": 270,
+        "w": 400,
+        "h": 440
+      },
+      "cursor": {
+        "x": 1400,
+        "y": 490
+      }
+    },
+    {
+      "file": "local-word.png",
+      "chapter": 3,
+      "at": 9,
+      "caption": "预览 Word 正文。",
+      "focus": {
+        "x": 1200,
+        "y": 270,
+        "w": 400,
+        "h": 440
+      },
+      "cursor": {
+        "x": 1400,
+        "y": 490
+      }
+    }
+  ]
+}
